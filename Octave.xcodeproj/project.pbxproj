@@ -59,7 +59,7 @@
 		200000320000000000000000 /* EpisodeProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000320000000000000000 /* EpisodeProgressStore.swift */; };
 		200000330000000000000000 /* ForYouShelves.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000330000000000000000 /* ForYouShelves.swift */; };
 		200000340000000000000000 /* GateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000340000000000000000 /* GateView.swift */; };
-		200000350000000000000000 /* GeneratedAssetSymbols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000350000000000000000 /* GeneratedAssetSymbols.swift */; };
+		200000350000000000000000 /* OctaveColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000350000000000000000 /* OctaveColors.swift */; };
 		200000360000000000000000 /* HomeAppleShelves.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000360000000000000000 /* HomeAppleShelves.swift */; };
 		200000370000000000000000 /* HomeCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000370000000000000000 /* HomeCards.swift */; };
 		200000380000000000000000 /* HomeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000380000000000000000 /* HomeComponents.swift */; };
@@ -259,7 +259,7 @@
 		100000320000000000000000 /* EpisodeProgressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeProgressStore.swift; sourceTree = "<group>"; };
 		100000330000000000000000 /* ForYouShelves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForYouShelves.swift; sourceTree = "<group>"; };
 		100000340000000000000000 /* GateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GateView.swift; sourceTree = "<group>"; };
-		100000350000000000000000 /* GeneratedAssetSymbols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedAssetSymbols.swift; sourceTree = "<group>"; };
+		100000350000000000000000 /* OctaveColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctaveColors.swift; sourceTree = "<group>"; };
 		100000360000000000000000 /* HomeAppleShelves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAppleShelves.swift; sourceTree = "<group>"; };
 		100000370000000000000000 /* HomeCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCards.swift; sourceTree = "<group>"; };
 		100000380000000000000000 /* HomeComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeComponents.swift; sourceTree = "<group>"; };
@@ -468,7 +468,7 @@
 				100000320000000000000000 /* EpisodeProgressStore.swift */,
 				100000330000000000000000 /* ForYouShelves.swift */,
 				100000340000000000000000 /* GateView.swift */,
-				100000350000000000000000 /* GeneratedAssetSymbols.swift */,
+				100000350000000000000000 /* OctaveColors.swift */,
 				100000360000000000000000 /* HomeAppleShelves.swift */,
 				100000370000000000000000 /* HomeCards.swift */,
 				100000380000000000000000 /* HomeComponents.swift */,
@@ -775,7 +775,7 @@
 				200000320000000000000000 /* EpisodeProgressStore.swift in Sources */,
 				200000330000000000000000 /* ForYouShelves.swift in Sources */,
 				200000340000000000000000 /* GateView.swift in Sources */,
-				200000350000000000000000 /* GeneratedAssetSymbols.swift in Sources */,
+				200000350000000000000000 /* OctaveColors.swift in Sources */,
 				200000360000000000000000 /* HomeAppleShelves.swift in Sources */,
 				200000370000000000000000 /* HomeCards.swift in Sources */,
 				200000380000000000000000 /* HomeComponents.swift in Sources */,
