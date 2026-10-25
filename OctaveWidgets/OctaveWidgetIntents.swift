@@ -9,8 +9,8 @@ import AppIntents
 import Foundation
 
 struct TogglePlayPauseIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Toggle Play / Pause"
-    static var description = IntentDescription("Play or pause the current playback in Octave")
+    static let title: LocalizedStringResource = "Toggle Play / Pause"
+    static let description = IntentDescription("Play or pause the current playback in Octave")
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -21,8 +21,8 @@ struct TogglePlayPauseIntent: AudioPlaybackIntent {
 }
 
 struct NextTrackIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Next Track"
-    static var description = IntentDescription("Skip to the next song in the queue")
+    static let title: LocalizedStringResource = "Next Track"
+    static let description = IntentDescription("Skip to the next song in the queue")
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -32,8 +32,8 @@ struct NextTrackIntent: AudioPlaybackIntent {
 }
 
 struct PreviousTrackIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Previous Track"
-    static var description = IntentDescription("Go back to the previous track or restart current")
+    static let title: LocalizedStringResource = "Previous Track"
+    static let description = IntentDescription("Go back to the previous track or restart current")
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -43,7 +43,7 @@ struct PreviousTrackIntent: AudioPlaybackIntent {
 }
 
 struct PauseIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Pause"
+    static let title: LocalizedStringResource = "Pause"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -53,7 +53,7 @@ struct PauseIntent: AudioPlaybackIntent {
 }
 
 struct ResumeIntent: AudioPlaybackIntent {
-    static var title: LocalizedStringResource = "Resume"
+    static let title: LocalizedStringResource = "Resume"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -63,7 +63,7 @@ struct ResumeIntent: AudioPlaybackIntent {
 }
 
 struct ToggleLikeIntent: AppIntent {
-    static var title: LocalizedStringResource = "Toggle Like"
+    static let title: LocalizedStringResource = "Toggle Like"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -74,7 +74,7 @@ struct ToggleLikeIntent: AppIntent {
 }
 
 struct PlayLikedSongsIntent: AppIntent {
-    static var title: LocalizedStringResource = "Play Liked Songs"
+    static let title: LocalizedStringResource = "Play Liked Songs"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -84,7 +84,7 @@ struct PlayLikedSongsIntent: AppIntent {
 }
 
 struct PlayRecommendationsIntent: AppIntent {
-    static var title: LocalizedStringResource = "Play Recommendations"
+    static let title: LocalizedStringResource = "Play Recommendations"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -94,7 +94,7 @@ struct PlayRecommendationsIntent: AppIntent {
 }
 
 struct PlayTrackIntent: AppIntent {
-    static var title: LocalizedStringResource = "Play Track"
+    static let title: LocalizedStringResource = "Play Track"
 
     @Parameter(title: "Track ID")
     var trackId: String
@@ -107,7 +107,7 @@ struct PlayTrackIntent: AppIntent {
 }
 
 struct ShuffleLibraryIntent: AppIntent {
-    static var title: LocalizedStringResource = "Shuffle Library"
+    static let title: LocalizedStringResource = "Shuffle Library"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -117,7 +117,7 @@ struct ShuffleLibraryIntent: AppIntent {
 }
 
 struct ToggleShuffleIntent: AppIntent {
-    static var title: LocalizedStringResource = "Toggle Shuffle"
+    static let title: LocalizedStringResource = "Toggle Shuffle"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -128,7 +128,7 @@ struct ToggleShuffleIntent: AppIntent {
 }
 
 struct PlayOnRepeatIntent: AppIntent {
-    static var title: LocalizedStringResource = "Play On Repeat"
+    static let title: LocalizedStringResource = "Play On Repeat"
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
@@ -138,7 +138,7 @@ struct PlayOnRepeatIntent: AppIntent {
 }
 
 struct SetPlayingIntent: AppIntent {
-    static var title: LocalizedStringResource = "Set Playing"
+    static let title: LocalizedStringResource = "Set Playing"
 
     @Parameter(title: "Playing")
     var isPlaying: Bool
