@@ -12,6 +12,7 @@ extension Color {
     static let portBackground = Color(red: 10 / 255.0, green: 10 / 255.0, blue: 10 / 255.0) // #0a0a0a
     static let portSurface = Color(red: 18 / 255.0, green: 18 / 255.0, blue: 18 / 255.0) // #121212
     static let portSurfaceElevated = Color(red: 24 / 255.0, green: 24 / 255.0, blue: 24 / 255.0) // #181818
+    static let portSurfaceLight = Color(red: 28 / 255.0, green: 28 / 255.0, blue: 30 / 255.0)
     static let portBorder = Color(white: 1.0, opacity: 0.08) // rgba(255,255,255,0.08)
     static let portTextSecondary = Color(red: 161 / 255.0, green: 161 / 255.0, blue: 170 / 255.0) // #a1a1aa
     static let portTextMuted = Color(red: 113 / 255.0, green: 113 / 255.0, blue: 122 / 255.0) // #71717a
