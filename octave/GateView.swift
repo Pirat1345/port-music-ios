@@ -102,7 +102,6 @@ struct GateView<Content: View>: View {
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
                                         .stroke(Color.portBorder, lineWidth: 1)
-                                EndLine:
                                 )
                                 .cornerRadius(10)
 
