@@ -1,62 +1,65 @@
-# 🎵 Port-Music iOS App (Octave Native)
+# 🎵 Port Music iOS App
 
-Dieses Verzeichnis enthält das **vollständige native iOS-Projekt** der Octave-App, angepasst für die direkte Anbindung an dein lokales **`port-music-v2` Backend** (`http://192.168.178.19:3000`).
+Das native iOS-Projekt für **Port Music**, vollständig angebunden an dein lokales Backend (`http://192.168.178.19:3000`) und gestaltet nach den **Port Music Design Guidelines** (OLED Dark Mode mit dezenten grünen Marken-Akzenten).
 
 ---
 
-## ✨ Features & Neuerungen
+## ✨ Features & Highlights
 
-* **Natives Login- & Registrierungs-System (`GateView.swift`, `AccountStore.swift`)**:
+* **100% Natives Port Music Branding & Design:**
+  * **App-Icon & Logo:** Hochauflösendes Port Music Icon und Logo direkt aus der Web-App übernommen.
+  * **OLED Dark Aesthetic:** Reines Tiefschwarz (`#0a0a0a`), subtil abgestufte Oberflächen (`#121212`, `#181818`) und dezente Ränder (`rgba(255,255,255,0.08)`).
+  * **Marken-Akzent:** Port Music Grün (`#1db954`) gezielt für Play-Buttons, Fortschrittsanzeigen und aktive Titel eingesetzt.
+  * **Keine störenden Effekte:** Verzicht auf grelle Regenbogen-Gradients oder künstliche Leuchtringe.
+  * **Vollständige deutsche Lokalisierung:** Home, Entdecken, Radio, Bibliothek, Suche, Kontoeinstellungen und Songtexte.
+
+* **Reibungsloses Online-Audio-Streaming:**
+  * **Kompatibel mit iOS AVPlayer:** Das Backend streamt verifiziert im nativeren `audio/mp4` (AAC) Format mit `accept-ranges: bytes` für blitzschnelles Buffern und Seeking.
+  * **Auto-Next:** Nach Beenden eines Tracks schaltet der Player automatisch auf den nächsten Titel der Warteschlange.
+  * **Mini-Player:** Schwebender Player mit Live-Fortschrittsbalken über der Tab-Bar.
+  * **Vollbild-Player:** Inklusive Cover, Zeitleiste, Favorite-Button und Schließen-Geste.
+
+* **Natives Login- & Registrierungs-System:**
   * **Anmelden:** Login mit Benutzername oder E-Mail & Passwort gegen dein lokales Backend (`POST /api/auth/login`).
   * **Registrieren:** Neues Konto direkt in der iOS-App anlegen (`POST /api/auth/register`).
-  * **Session-Persistenz:** Nach dem Login bleibst du dauerhaft angemeldet. Auf Wunsch kannst du dich in den Kontoeinstellungen jederzeit wieder abmelden.
-* **Editierbare Server-Adresse (`OctaveBackend.swift`)**:
+  * **Session-Persistenz:** Nach dem Login bleibst du dauerhaft angemeldet.
+
+* **Konfigurierbare Server-Adresse:**
   * Standardmäßig vorkonfiguriert auf **`http://192.168.178.19:3000`**.
-  * Die Server-Adresse kann direkt auf dem Login-Bildschirm oder in den App-Einstellungen geändert werden, falls sich deine PC-IP oder Domain ändert.
-* **App Transport Security (ATS) Freischaltung (`Info.plist`)**:
-  * `NSAllowsArbitraryLoads = true` ist aktiv, damit iOS unverschlüsselte lokale HTTP-Verbindungen im WLAN (`http://192.168.178.19:3000`) ohne Zertifikatswarnungen erlaubt.
-* **High-Performance Audio & Synced Lyrics Engine**:
-  * Streaming über `/audio/320/<id>` und `/audio/atmos/<id>` aus deinem `port-music-v2` Backend.
-  * Synchrone Lyrics und Karaoke-Hervorhebung über `/api/lyrics/<id>`.
-  * Automatische Konvertierung und Auflösung numerischer Apple-Music-Track-IDs in YouTube-Audiostreams.
+  * Jederzeit auf dem Anmeldebildschirm oder in den Einstellungen änderbar.
+  * `NSAllowsArbitraryLoads = true` in der `Info.plist` erlaubt lokale HTTP-Verbindungen im Heimnetzwerk ohne SSL-Zertifikat.
+
+* **Synchrone Songtexte (Word-Sync Lyrics):**
+  * Millisekundengenaue Anzeige synchroner Liedtexte über `/api/lyrics/<id>`.
 
 ---
 
-## 🚀 In 3 Schritten zur fertigen App auf deinem iPhone (via GitHub Actions)
+## 🚀 Installation auf dem iPhone mit Sideloadly
 
-Du benötigst **keinen Mac**! Ein kostenloser macOS-Cloud-Server von GitHub kompiliert den Swift-Code und erzeugt die fertige `.ipa` für dich.
+Die App wurde bereits über GitHub Actions für iOS 18 / Xcode 16 gebaut. Die fertige IPA-Datei liegt lokal für dich bereit:
 
-### Schritt 1: GitHub-Repository anlegen & Code hochladen
-1. Erstelle auf [github.com/new](https://github.com/new) ein neues (privates oder öffentliches) Repository, z. B. `port-music-ios`.
-2. Öffne dein Terminal im Ordner `c:\Users\Pirat1345\Documents\.workspace\port-music-v2\IPA` und führe aus:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial: Octave iOS with Port-Music backend integration"
-   git branch -M main
-   git remote add origin https://github.com/<DEIN-GITHUB-NUTZERNAME>/port-music-ios.git
-   git push -u origin main
-   ```
-
-### Schritt 2: Build auf GitHub beobachten & IPA herunterladen
-1. Gehe in deinem GitHub-Repository auf den Reiter **Actions**.
-2. Der Workflow **"Build Octave iOS IPA"** startet automatisch auf einem macOS-Runner.
-3. Nach ca. 2 bis 3 Minuten ist der Build erfolgreich abgeschlossen (grünes Häkchen).
-4. Klicke auf den Workflow-Lauf und lade unter **Artifacts** die Datei **`Octave-iOS-IPA`** (ZIP) herunter.
-5. Entpacke die ZIP-Datei, um die fertige **`Octave.ipa`** zu erhalten.
-
-### Schritt 3: Mit Sideloadly auf dem iPhone installieren
-1. Schließe dein iPhone per USB-Kabel an deinen Windows-PC an.
-2. Starte **[Sideloadly](https://sideloadly.io/)**.
-3. Ziehe die Datei `Octave.ipa` per Drag & Drop in das Sideloadly-Fenster.
-4. Gib deine normale Apple-ID ein und klicke auf **Start**.
-5. Nach wenigen Sekunden ist die App auf deinem iPhone installiert!
-6. Auf dem iPhone einmalig unter *Einstellungen > Allgemein > VPN und Geräteverwaltung* deiner Apple-ID vertrauen.
-7. Starte die Octave-App, melde dich mit deinem Benutzerkonto an und teste das Streaming! 🎉
+1. **Datei finden:**  
+   Die fertige Datei liegt unter:  
+   `c:\Users\Pirat1345\Documents\.workspace\port-music-v2\IPA\build\PortMusic.ipa`
+2. **iPhone verbinden:**  
+   Schließe dein iPhone per USB an deinen Windows-PC an.
+3. **Sideloadly öffnen:**  
+   Starte [Sideloadly](https://sideloadly.io/).
+4. **IPA hineinziehen:**  
+   Ziehe die Datei `PortMusic.ipa` in das Sideloadly-Fenster.
+5. **Apple-ID eingeben & starten:**  
+   Gib deine gewohnte Apple-ID ein und klicke auf **Start**.
+6. **Zertifikat vertrauen (einmalig):**  
+   Auf dem iPhone unter *Einstellungen > Allgemein > VPN und Geräteverwaltung* auf deine Apple-ID tippen und auf *Vertrauen* tippen.
+7. **Port Music starten:**  
+   Öffne **Port Music** auf deinem iPhone, melde dich an und genieße deine Musik! 🎧
 
 ---
 
-## 🛠️ Lokale Entwicklung auf einem Mac (Optional)
-Falls du einen Mac besitzt:
-1. Öffne `Octave.xcodeproj` in Xcode (ab Version 16.0).
-2. Wähle dein iPhone als Zielgerät aus und drücke `Cmd + R`.
+## ☁️ Automatischer Cloud-Build (GitHub Actions)
+
+Jeder Push auf den Branch `main` des Repositories [`https://github.com/Pirat1345/port-music-ios.git`](https://github.com/Pirat1345/port-music-ios.git) startet automatisch den Workflow:
+- Runner: `macos-15` (macOS Sequoia)
+- Xcode: Version 16.4
+- Kompilierung von App & Widgets
+- Automatisches Erstellen und Hochladen des IPA-Artifacts `PortMusic-iOS-IPA`
