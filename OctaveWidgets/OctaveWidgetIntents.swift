@@ -10,7 +10,7 @@ import Foundation
 
 struct TogglePlayPauseIntent: AudioPlaybackIntent {
     static let title: LocalizedStringResource = "Toggle Play / Pause"
-    static let description = IntentDescription("Play or pause the current playback in Octave")
+    static let description = IntentDescription("Play or pause the current playback in Port Music")
 
     func perform() async throws -> some IntentResult {
         let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")

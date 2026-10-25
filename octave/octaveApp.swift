@@ -7,7 +7,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct octaveApp: App {
+struct PortMusicApp: App {
     @State private var theme = ThemeEngine.shared
     @State private var player = AudioPlayer.shared
     @State private var account = AccountStore.shared

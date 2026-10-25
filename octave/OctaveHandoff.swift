@@ -5,6 +5,8 @@
 
 import Foundation
 
-final class OctaveHandoff {
-    static let activityType = "streaming.octave.userActivity"
+final class PortHandoff {
+    static let activityType = "streaming.portmusic.userActivity"
 }
+
+typealias OctaveHandoff = PortHandoff

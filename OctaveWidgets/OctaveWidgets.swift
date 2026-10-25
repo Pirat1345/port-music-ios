@@ -23,7 +23,7 @@ struct OctaveWidgetProvider: TimelineProvider {
     func placeholder(in context: Context) -> OctaveWidgetEntry {
         OctaveWidgetEntry(
             date: Date(),
-            title: "Octave Streaming",
+            title: "Port Music Streaming",
             artist: "High-Fidelity Audio",
             album: "Spatial Sound",
             artworkURLString: nil,
@@ -44,13 +44,13 @@ struct OctaveWidgetProvider: TimelineProvider {
     }
 
     private func fetchCurrentEntry() -> OctaveWidgetEntry {
-        let defaults = UserDefaults(suiteName: "group.streaming.octave.dev")
-        let title = defaults?.string(forKey: "octave.nowPlaying.title") ?? "No Music Playing"
-        let artist = defaults?.string(forKey: "octave.nowPlaying.artist") ?? "Octave"
-        let album = defaults?.string(forKey: "octave.nowPlaying.album") ?? "Tap to start"
-        let art = defaults?.string(forKey: "octave.nowPlaying.artwork")
-        let isPlaying = defaults?.bool(forKey: "octave.isPlaying") ?? false
-        let isLiked = defaults?.bool(forKey: "octave.isCurrentLiked") ?? false
+        let defaults = UserDefaults(suiteName: "group.streaming.portmusic.app") ?? UserDefaults(suiteName: "group.streaming.octave.dev")
+        let title = defaults?.string(forKey: "portmusic.nowPlaying.title") ?? defaults?.string(forKey: "octave.nowPlaying.title") ?? "No Music Playing"
+        let artist = defaults?.string(forKey: "portmusic.nowPlaying.artist") ?? defaults?.string(forKey: "octave.nowPlaying.artist") ?? "Port Music"
+        let album = defaults?.string(forKey: "portmusic.nowPlaying.album") ?? defaults?.string(forKey: "octave.nowPlaying.album") ?? "Tap to start"
+        let art = defaults?.string(forKey: "portmusic.nowPlaying.artwork") ?? defaults?.string(forKey: "octave.nowPlaying.artwork")
+        let isPlaying = defaults?.bool(forKey: "portmusic.isPlaying") ?? defaults?.bool(forKey: "octave.isPlaying") ?? false
+        let isLiked = defaults?.bool(forKey: "portmusic.isCurrentLiked") ?? defaults?.bool(forKey: "octave.isCurrentLiked") ?? false
 
         return OctaveWidgetEntry(
             date: Date(),

@@ -11,7 +11,7 @@ final class AudioCache: @unchecked Sendable {
 
     init() {
         let paths = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-        cacheDir = paths[0].appendingPathComponent("OctaveAudioCache")
+        cacheDir = paths[0].appendingPathComponent("PortMusicAudioCache")
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
     }
 

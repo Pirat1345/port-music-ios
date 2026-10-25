@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Octave</string>
+	<string>Port Music</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,7 +25,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
-	<key>OctaveAppGroup</key>
-	<string>group.streaming.octave.dev</string>
+	<key>PortMusicAppGroup</key>
+	<string>group.streaming.portmusic.app</string>
 </dict>
 </plist>

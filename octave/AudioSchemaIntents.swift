@@ -6,7 +6,7 @@
 import AppIntents
 
 struct PlayAudioSiriIntent: AppIntent {
-    static let title: LocalizedStringResource = "Play Music on Octave"
+    static let title: LocalizedStringResource = "Play Music on Port Music"
 
     func perform() async throws -> some IntentResult {
         AudioPlayer.shared.resume()

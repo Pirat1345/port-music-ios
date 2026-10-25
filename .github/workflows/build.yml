@@ -1,4 +1,4 @@
-name: Build Octave iOS IPA
+name: Build Port Music iOS IPA
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build & Package Octave IPA
+    name: Build & Package Port Music IPA
     runs-on: macos-15
 
     steps:
@@ -25,7 +25,7 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: Build Octave App & Widgets
+      - name: Build Port Music App & Widgets
         run: |
           set -e
           xcodebuild clean build \
@@ -49,12 +49,11 @@ jobs:
           cp -R "$APP_PATH" build/Payload/
           cd build
           zip -r -y PortMusic.ipa Payload
-          cp PortMusic.ipa Octave.ipa
           echo "IPA packaging complete!"
 
       - name: Upload Port Music IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PortMusic-iOS-IPA
-          path: build/*.ipa
+          path: build/PortMusic.ipa
           retention-days: 14

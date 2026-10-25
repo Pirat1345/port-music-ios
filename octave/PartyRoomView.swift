@@ -10,7 +10,7 @@ struct PartyRoomView: View {
 
     var body: some View {
         VStack {
-            Text("Octave Party Room")
+            Text("Port Music Party Room")
                 .font(.title2)
                 .fontWeight(.bold)
             Text("Listen together in real-time")

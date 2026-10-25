@@ -5,9 +5,9 @@
 
 import BackgroundTasks
 
-final class OctaveBackgroundTasks {
-    static let refreshIdentifier = "com.octave.refresh"
-    static let smartDownloadsIdentifier = "com.octave.smartdownloads"
+final class PortBackgroundTasks {
+    static let refreshIdentifier = "com.portmusic.refresh"
+    static let smartDownloadsIdentifier = "com.portmusic.smartdownloads"
 
     static func register() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshIdentifier, using: nil) { task in
@@ -15,3 +15,5 @@ final class OctaveBackgroundTasks {
         }
     }
 }
+
+typealias OctaveBackgroundTasks = PortBackgroundTasks

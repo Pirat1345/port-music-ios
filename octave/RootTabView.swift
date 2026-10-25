@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-enum OctaveTab: Hashable {
+enum AppTab: Hashable {
     case home
     case browse
     case radio
@@ -13,12 +13,14 @@ enum OctaveTab: Hashable {
     case search
 }
 
+typealias OctaveTab = AppTab
+
 struct RootTabView: View {
     @Environment(ThemeEngine.self) private var theme
     @Environment(AudioPlayer.self) private var player
     @Environment(AccountStore.self) private var account
 
-    @State private var tab: OctaveTab = .home
+    @State private var tab: AppTab = .home
     @State private var searchQuery: String = ""
     @State private var showSplash: Bool = false
     @State private var showPermissionsIntro: Bool = false
@@ -34,7 +36,7 @@ struct RootTabView: View {
                 .tabItem {
                     Label("Home", systemImage: "house.fill")
                 }
-                .tag(OctaveTab.home)
+                .tag(AppTab.home)
 
                 NavigationStack {
                     BrowseView()
@@ -42,7 +44,7 @@ struct RootTabView: View {
                 .tabItem {
                     Label("Entdecken", systemImage: "sparkles")
                 }
-                .tag(OctaveTab.browse)
+                .tag(AppTab.browse)
 
                 NavigationStack {
                     RadioView()
@@ -50,7 +52,7 @@ struct RootTabView: View {
                 .tabItem {
                     Label("Radio", systemImage: "dot.radiowaves.left.and.right")
                 }
-                .tag(OctaveTab.radio)
+                .tag(AppTab.radio)
 
                 NavigationStack {
                     LibraryView()
@@ -58,7 +60,7 @@ struct RootTabView: View {
                 .tabItem {
                     Label("Bibliothek", systemImage: "music.note.list")
                 }
-                .tag(OctaveTab.library)
+                .tag(AppTab.library)
 
                 NavigationStack {
                     SearchView(query: $searchQuery)
@@ -66,7 +68,7 @@ struct RootTabView: View {
                 .tabItem {
                     Label("Suche", systemImage: "magnifyingglass")
                 }
-                .tag(OctaveTab.search)
+                .tag(AppTab.search)
             }
             .tint(Color.portBrand)
 

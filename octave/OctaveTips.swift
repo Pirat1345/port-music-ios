@@ -5,6 +5,8 @@
 
 import Foundation
 
-final class OctaveTips {
+final class PortTips {
     static func configure() {}
 }
+
+typealias OctaveTips = PortTips

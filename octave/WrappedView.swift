@@ -8,7 +8,7 @@ import SwiftUI
 struct WrappedView: View {
     var body: some View {
         VStack {
-            Text("Octave Replay")
+            Text("Port Music Replay")
                 .font(.largeTitle)
         }
     }

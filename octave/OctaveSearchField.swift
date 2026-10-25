@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct OctaveSearchField: View {
+struct PortSearchField: View {
     @Binding var text: String
     var onCommit: () -> Void
 
@@ -34,3 +34,5 @@ struct OctaveSearchField: View {
         .cornerRadius(12)
     }
 }
+
+typealias OctaveSearchField = PortSearchField

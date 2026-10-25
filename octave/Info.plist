@@ -4,8 +4,8 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.octave.refresh</string>
-		<string>com.octave.smartdownloads</string>
+		<string>com.portmusic.refresh</string>
+		<string>com.portmusic.smartdownloads</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
@@ -52,7 +52,6 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>portmusic</string>
-				<string>octave</string>
 			</array>
 		</dict>
 	</array>
@@ -82,10 +81,10 @@
 	<string>Port Music uses speech recognition so you can search by voice.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
-		<string>streaming.octave.userActivity</string>
+		<string>streaming.portmusic.userActivity</string>
 	</array>
-	<key>OctaveAppGroup</key>
-	<string>group.streaming.octave.dev</string>
+	<key>PortMusicAppGroup</key>
+	<string>group.streaming.portmusic.app</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
