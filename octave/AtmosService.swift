@@ -5,7 +5,7 @@
 
 import Foundation
 
-final class AtmosService {
+final class AtmosService: @unchecked Sendable {
     static let shared = AtmosService()
     var isAtmosAvailable: Bool = true
     var preferenceEnabled: Bool = true

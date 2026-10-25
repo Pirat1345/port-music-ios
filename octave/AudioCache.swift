@@ -5,7 +5,7 @@
 
 import Foundation
 
-final class AudioCache {
+final class AudioCache: @unchecked Sendable {
     static let shared = AudioCache()
     private let cacheDir: URL
 

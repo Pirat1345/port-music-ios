@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 @Observable
-final class PartyClient {
+final class PartyClient: @unchecked Sendable {
     static let shared = PartyClient()
     var roomCode: String?
     var participants: [String] = []

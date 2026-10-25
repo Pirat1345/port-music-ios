@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 @Observable
-final class RecentSearchStore {
+final class RecentSearchStore: @unchecked Sendable {
     static let shared = RecentSearchStore()
     var recents: [String] = []
 }

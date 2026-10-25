@@ -13,7 +13,7 @@ struct OctaveTheme: Codable, Sendable {
 }
 
 @Observable
-final class ThemeEngine {
+final class ThemeEngine: @unchecked Sendable {
     static let shared = ThemeEngine()
     var active: OctaveTheme = OctaveTheme()
     var liquidGlassEnabled: Bool = true

@@ -6,7 +6,7 @@
 import Foundation
 import Accelerate
 
-final class AudioAnalyzer {
+final class AudioAnalyzer: @unchecked Sendable {
     static let shared = AudioAnalyzer()
 
     var currentBpm: Double = 120.0

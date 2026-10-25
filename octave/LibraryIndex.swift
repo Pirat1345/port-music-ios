@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 @Observable
-final class LibraryIndex {
+final class LibraryIndex: @unchecked Sendable {
     static let shared = LibraryIndex()
     var savedSongIds: Set<String> = []
     var savedAlbums: [String] = []

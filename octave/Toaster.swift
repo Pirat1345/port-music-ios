@@ -7,7 +7,7 @@ import SwiftUI
 import Observation
 
 @Observable
-final class Toaster {
+final class Toaster: @unchecked Sendable {
     static let shared = Toaster()
     var currentMessage: String?
 

@@ -5,6 +5,6 @@
 
 import Foundation
 
-final class AppleEditorialStore {
+final class AppleEditorialStore: @unchecked Sendable {
     static let shared = AppleEditorialStore()
 }

@@ -5,7 +5,7 @@
 
 import AVFoundation
 
-final class AudioSessionManager {
+final class AudioSessionManager: @unchecked Sendable {
     static let shared = AudioSessionManager()
 
     func configureSession() {

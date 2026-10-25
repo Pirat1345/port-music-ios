@@ -5,6 +5,6 @@
 
 import Foundation
 
-final class RecoEngine {
+final class RecoEngine: @unchecked Sendable {
     static let shared = RecoEngine()
 }

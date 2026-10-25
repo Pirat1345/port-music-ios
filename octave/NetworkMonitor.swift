@@ -7,7 +7,7 @@ import Network
 import Observation
 
 @Observable
-final class NetworkMonitor {
+final class NetworkMonitor: @unchecked Sendable {
     static let shared = NetworkMonitor()
     var isConnected: Bool = true
     var isCellular: Bool = false

@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 @Observable
-final class ProfileStore {
+final class ProfileStore: @unchecked Sendable {
     static let shared = ProfileStore()
     var bio: String = ""
     var favoriteArtists: [String] = []

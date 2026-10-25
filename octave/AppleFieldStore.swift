@@ -5,6 +5,6 @@
 
 import Foundation
 
-final class AppleFieldStore {
+final class AppleFieldStore: @unchecked Sendable {
     static let shared = AppleFieldStore()
 }

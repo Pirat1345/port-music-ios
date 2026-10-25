@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 @Observable
-final class DownloadManager {
+final class DownloadManager: @unchecked Sendable {
     static let shared = DownloadManager()
 
     var activeCount: Int = 0

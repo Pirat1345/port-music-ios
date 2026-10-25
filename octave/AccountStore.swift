@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 @Observable
-final class AccountStore {
+final class AccountStore: @unchecked Sendable {
     static let shared = AccountStore()
 
     private let userDefaultsUsernameKey = "port_music_saved_username"
