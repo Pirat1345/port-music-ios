@@ -1,13 +1,13 @@
 //
 //  HomeComponents.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
 
 struct SectionHeader: View {
     let title: String
-    var actionTitle: String? = "See All"
+    var actionTitle: String? = "Alle anzeigen"
     var action: (() -> Void)? = nil
 
     var body: some View {
@@ -15,13 +15,14 @@ struct SectionHeader: View {
             Text(title)
                 .font(.title3)
                 .fontWeight(.bold)
+                .foregroundColor(.white)
             Spacer()
             if let actionTitle {
                 Button(actionTitle) {
                     action?()
                 }
                 .font(.subheadline)
-                .foregroundColor(.purple)
+                .foregroundColor(.portBrand)
             }
         }
         .padding(.horizontal)

@@ -1,6 +1,6 @@
 //
 //  ArtworkView.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
@@ -14,8 +14,11 @@ struct ArtworkView: View {
                 switch phase {
                 case .empty:
                     Rectangle()
-                        .fill(Color.purple.opacity(0.2))
-                        .overlay(ProgressView())
+                        .fill(Color.portSurfaceElevated)
+                        .overlay(
+                            ProgressView()
+                                .tint(.portBrand)
+                        )
                 case .success(let image):
                     image
                         .resizable()
@@ -33,11 +36,11 @@ struct ArtworkView: View {
 
     private var placeholder: some View {
         Rectangle()
-            .fill(Color.purple.opacity(0.3))
+            .fill(Color.portSurfaceElevated)
             .overlay(
                 Image(systemName: "music.note")
-                    .font(.largeTitle)
-                    .foregroundColor(.white.opacity(0.6))
+                    .font(.title2)
+                    .foregroundColor(.portTextMuted)
             )
     }
 }

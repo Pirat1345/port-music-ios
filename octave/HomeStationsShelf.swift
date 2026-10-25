@@ -1,35 +1,40 @@
 //
 //  HomeStationsShelf.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
 
 struct HomeStationsShelf: View {
-    let stations = ["Octave 1 Radio", "Chill Instrumental", "Hyperpop Club", "Deep Focus", "Workout Energy"]
+    let stations = ["Port 1 Radio", "Chill Beats", "Deep Focus", "Workout Energy", "Trending Hits"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Live & Algorithmic Stations")
+            SectionHeader(title: "Radiosender & Stationen")
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
                     ForEach(stations, id: \.self) { station in
-                        VStack {
+                        VStack(alignment: .leading, spacing: 8) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.portSurface)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .stroke(Color.portBorder, lineWidth: 1)
+                                    )
                                     .frame(width: 140, height: 140)
 
-                                Image(systemName: "dot.radiowaves.left.and.right")
+                                Image(systemName: "radio.fill")
                                     .font(.system(size: 36))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.portBrand)
                             }
                             Text(station)
                                 .font(.caption)
                                 .fontWeight(.semibold)
+                                .foregroundColor(.white)
                                 .lineLimit(1)
-                                .frame(width: 140)
+                                .frame(width: 140, alignment: .leading)
                         }
                     }
                 }

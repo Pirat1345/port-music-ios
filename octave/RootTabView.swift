@@ -1,6 +1,6 @@
 //
 //  RootTabView.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
@@ -40,7 +40,7 @@ struct RootTabView: View {
                     BrowseView()
                 }
                 .tabItem {
-                    Label("Browse", systemImage: "square.grid.2x2.fill")
+                    Label("Entdecken", systemImage: "sparkles")
                 }
                 .tag(OctaveTab.browse)
 
@@ -56,7 +56,7 @@ struct RootTabView: View {
                     LibraryView()
                 }
                 .tabItem {
-                    Label("Library", systemImage: "books.vertical.fill")
+                    Label("Bibliothek", systemImage: "music.note.list")
                 }
                 .tag(OctaveTab.library)
 
@@ -64,17 +64,17 @@ struct RootTabView: View {
                     SearchView(query: $searchQuery)
                 }
                 .tabItem {
-                    Label("Search", systemImage: "magnifyingglass")
+                    Label("Suche", systemImage: "magnifyingglass")
                 }
                 .tag(OctaveTab.search)
             }
-            .tint(Color.accentColor)
+            .tint(Color.portBrand)
 
             // Floating Mini Player & Now Playing Host
             VStack(spacing: 0) {
                 if player.currentIndex != nil {
                     NowPlayingHost(isPresented: $isNowPlayingPresented)
-                        .padding(.bottom, 50)
+                        .padding(.bottom, 54)
                 }
             }
         }

@@ -1,6 +1,6 @@
 //
 //  LibraryView.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
@@ -8,28 +8,38 @@ import SwiftUI
 struct LibraryView: View {
     let items = [
         ("Playlists", "music.note.list"),
-        ("Artists", "music.mic"),
-        ("Albums", "square.stack"),
-        ("Songs", "music.note"),
-        ("Made for You", "person.crop.square"),
-        ("Downloaded", "arrow.down.circle")
+        ("Künstler", "music.mic"),
+        ("Alben", "square.stack"),
+        ("Lieblingssongs", "heart.fill"),
+        ("Für dich", "sparkles"),
+        ("Offline / Downloads", "arrow.down.circle")
     ]
 
     var body: some View {
-        List {
-            ForEach(items, id: \.0) { item in
-                NavigationLink(destination: Text(item.0)) {
-                    Label(item.0, systemImage: item.1)
-                        .font(.body)
-                        .padding(.vertical, 4)
+        ZStack {
+            Color.portBackground
+                .ignoresSafeArea()
+
+            List {
+                ForEach(items, id: \.0) { item in
+                    NavigationLink(destination: Text(item.0).foregroundColor(.white)) {
+                        Label(item.0, systemImage: item.1)
+                            .foregroundColor(.white)
+                            .font(.body)
+                            .padding(.vertical, 4)
+                    }
+                    .listRowBackground(Color.portSurface)
+                }
+
+                Section(header: Text("Zuletzt hinzugefügt").foregroundColor(.portTextMuted)) {
+                    Text("Keine kürzlichen Titel")
+                        .foregroundColor(.portTextSecondary)
+                        .listRowBackground(Color.portSurface)
                 }
             }
-
-            Section(header: Text("Recently Added")) {
-                Text("No recent additions")
-                    .foregroundColor(.secondary)
-            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Library")
+        .navigationTitle("Bibliothek")
     }
 }

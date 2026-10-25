@@ -48,12 +48,13 @@ jobs:
           echo "Found app at: $APP_PATH"
           cp -R "$APP_PATH" build/Payload/
           cd build
-          zip -r -y Octave.ipa Payload
+          zip -r -y PortMusic.ipa Payload
+          cp PortMusic.ipa Octave.ipa
           echo "IPA packaging complete!"
 
-      - name: Upload Octave IPA Artifact
+      - name: Upload Port Music IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Octave-iOS-IPA
-          path: build/Octave.ipa
+          name: PortMusic-iOS-IPA
+          path: build/*.ipa
           retention-days: 14

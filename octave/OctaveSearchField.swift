@@ -1,6 +1,6 @@
 //
 //  OctaveSearchField.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
@@ -10,22 +10,27 @@ struct OctaveSearchField: View {
     var onCommit: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-            TextField("Artists, Songs, Lyrics, and more", text: $text)
+                .foregroundColor(.portBrand)
+            TextField("Künstler, Titel, Alben suchen...", text: $text)
+                .foregroundColor(.white)
                 .onSubmit(onCommit)
             if !text.isEmpty {
                 Button {
                     text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.portTextMuted)
                 }
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.12))
+        .padding(12)
+        .background(Color.portSurfaceElevated)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.portBorder, lineWidth: 1)
+        )
         .cornerRadius(12)
     }
 }

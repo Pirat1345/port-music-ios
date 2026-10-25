@@ -1,6 +1,8 @@
 //
 //  GateView.swift
-//  octave
+//  Port Music
+//
+//  Clean OLED Dark authentication view adhering to Port Music Design Guidelines.
 //
 
 import SwiftUI
@@ -40,107 +42,103 @@ struct GateView<Content: View>: View {
         } else {
             NavigationStack {
                 ZStack {
-                    // Modern Octave Dark Gradient Backdrop
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.08, green: 0.05, blue: 0.14),
-                            Color(red: 0.04, green: 0.04, blue: 0.06)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .ignoresSafeArea()
-
-                    // Ambient glow rings
-                    Circle()
-                        .fill(Color.purple.opacity(0.18))
-                        .blur(radius: 80)
-                        .offset(x: -100, y: -200)
-
-                    Circle()
-                        .fill(Color.pink.opacity(0.12))
-                        .blur(radius: 90)
-                        .offset(x: 120, y: 150)
+                    // Calm Deep Dark Background (Port Music Design Guidelines)
+                    Color.portBackground
+                        .ignoresSafeArea()
 
                     ScrollView {
                         VStack(spacing: 24) {
-                            // App Branding
-                            VStack(spacing: 8) {
-                                Image(systemName: "music.note.house.fill")
-                                    .font(.system(size: 54, weight: .bold))
-                                    .foregroundStyle(
-                                        LinearGradient(
-                                            colors: [.pink, .purple],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
+                            // Port Music Brand Header
+                            VStack(spacing: 12) {
+                                Image("PortLogo")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 80, height: 80)
+                                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                            .stroke(Color.portBorder, lineWidth: 1)
                                     )
-                                    .padding(.top, 24)
+                                    .padding(.top, 28)
 
-                                Text("Octave")
-                                    .font(.system(size: 32, weight: .black, design: .rounded))
+                                Text("Port Music")
+                                    .font(.system(size: 28, weight: .bold, design: .default))
                                     .foregroundColor(.white)
 
-                                Text("Port-Music Backend Cloud")
+                                Text("Online Music & Audio Cloud")
                                     .font(.subheadline)
-                                    .foregroundColor(.white.opacity(0.65))
+                                    .foregroundColor(.portTextSecondary)
                             }
 
-                            // Server Address Indicator & Editor
+                            // Server Address Pill
                             VStack(spacing: 8) {
-                                HStack {
+                                HStack(spacing: 10) {
                                     Image(systemName: "server.rack")
-                                        .foregroundColor(.purple)
+                                        .foregroundColor(.portBrand)
                                         .font(.caption)
+
                                     Text(account.serverURL)
                                         .font(.caption)
-                                        .foregroundColor(.white.opacity(0.8))
+                                        .foregroundColor(.portTextSecondary)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
+
                                     Spacer()
+
                                     Button {
-                                        withAnimation(.spring) {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
                                             showServerConfig.toggle()
                                         }
                                     } label: {
                                         Text(showServerConfig ? "Schließen" : "Server ändern")
                                             .font(.caption2)
                                             .fontWeight(.semibold)
-                                            .foregroundColor(.purple)
+                                            .foregroundColor(.portBrand)
                                     }
                                 }
                                 .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.white.opacity(0.06))
+                                .padding(.vertical, 10)
+                                .background(Color.portSurface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Color.portBorder, lineWidth: 1)
+                                EndLine:
+                                )
                                 .cornerRadius(10)
 
                                 if showServerConfig {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text("Backend-Adresse (Port-Music)")
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Backend-Adresse (Port Music Server)")
                                             .font(.caption2)
-                                            .foregroundColor(.white.opacity(0.6))
+                                            .foregroundColor(.portTextMuted)
+
                                         HStack {
                                             TextField("http://192.168.178.19:3000", text: $serverURL)
                                                 .textInputAutocapitalization(.never)
                                                 .disableAutocorrection(true)
                                                 .foregroundColor(.white)
                                                 .font(.subheadline)
+
                                             Button("Speichern") {
                                                 account.updateServerURL(serverURL)
                                                 withAnimation { showServerConfig = false }
                                             }
                                             .font(.caption)
                                             .fontWeight(.bold)
-                                            .foregroundColor(.purple)
+                                            .foregroundColor(.portBrand)
                                         }
                                         .padding(10)
-                                        .background(Color.black.opacity(0.4))
+                                        .background(Color.portSurfaceElevated)
                                         .cornerRadius(8)
                                     }
                                     .padding(12)
-                                    .background(Color.white.opacity(0.08))
+                                    .background(Color.portSurface)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.portBorder, lineWidth: 1)
+                                    )
                                     .cornerRadius(12)
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                    .transition(.opacity)
                                 }
                             }
                             .padding(.horizontal, 24)
@@ -154,7 +152,7 @@ struct GateView<Content: View>: View {
                             .pickerStyle(.segmented)
                             .padding(.horizontal, 24)
 
-                            // Error Box
+                            // Error Notice
                             if let err = localError ?? account.errorMessage {
                                 HStack(spacing: 10) {
                                     Image(systemName: "exclamationmark.triangle.fill")
@@ -164,14 +162,14 @@ struct GateView<Content: View>: View {
                                         .foregroundColor(.white)
                                     Spacer()
                                 }
-                                .padding()
-                                .background(Color.red.opacity(0.2))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.4), lineWidth: 1))
-                                .cornerRadius(12)
+                                .padding(12)
+                                .background(Color.red.opacity(0.15))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.3), lineWidth: 1))
+                                .cornerRadius(10)
                                 .padding(.horizontal, 24)
                             }
 
-                            // Forms
+                            // Active Form
                             if mode == .login {
                                 loginForm
                             } else {
@@ -184,12 +182,12 @@ struct GateView<Content: View>: View {
                                 account.displayName = "Gast"
                                 account.isAuthenticated = true
                             } label: {
-                                Text("Als Gast fortfahren (Offline/Test)")
+                                Text("Als Gast fortfahren")
                                     .font(.footnote)
-                                    .foregroundColor(.white.opacity(0.5))
+                                    .foregroundColor(.portTextMuted)
                             }
-                            .padding(.top, 10)
-                            .padding(.bottom, 30)
+                            .padding(.top, 12)
+                            .padding(.bottom, 32)
                         }
                     }
                 }
@@ -207,32 +205,34 @@ struct GateView<Content: View>: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Benutzername oder E-Mail")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                HStack {
+                    .foregroundColor(.portTextSecondary)
+                HStack(spacing: 12) {
                     Image(systemName: "person.fill")
-                        .foregroundColor(.purple)
+                        .foregroundColor(.portTextMuted)
                     TextField("Benutzername", text: $identifier)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
                         .foregroundColor(.white)
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
+                .padding(14)
+                .background(Color.portSurface)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.portBorder, lineWidth: 1))
                 .cornerRadius(12)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Passwort")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                HStack {
+                    .foregroundColor(.portTextSecondary)
+                HStack(spacing: 12) {
                     Image(systemName: "lock.fill")
-                        .foregroundColor(.purple)
+                        .foregroundColor(.portTextMuted)
                     SecureField("Passwort", text: $password)
                         .foregroundColor(.white)
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
+                .padding(14)
+                .background(Color.portSurface)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.portBorder, lineWidth: 1))
                 .cornerRadius(12)
             }
 
@@ -242,24 +242,17 @@ struct GateView<Content: View>: View {
                 HStack(spacing: 8) {
                     if account.isLoading {
                         ProgressView()
-                            .tint(.white)
+                            .tint(.black)
                     }
                     Text(account.isLoading ? "Wird angemeldet..." : "Anmelden")
                         .font(.headline)
-                        .fontWeight(.bold)
+                        .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    LinearGradient(
-                        colors: [.purple, .pink],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .foregroundColor(.white)
-                .cornerRadius(14)
-                .shadow(color: .purple.opacity(0.4), radius: 10, y: 4)
+                .padding(14)
+                .background(Color.portBrand)
+                .foregroundColor(.black)
+                .cornerRadius(12)
             }
             .disabled(account.isLoading || identifier.isEmpty || password.isEmpty)
             .opacity((identifier.isEmpty || password.isEmpty) ? 0.6 : 1.0)
@@ -275,80 +268,85 @@ struct GateView<Content: View>: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Benutzername")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                HStack {
+                    .foregroundColor(.portTextSecondary)
+                HStack(spacing: 12) {
                     Image(systemName: "person.fill")
-                        .foregroundColor(.pink)
+                        .foregroundColor(.portTextMuted)
                     TextField("z. B. max", text: $registerUsername)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
                         .foregroundColor(.white)
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
+                .padding(14)
+                .background(Color.portSurface)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.portBorder, lineWidth: 1))
                 .cornerRadius(12)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Anzeigename (optional)")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                HStack {
+                    .foregroundColor(.portTextSecondary)
+                HStack(spacing: 12) {
                     Image(systemName: "person.text.rectangle.fill")
-                        .foregroundColor(.pink)
+                        .foregroundColor(.portTextMuted)
                     TextField("z. B. Max Mustermann", text: $registerDisplayName)
                         .foregroundColor(.white)
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
+                .padding(14)
+                .background(Color.portSurface)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.portBorder, lineWidth: 1))
                 .cornerRadius(12)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("E-Mail")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                HStack {
+                    .foregroundColor(.portTextSecondary)
+                HStack(spacing: 12) {
                     Image(systemName: "envelope.fill")
-                        .foregroundColor(.pink)
+                        .foregroundColor(.portTextMuted)
                     TextField("name@example.com", text: $registerEmail)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
                         .foregroundColor(.white)
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
+                .padding(14)
+                .background(Color.portSurface)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.portBorder, lineWidth: 1))
                 .cornerRadius(12)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Passwort")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                HStack {
+                    .foregroundColor(.portTextSecondary)
+                HStack(spacing: 12) {
                     Image(systemName: "lock.fill")
-                        .foregroundColor(.pink)
+                        .foregroundColor(.portTextMuted)
                     SecureField("Mindestens 6 Zeichen", text: $password)
                         .foregroundColor(.white)
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
+                .padding(14)
+                .background(Color.portSurface)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.portBorder, lineWidth: 1))
                 .cornerRadius(12)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Passwort wiederholen")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                HStack {
+                    .foregroundColor(.portTextSecondary)
+                HStack(spacing: 12) {
                     Image(systemName: "lock.shield.fill")
-                        .foregroundColor(.pink)
+                        .foregroundColor(.portTextMuted)
                     SecureField("Passwort bestätigen", text: $confirmPassword)
                         .foregroundColor(.white)
                 }
-                .padding()
-                .background(Color.white.opacity(0.08))
+                .padding(14)
+                .background(Color.portSurface)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.portBorder, lineWidth: 1))
                 .cornerRadius(12)
             }
 
@@ -358,24 +356,17 @@ struct GateView<Content: View>: View {
                 HStack(spacing: 8) {
                     if account.isLoading {
                         ProgressView()
-                            .tint(.white)
+                            .tint(.black)
                     }
                     Text(account.isLoading ? "Konto wird erstellt..." : "Konto erstellen")
                         .font(.headline)
-                        .fontWeight(.bold)
+                        .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    LinearGradient(
-                        colors: [.pink, .purple],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .foregroundColor(.white)
-                .cornerRadius(14)
-                .shadow(color: .pink.opacity(0.4), radius: 10, y: 4)
+                .padding(14)
+                .background(Color.portBrand)
+                .foregroundColor(.black)
+                .cornerRadius(12)
             }
             .disabled(account.isLoading || registerUsername.isEmpty || registerEmail.isEmpty || password.isEmpty)
             .opacity((registerUsername.isEmpty || registerEmail.isEmpty || password.isEmpty) ? 0.6 : 1.0)

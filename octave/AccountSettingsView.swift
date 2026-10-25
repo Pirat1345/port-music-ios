@@ -1,6 +1,6 @@
 //
 //  AccountSettingsView.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
@@ -19,28 +19,24 @@ struct AccountSettingsView: View {
                 HStack(spacing: 16) {
                     Image(systemName: "person.crop.circle.fill")
                         .font(.system(size: 48))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.purple, .pink],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .foregroundColor(.portBrand)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(account.displayName.isEmpty ? account.username : account.displayName)
                             .font(.headline)
+                            .foregroundColor(.white)
                         Text("@\(account.username)")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.portTextSecondary)
                         if !account.email.isEmpty {
                             Text(account.email)
                                 .font(.caption2)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.portTextMuted)
                         }
                     }
                 }
                 .padding(.vertical, 4)
+                .listRowBackground(Color.portSurface)
             }
 
             Section("Backend-Verbindung") {
@@ -48,16 +44,17 @@ struct AccountSettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Server-Adresse")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.portTextMuted)
                         if isEditingServer {
                             TextField("http://192.168.178.19:3000", text: $serverAddress)
                                 .textInputAutocapitalization(.never)
                                 .disableAutocorrection(true)
                                 .font(.subheadline)
+                                .foregroundColor(.white)
                         } else {
                             Text(account.serverURL)
                                 .font(.subheadline)
-                                .foregroundColor(.primary)
+                                .foregroundColor(.white)
                         }
                     }
 
@@ -70,35 +67,40 @@ struct AccountSettingsView: View {
                         }
                         .font(.caption)
                         .fontWeight(.bold)
-                        .foregroundColor(.purple)
+                        .foregroundColor(.portBrand)
                     } else {
                         Button("Ändern") {
                             serverAddress = account.serverURL
                             isEditingServer = true
                         }
                         .font(.caption)
-                        .foregroundColor(.purple)
+                        .foregroundColor(.portBrand)
                     }
                 }
+                .listRowBackground(Color.portSurface)
 
                 HStack {
                     Text("Status")
                         .font(.subheadline)
+                        .foregroundColor(.white)
                     Spacer()
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(account.isAuthenticated ? Color.green : Color.orange)
+                            .fill(account.isAuthenticated ? Color.portBrand : Color.orange)
                             .frame(width: 8, height: 8)
                         Text(account.isAuthenticated ? "Verbunden" : "Getrennt")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.portTextSecondary)
                     }
                 }
+                .listRowBackground(Color.portSurface)
             }
 
             Section("App Einstellungen") {
                 NavigationLink("Audioqualität & Streaming") { SettingsView() }
+                    .listRowBackground(Color.portSurface)
                 NavigationLink("Mitteilungen") { NotificationSettingsCard() }
+                    .listRowBackground(Color.portSurface)
             }
 
             Section {
@@ -112,8 +114,12 @@ struct AccountSettingsView: View {
                         Spacer()
                     }
                 }
+                .listRowBackground(Color.portSurface)
             }
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.portBackground.ignoresSafeArea())
         .navigationTitle("Konto")
         .confirmationDialog(
             "Möchtest du dich wirklich abmelden?",

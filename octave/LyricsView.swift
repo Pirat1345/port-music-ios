@@ -1,13 +1,14 @@
 //
 //  LyricsView.swift
-//  octave
+//  Port Music
 //
-//  Time-synced lyrics with karaoke karaoke highlight and translation.
+//  Time-synced lyrics with karaoke highlight and translation.
 //
 
 import SwiftUI
 
 struct LyricsView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AudioPlayer.self) private var player
     @State private var lyricsService = LyricsService.shared
     @State private var lines: [LyricLine] = []
@@ -17,33 +18,33 @@ struct LyricsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color.portBackground.ignoresSafeArea()
 
                 if isLoading {
-                    ProgressView("Loading lyrics...")
-                        .tint(.white)
+                    ProgressView("Songtext wird geladen...")
+                        .tint(.portBrand)
                         .foregroundColor(.white)
                 } else if lines.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "music.note.list")
+                        Image(systemName: "quote.bubble")
                             .font(.system(size: 48))
-                            .foregroundColor(.white.opacity(0.5))
-                        Text("No lyrics available for this song")
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.portTextMuted)
+                        Text("Kein Songtext für diesen Titel verfügbar")
+                            .foregroundColor(.portTextSecondary)
                     }
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 20) {
+                            VStack(alignment: .leading, spacing: 22) {
                                 ForEach(lines.indices, id: \.self) { idx in
                                     let line = lines[idx]
                                     let isCurrent = isLineActive(line, index: idx)
 
                                     Text(isTranslated && line.translation != nil ? line.translation! : line.text)
-                                        .font(.system(size: isCurrent ? 28 : 22, weight: .bold))
-                                        .foregroundColor(isCurrent ? .white : .white.opacity(0.4))
-                                        .scaleEffect(isCurrent ? 1.05 : 1.0, anchor: .leading)
-                                        .animation(.easeInOut(duration: 0.25), value: isCurrent)
+                                        .font(.system(size: isCurrent ? 28 : 22, weight: isCurrent ? .bold : .medium))
+                                        .foregroundColor(isCurrent ? .white : .white.opacity(0.35))
+                                        .scaleEffect(isCurrent ? 1.04 : 1.0, anchor: .leading)
+                                        .animation(.easeInOut(duration: 0.2), value: isCurrent)
                                         .id(idx)
                                         .onTapGesture {
                                             player.seek(to: line.time)
@@ -65,15 +66,23 @@ struct LyricsView: View {
                     }
                 }
             }
-            .navigationTitle("Lyrics")
+            .navigationTitle("Songtext")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .foregroundColor(.white)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         isTranslated.toggle()
                     } label: {
                         Image(systemName: isTranslated ? "translate.fill" : "translate")
-                            .foregroundColor(.white)
+                            .foregroundColor(isTranslated ? .portBrand : .white)
                     }
                 }
             }

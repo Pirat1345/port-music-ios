@@ -22,7 +22,7 @@ struct octaveApp: App {
             .environment(player)
             .environment(account)
             .environment(libraryIndex)
-            .preferredColorScheme(theme.active.isDark ? .dark : .light)
+            .preferredColorScheme(.dark)
         }
     }
 }

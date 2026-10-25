@@ -12,7 +12,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Octave</string>
+	<string>Port Music</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -37,7 +37,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>Port Music</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -48,15 +48,16 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>CFBundleURLName</key>
-			<string>streaming.octave.theme</string>
+			<string>streaming.portmusic.theme</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>portmusic</string>
 				<string>octave</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>64</string>
+	<string>65</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>instagram-stories</string>
@@ -70,15 +71,15 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Octave uses the camera when you take a photo for a playlist cover.</string>
+	<string>Port Music uses the camera when you take a photo for a playlist cover.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Octave uses your approximate location once to find concerts happening near you. It is never stored or shared.</string>
+	<string>Port Music uses your approximate location once to find concerts happening near you. It is never stored or shared.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Octave uses the microphone for voice search.</string>
+	<string>Port Music uses the microphone for voice search.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Octave saves shareable song images to your photo library.</string>
+	<string>Port Music saves shareable song images to your photo library.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Octave uses speech recognition so you can search by voice.</string>
+	<string>Port Music uses speech recognition so you can search by voice.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>streaming.octave.userActivity</string>

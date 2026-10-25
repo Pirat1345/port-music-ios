@@ -7,10 +7,22 @@
       "size": "60x60"
     },
     {
+      "filename": "AppIcon60x60@3x.png",
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "60x60"
+    },
+    {
       "filename": "AppIcon76x76@2x~ipad.png",
       "idiom": "ipad",
       "scale": "2x",
       "size": "76x76"
+    },
+    {
+      "filename": "AppIcon-1024.png",
+      "idiom": "ios-marketing",
+      "scale": "1x",
+      "size": "1024x1024"
     }
   ],
   "info": {

@@ -1,11 +1,12 @@
 //
 //  NowPlayingView.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
 
 struct NowPlayingView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AudioPlayer.self) private var player
     @Environment(ThemeEngine.self) private var theme
     @State private var presenter = NowPlayingPresenter()
@@ -14,60 +15,71 @@ struct NowPlayingView: View {
 
     var body: some View {
         ZStack {
-            // Metal backdrop or dark gradient
-            NPMetalBackdropView()
+            // Calm Dark Background
+            Color.portBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
                 // Top Grabber & Controls
                 HStack {
                     Button {
-                        // Dismiss
+                        dismiss()
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.title2)
                             .foregroundColor(.white.opacity(0.8))
                     }
                     Spacer()
-                    Text(player.currentTrack?.albumTitle ?? "Playing")
+                    Text(player.currentTrack?.albumTitle ?? "Aktuelle Wiedergabe")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white.opacity(0.8))
                         .lineLimit(1)
                     Spacer()
                     Menu {
-                        Button("View Album", action: {})
-                        Button("View Artist", action: {})
-                        Button("Share Song", action: {})
+                        Button("Titel teilen", action: {})
+                        Button("Zur Playlist hinzufügen", action: {})
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.title2)
                             .foregroundColor(.white.opacity(0.8))
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
 
                 Spacer()
 
                 // Artwork Bed
-                NPArtworkBed(song: player.currentTrack)
-                    .frame(width: 320, height: 320)
-                    .shadow(color: .black.opacity(0.5), radius: 25, x: 0, y: 15)
+                if let song = player.currentTrack {
+                    ArtworkView(urlString: song.artworkURLString)
+                        .frame(width: 320, height: 320)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.portBorder, lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(0.6), radius: 25, x: 0, y: 15)
+                } else {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.portSurfaceElevated)
+                        .frame(width: 320, height: 320)
+                }
 
                 Spacer()
 
                 // Song Title & Artist
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(player.currentTrack?.title ?? "No Track")
+                        Text(player.currentTrack?.title ?? "Kein Titel ausgewählt")
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
                             .lineLimit(1)
 
-                        Text(player.currentTrack?.artist ?? "Octave")
+                        Text(player.currentTrack?.artist ?? "Port Music")
                             .font(.title3)
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.portTextSecondary)
                             .lineLimit(1)
                     }
                     Spacer()
@@ -87,22 +99,22 @@ struct NowPlayingView: View {
                         get: { player.currentTime },
                         set: { player.seek(to: $0) }
                     ), in: 0...max(player.duration, 1.0))
-                    .tint(.white)
+                    .tint(.portBrand)
 
                     HStack {
                         Text(formatTime(player.currentTime))
                             .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
+                            .foregroundColor(.portTextMuted)
                         Spacer()
                         Text("-" + formatTime(max(0, player.duration - player.currentTime)))
                             .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
+                            .foregroundColor(.portTextMuted)
                     }
                 }
                 .padding(.horizontal, 24)
 
                 // Playback Controls
-                HStack(spacing: 40) {
+                HStack(spacing: 36) {
                     Button {
                         player.previous()
                     } label: {
@@ -114,9 +126,14 @@ struct NowPlayingView: View {
                     Button {
                         player.togglePlayPause()
                     } label: {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 44))
-                            .foregroundColor(.white)
+                        ZStack {
+                            Circle()
+                                .fill(Color.portBrand)
+                                .frame(width: 68, height: 68)
+                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.black)
+                        }
                     }
 
                     Button {
@@ -136,7 +153,7 @@ struct NowPlayingView: View {
                     } label: {
                         Image(systemName: "quote.bubble")
                             .font(.title3)
-                            .foregroundColor(showLyrics ? .white : .white.opacity(0.6))
+                            .foregroundColor(showLyrics ? .portBrand : .white.opacity(0.6))
                     }
 
                     Spacer()
@@ -156,11 +173,11 @@ struct NowPlayingView: View {
                     } label: {
                         Image(systemName: "list.bullet")
                             .font(.title3)
-                            .foregroundColor(showQueue ? .white : .white.opacity(0.6))
+                            .foregroundColor(showQueue ? .portBrand : .white.opacity(0.6))
                     }
                 }
                 .padding(.horizontal, 36)
-                .padding(.bottom, 24)
+                .padding(.bottom, 28)
             }
         }
         .sheet(isPresented: $showLyrics) {

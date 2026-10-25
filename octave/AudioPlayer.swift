@@ -66,7 +66,7 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
     func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+            try session.setCategory(.playback, mode: .default, options: [])
             try session.setActive(true)
         } catch {
             print("Failed to activate audio session: \(error)")
@@ -89,17 +89,38 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
 
     private func loadAndPlayCurrent() {
         guard let song = currentTrack else { return }
+        setupAudioSession()
+
+        // Clean up previous time observer
+        if let observer = timeObserver {
+            playerA?.removeTimeObserver(observer)
+            playerB?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+
         let streamURL = OctaveBackend.shared.streamURL(for: song.id)
+        print("AudioPlayer: Streaming '\(song.title)' from \(streamURL)")
+
         let playerItem = AVPlayerItem(url: streamURL)
+        playerItem.preferredForwardBufferDuration = 1.0
+
+        let player = AVPlayer(playerItem: playerItem)
+        player.automaticallyWaitsToMinimizeStalling = true
 
         if usingA {
-            playerA = AVPlayer(playerItem: playerItem)
-            playerA?.play()
-            attachTimeObserver(to: playerA)
+            playerA?.pause()
+            playerA = player
         } else {
-            playerB = AVPlayer(playerItem: playerItem)
-            playerB?.play()
-            attachTimeObserver(to: playerB)
+            playerB?.pause()
+            playerB = player
+        }
+
+        player.play()
+        attachTimeObserver(to: player)
+
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: playerItem, queue: .main) { [weak self] _ in
+            self?.next()
         }
 
         self.isPlaying = true

@@ -1,6 +1,6 @@
 //
 //  HomeContinueChip.swift
-//  octave
+//  Port Music
 //
 
 import SwiftUI
@@ -13,20 +13,21 @@ struct HomeContinueChip: View {
             HStack(spacing: 12) {
                 ArtworkView(urlString: current.artworkURLString)
                     .frame(width: 48, height: 48)
-                    .cornerRadius(8)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Jump back in")
+                    Text("Weiterspielen")
                         .font(.caption2)
-                        .foregroundColor(.purple)
+                        .foregroundColor(.portBrand)
                         .fontWeight(.semibold)
                     Text(current.title)
                         .font(.subheadline)
                         .fontWeight(.bold)
+                        .foregroundColor(.white)
                         .lineLimit(1)
                     Text(current.artist)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.portTextSecondary)
                         .lineLimit(1)
                 }
 
@@ -37,11 +38,12 @@ struct HomeContinueChip: View {
                 } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title2)
-                        .foregroundColor(.purple)
+                        .foregroundColor(.portBrand)
                 }
             }
             .padding(12)
-            .background(Color.purple.opacity(0.1))
+            .background(Color.portSurface)
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.portBorder, lineWidth: 1))
             .cornerRadius(14)
         }
     }
