@@ -1,26 +1,40 @@
 //
 //  HomeViewModel.swift
-//  octave
+//  Port Music
+//
+//  ViewModel for Port Music Home: loads real Discovery data and user playlists.
 //
 
 import Foundation
 import Observation
 
+enum HomeFilterTab: String, CaseIterable, Identifiable {
+    case all = "Alle"
+    case music = "Musik"
+    case playlists = "Playlists"
+    case artists = "Künstler"
+
+    var id: String { rawValue }
+}
+
 @Observable
 final class HomeViewModel: @unchecked Sendable {
-    var featuredSongs: [SongEntity] = []
-    var stations: [String] = ["Lo-Fi Beats", "Today's Hits", "Synthwave", "Chill Vibes", "Acoustic Pop"]
+    var discovery: DiscoveryHomeResponse?
+    var userPlaylists: [PlaylistRecord] = []
+    var activeFilter: HomeFilterTab = .all
     var isLoading: Bool = false
+    var errorMessage: String?
 
     func loadHomeData() async {
         isLoading = true
-        // Fetch recommendations from Octave API
-        featuredSongs = [
-            SongEntity(id: "1", title: "Midnight City", artist: "M83", albumTitle: "Hurry Up, We're Dreaming", durationSec: 243),
-            SongEntity(id: "2", title: "Starboy", artist: "The Weeknd", albumTitle: "Starboy", durationSec: 230),
-            SongEntity(id: "3", title: "Get Lucky", artist: "Daft Punk", albumTitle: "Random Access Memories", durationSec: 248),
-            SongEntity(id: "4", title: "Blinding Lights", artist: "The Weeknd", albumTitle: "After Hours", durationSec: 200)
-        ]
-        isLoading = false
+        errorMessage = nil
+
+        async let discoveryFetch = try? OctaveBackend.shared.fetchDiscoveryHome()
+        async let playlistsFetch = try? OctaveBackend.shared.fetchUserPlaylists()
+
+        let (disc, pls) = await (discoveryFetch, playlistsFetch)
+        self.discovery = disc
+        self.userPlaylists = pls ?? []
+        self.isLoading = false
     }
 }

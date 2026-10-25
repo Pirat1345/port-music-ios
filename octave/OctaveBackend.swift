@@ -1,6 +1,8 @@
 //
 //  OctaveBackend.swift
-//  octave
+//  Port Music
+//
+//  Full Port Music Backend API client: Discovery, Playlists, Streaming & Search.
 //
 
 import Foundation
@@ -29,6 +31,175 @@ public struct UserInfo: Codable, Sendable, Hashable {
         self.email = email
     }
 }
+
+// MARK: - Port Music Discovery & Library Models
+
+public struct DiscoveryTrack: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let title: String
+    public let artist: String
+    public let album: String?
+    public let duration: String?
+    public let durationSeconds: Int?
+    public let cover: String?
+    public let sourceUrl: String?
+    public let isExplicit: Bool?
+
+    public func toSongEntity() -> SongEntity {
+        SongEntity(
+            id: id,
+            title: title,
+            artist: artist,
+            artworkURLString: cover,
+            albumTitle: album,
+            durationSec: Double(durationSeconds ?? 0)
+        )
+    }
+}
+
+public struct DiscoveryAlbum: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let title: String
+    public let artist: String
+    public let cover: String?
+    public let nbTracks: Int?
+}
+
+public struct DiscoveryArtist: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let name: String
+    public let picture: String?
+    public let nbFan: Int?
+}
+
+public struct DiscoveryPlaylist: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let title: String
+    public let cover: String?
+    public let nbTracks: Int?
+    public let user: String?
+}
+
+public struct DiscoveryChartTrack: Codable, Identifiable, Sendable, Hashable {
+    public var id: String { track.id }
+    public let track: DiscoveryTrack
+    public let rank: Int?
+
+    public init(from decoder: Decoder) throws {
+        // May be flattened or nested
+        if let container = try? decoder.container(keyedBy: CodingKeys.self),
+           let t = try? container.decode(DiscoveryTrack.self, forKey: .track) {
+            self.track = t
+            self.rank = try? container.decode(Int.self, forKey: .rank)
+        } else {
+            let t = try DiscoveryTrack(from: decoder)
+            self.track = t
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.rank = try? container.decode(Int.self, forKey: .rank)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case track
+        case rank
+    }
+}
+
+public struct DiscoveryMoodGenre: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let title: String
+    public let cover: String?
+    public let bgColor: String?
+}
+
+public struct DiscoveryPosterPick: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let tag: String?
+    public let title: String
+    public let subtitle: String?
+    public let cover: String?
+    public let kind: String?
+    public let targetUrl: String?
+}
+
+public struct DiscoveryHomeResponse: Codable, Sendable {
+    public let topPicks: [DiscoveryPosterPick]?
+    public let trendingEverywhere: [DiscoveryTrack]?
+    public let newMusic: [DiscoveryAlbum]?
+    public let todaysTopHits: [DiscoveryChartTrack]?
+    public let top100Global: [DiscoveryChartTrack]?
+    public let topAlbums: [DiscoveryAlbum]?
+    public let topPlaylists: [DiscoveryPlaylist]?
+    public let trendingArtists: [DiscoveryArtist]?
+    public let moodsAndGenres: [DiscoveryMoodGenre]?
+}
+
+public struct DiscoverySearchResponse: Codable, Sendable {
+    public let tracks: [DiscoveryTrack]?
+    public let albums: [DiscoveryAlbum]?
+    public let artists: [DiscoveryArtist]?
+    public let playlists: [DiscoveryPlaylist]?
+}
+
+public struct PlaylistRecord: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let title: String
+    public let description: String?
+    public let cover_url: String?
+    public let folder_id: String?
+    public let color: String?
+    public let visibility: String?
+    public let created_at: Int64?
+    public let updated_at: Int64?
+}
+
+public struct TrackRecord: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let title: String
+    public let artist: String
+    public let album: String?
+    public let duration: Double?
+    public let cover_url: String?
+
+    public func toSongEntity() -> SongEntity {
+        SongEntity(
+            id: id,
+            title: title,
+            artist: artist,
+            artworkURLString: cover_url,
+            albumTitle: album,
+            durationSec: duration ?? 0.0
+        )
+    }
+}
+
+public struct PlaylistDetailsResponse: Codable, Sendable {
+    public let playlist: PlaylistRecord
+    public let tracks: [TrackRecord]
+}
+
+public struct DiscoveryArtistAlbum: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let name: String
+    public let year: Int?
+    public let cover: String?
+}
+
+public struct DiscoveryArtistFull: Codable, Sendable {
+    public let id: String?
+    public let name: String
+    public let cover: String?
+    public let description: String?
+    public let country: String?
+    public let nbFan: Int?
+    public let topTracks: [DiscoveryTrack]?
+    public let albums: [DiscoveryArtistAlbum]?
+    public let singles: [DiscoveryArtistAlbum]?
+    public let playlists: [DiscoveryPlaylist]?
+    public let relatedArtists: [DiscoveryArtist]?
+}
+
+// MARK: - Backend Client Class
 
 final class OctaveBackend: @unchecked Sendable {
     static let shared = OctaveBackend()
@@ -253,9 +424,155 @@ final class OctaveBackend: @unchecked Sendable {
         return nil
     }
 
-    // MARK: - Search Catalog
+    // MARK: - Port Music Discovery & Home API
+
+    func fetchDiscoveryHome() async throws -> DiscoveryHomeResponse {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("discovery").appendingPathComponent("home")
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            throw BackendError.serverError("Discovery Home konnte nicht geladen werden")
+        }
+        return try JSONDecoder().decode(DiscoveryHomeResponse.self, from: data)
+    }
+
+    func fetchUserPlaylists() async throws -> [PlaylistRecord] {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("playlists")
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            return []
+        }
+        return (try? JSONDecoder().decode([PlaylistRecord].self, from: data)) ?? []
+    }
+
+    func fetchPlaylistDetails(id: String) async throws -> PlaylistDetailsResponse {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("playlists").appendingPathComponent(id)
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            throw BackendError.serverError("Playlist konnte nicht geladen werden")
+        }
+        return try JSONDecoder().decode(PlaylistDetailsResponse.self, from: data)
+    }
+
+    func fetchOnlinePlaylistTracks(id: String) async throws -> [SongEntity] {
+        let endpoint = id.starts(with: "apple_")
+            ? apiBaseURL.appendingPathComponent("api").appendingPathComponent("apple").appendingPathComponent("playlist").appendingPathComponent(id.replacingOccurrences(of: "apple_", with: ""))
+            : apiBaseURL.appendingPathComponent("api").appendingPathComponent("discovery").appendingPathComponent("playlist").appendingPathComponent(id)
+
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+        let (data, _) = try await URLSession.shared.data(for: req)
+
+        struct OnlinePlaylistResponse: Codable {
+            let tracks: [DiscoveryTrack]?
+        }
+        if let res = try? JSONDecoder().decode(OnlinePlaylistResponse.self, from: data), let tr = res.tracks {
+            return tr.map { $0.toSongEntity() }
+        }
+        if let tr = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
+            return tr.map { $0.toSongEntity() }
+        }
+        return []
+    }
+
+    func fetchAlbumTracks(id: String) async throws -> [SongEntity] {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("discovery").appendingPathComponent("album").appendingPathComponent(id)
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+        let (data, _) = try await URLSession.shared.data(for: req)
+
+        struct AlbumDetailDto: Codable {
+            let tracks: [DiscoveryTrack]?
+        }
+        struct AlbumResponseDto: Codable {
+            let album: AlbumDetailDto?
+        }
+        if let res = try? JSONDecoder().decode(AlbumResponseDto.self, from: data), let tr = res.album?.tracks {
+            return tr.map { $0.toSongEntity() }
+        }
+        return []
+    }
+
+    func createPlaylist(title: String, description: String? = nil) async throws -> PlaylistRecord {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("playlists")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(to: &req)
+        let body: [String: Any] = [
+            "title": title,
+            "description": description as Any
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            throw BackendError.serverError("Playlist konnte nicht erstellt werden")
+        }
+        return try JSONDecoder().decode(PlaylistRecord.self, from: data)
+    }
+
+    func fetchFavorites() async throws -> [SongEntity] {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("favorites")
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            return []
+        }
+        let records = (try? JSONDecoder().decode([TrackRecord].self, from: data)) ?? []
+        return records.map { $0.toSongEntity() }
+    }
+
+    func fetchDiscoveryArtist(name: String) async throws -> DiscoveryArtistFull {
+        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+            throw BackendError.serverError("Ungültiger Künstlername")
+        }
+        let url = URL(string: "\(serverBaseURLString)/api/discovery/artist/\(encoded)")!
+        var req = URLRequest(url: url)
+        applyAuth(to: &req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            throw BackendError.serverError("Künstlerprofil konnte nicht geladen werden")
+        }
+        struct ArtistWrapper: Codable {
+            let success: Bool?
+            let artist: DiscoveryArtistFull?
+        }
+        let res = try JSONDecoder().decode(ArtistWrapper.self, from: data)
+        guard let artist = res.artist else {
+            throw BackendError.serverError("Künstler nicht gefunden")
+        }
+        return artist
+    }
+
+    // MARK: - Search Catalog (Backend Discovery Search First)
+
+    func searchDiscovery(query: String) async throws -> DiscoverySearchResponse {
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return DiscoverySearchResponse(tracks: [], albums: [], artists: [], playlists: [])
+        }
+        let url = URL(string: "\(serverBaseURLString)/api/discovery/search?q=\(encoded)")!
+        var req = URLRequest(url: url)
+        applyAuth(to: &req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            throw BackendError.serverError("Suche fehlgeschlagen")
+        }
+        return try JSONDecoder().decode(DiscoverySearchResponse.self, from: data)
+    }
 
     func search(query: String) async throws -> [SongEntity] {
+        // 1. Try Port Music backend discovery search first
+        if let res = try? await searchDiscovery(query: query), let tracks = res.tracks, !tracks.isEmpty {
+            return tracks.map { $0.toSongEntity() }
+        }
+
+        // 2. Fallback to iTunes API
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://itunes.apple.com/search?term=\(encoded)&entity=song&limit=30") else {
             return []

@@ -1,70 +1,120 @@
 //
 //  AlbumDetailView.swift
-//  octave
+//  Port Music
+//
+//  Album detail view fetching real album tracklist from backend discovery.
 //
 
 import SwiftUI
 
 struct AlbumDetailView: View {
+    let albumId: String
     let albumTitle: String
     let artist: String
     let artworkURL: String?
+
     @Environment(AudioPlayer.self) private var player
     @State private var tracks: [SongEntity] = []
+    @State private var isLoading: Bool = true
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                ArtworkView(urlString: artworkURL)
-                    .frame(width: 240, height: 240)
-                    .cornerRadius(16)
-                    .shadow(radius: 12)
+        ZStack {
+            Color.portBackground
+                .ignoresSafeArea()
 
-                VStack(spacing: 4) {
-                    Text(albumTitle)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    Text(artist)
-                        .font(.headline)
-                        .foregroundColor(.purple)
-                }
+            if isLoading {
+                ProgressView("Album wird geladen...")
+                    .tint(.portBrand)
+                    .foregroundColor(.portTextSecondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Album Header
+                        HStack(spacing: 16) {
+                            ArtworkView(urlString: artworkURL)
+                                .frame(width: 130, height: 130)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color.portBorder, lineWidth: 1)
+                                )
+                                .shadow(color: .black.opacity(0.6), radius: 12, y: 4)
 
-                HStack(spacing: 20) {
-                    Button {
-                        if let first = tracks.first {
-                            player.play(song: first, in: tracks)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(albumTitle)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .lineLimit(2)
+
+                                Text(artist)
+                                    .font(.subheadline)
+                                    .foregroundColor(.portBrand)
+                                    .lineLimit(1)
+
+                                Text("\(tracks.count) Titel")
+                                    .font(.caption2)
+                                    .foregroundColor(.portTextMuted)
+
+                                Spacer()
+
+                                if !tracks.isEmpty {
+                                    Button {
+                                        if let first = tracks.first {
+                                            player.play(song: first, in: tracks)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "play.fill")
+                                                .font(.caption)
+                                            Text("Album abspielen")
+                                                .font(.subheadline)
+                                                .fontWeight(.bold)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(Color.portBrand)
+                                        .foregroundColor(.black)
+                                        .cornerRadius(20)
+                                    }
+                                }
+                            }
                         }
-                    } label: {
-                        Label("Play", systemImage: "play.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.purple)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                    }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
 
-                    Button {
-                        // Shuffle
-                    } label: {
-                        Label("Shuffle", systemImage: "shuffle")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.secondary.opacity(0.15))
-                            .foregroundColor(.purple)
-                            .cornerRadius(12)
-                    }
-                }
-                .padding(.horizontal)
+                        Divider()
+                            .background(Color.portBorder)
+                            .padding(.horizontal, 16)
 
-                LazyVStack(spacing: 0) {
-                    ForEach(tracks) { song in
-                        TrackListRow(song: song) {
-                            player.play(song: song, in: tracks)
+                        // Tracks
+                        LazyVStack(spacing: 4) {
+                            ForEach(tracks) { song in
+                                TrackListRow(song: song) {
+                                    player.play(song: song, in: tracks)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 4)
+                            }
                         }
                     }
+                    .padding(.bottom, 120)
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await loadAlbum()
+        }
+    }
+
+    private func loadAlbum() async {
+        isLoading = true
+        do {
+            self.tracks = try await OctaveBackend.shared.fetchAlbumTracks(id: albumId)
+        } catch {
+            print("Failed to load album tracks: \(error)")
+        }
+        isLoading = false
     }
 }
