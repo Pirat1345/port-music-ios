@@ -35,199 +35,12 @@ struct LibraryView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Filter Chips
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(LibraryFilter.allCases) { filter in
-                            Button {
-                                activeFilter = filter
-                            } label: {
-                                Text(filter.rawValue)
-                                    .font(.subheadline)
-                                    .fontWeight(activeFilter == filter ? .bold : .medium)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(activeFilter == filter ? Color.portBrand : Color.portSurface)
-                                    .foregroundColor(activeFilter == filter ? .black : .white)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 18)
-                                            .stroke(activeFilter == filter ? Color.portBrand : Color.portBorder, lineWidth: 1)
-                                    )
-                                    .cornerRadius(18)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                }
+                filterChipsBar
 
                 if isLoading && userPlaylists.isEmpty && favorites.isEmpty {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                            .tint(.portBrand)
-                        Text("Bibliothek wird geladen...")
-                            .font(.subheadline)
-                            .foregroundColor(.portTextSecondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    loadingView
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 22) {
-                            // 1. Lieblingssongs Banner (Favorites)
-                            if activeFilter == .all || activeFilter == .favorites {
-                                NavigationLink(destination: FavoritesDetailView(tracks: favorites)) {
-                                    HStack(spacing: 16) {
-                                        ZStack {
-                                            LinearGradient(
-                                                colors: [Color.portBrand, Color.portBrand.opacity(0.4), Color.portSurface],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                            .frame(width: 80, height: 80)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                                            Image(systemName: "heart.fill")
-                                                .font(.system(size: 32))
-                                                .foregroundColor(.white)
-                                        }
-
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Lieblingssongs")
-                                                .font(.headline)
-                                                .fontWeight(.bold)
-                                                .foregroundColor(.white)
-
-                                            Text("\(favorites.count) Lieblingstitel")
-                                                .font(.subheadline)
-                                                .foregroundColor(.portTextSecondary)
-                                        }
-
-                                        Spacer()
-
-                                        if !favorites.isEmpty {
-                                            Button {
-                                                if let first = favorites.first {
-                                                    player.play(song: first, in: favorites)
-                                                }
-                                            } label: {
-                                                Image(systemName: "play.circle.fill")
-                                                    .font(.system(size: 38))
-                                                    .foregroundColor(.portBrand)
-                                            }
-                                        }
-                                    }
-                                    .padding(14)
-                                    .background(Color.portSurface)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .stroke(Color.portBorder, lineWidth: 1)
-                                    )
-                                    .cornerRadius(14)
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.horizontal, 16)
-                            }
-
-                            // 2. Deine Playlists Section
-                            if activeFilter == .all || activeFilter == .playlists {
-                                VStack(alignment: .leading, spacing: 14) {
-                                    HStack {
-                                        Text("Deine Playlists")
-                                            .font(.title3)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.white)
-
-                                        Spacer()
-
-                                        Button {
-                                            showCreatePlaylistSheet = true
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "plus.circle.fill")
-                                                Text("Neu")
-                                            }
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-                                            .foregroundColor(.portBrand)
-                                        }
-                                    }
-                                    .padding(.horizontal, 16)
-
-                                    if userPlaylists.isEmpty {
-                                        VStack(spacing: 12) {
-                                            Image(systemName: "music.note.list")
-                                                .font(.system(size: 40))
-                                                .foregroundColor(.portTextMuted)
-                                            Text("Noch keine Playlists vorhanden")
-                                                .font(.headline)
-                                                .foregroundColor(.white)
-                                            Text("Erstelle deine erste Playlist mit dem '+' Button oben.")
-                                                .font(.caption)
-                                                .foregroundColor(.portTextSecondary)
-                                                .multilineTextAlignment(.center)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 36)
-                                        .padding(.horizontal, 24)
-                                    } else {
-                                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 18) {
-                                            ForEach(userPlaylists) { pl in
-                                                NavigationLink(destination: PlaylistDetailView(
-                                                    playlistId: pl.id,
-                                                    title: pl.title,
-                                                    description: pl.description,
-                                                    coverURL: pl.cover_url,
-                                                    isUserPlaylist: true
-                                                )) {
-                                                    VStack(alignment: .leading, spacing: 8) {
-                                                        ZStack {
-                                                            if let cover = pl.cover_url, !cover.isEmpty {
-                                                                ArtworkView(urlString: cover)
-                                                                    .frame(maxWidth: .infinity)
-                                                                    .aspectRatio(1.0, contentMode: .fill)
-                                                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                            } else {
-                                                                RoundedRectangle(cornerRadius: 12)
-                                                                    .fill(Color.portSurfaceLight)
-                                                                    .aspectRatio(1.0, contentMode: .fit)
-                                                                    .overlay(
-                                                                        Image(systemName: "music.note")
-                                                                            .font(.system(size: 36))
-                                                                            .foregroundColor(.portTextMuted)
-                                                                    )
-                                                            }
-                                                        }
-                                                        .overlay(
-                                                            RoundedRectangle(cornerRadius: 12)
-                                                                .stroke(Color.portBorder, lineWidth: 1)
-                                                        )
-                                                        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
-
-                                                        Text(pl.title)
-                                                            .font(.subheadline)
-                                                            .fontWeight(.semibold)
-                                                            .foregroundColor(.white)
-                                                            .lineLimit(1)
-
-                                                        Text("Playlist")
-                                                            .font(.caption2)
-                                                            .foregroundColor(.portTextMuted)
-                                                    }
-                                                }
-                                                .buttonStyle(.plain)
-                                            }
-                                        }
-                                        .padding(.horizontal, 16)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.top, 8)
-                        .padding(.bottom, 120)
-                    }
-                    .refreshable {
-                        await loadLibraryData()
-                    }
+                    mainScrollView
                 }
             }
         }
@@ -265,6 +78,219 @@ struct LibraryView: View {
         .task {
             await loadLibraryData()
         }
+    }
+
+    // MARK: - Subviews
+
+    private var filterChipsBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(LibraryFilter.allCases) { filter in
+                    Button {
+                        activeFilter = filter
+                    } label: {
+                        Text(filter.rawValue)
+                            .font(.subheadline)
+                            .fontWeight(activeFilter == filter ? .bold : .medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(activeFilter == filter ? Color.portBrand : Color.portSurface)
+                            .foregroundColor(activeFilter == filter ? .black : .white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .stroke(activeFilter == filter ? Color.portBrand : Color.portBorder, lineWidth: 1)
+                            )
+                            .cornerRadius(18)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .tint(.portBrand)
+            Text("Bibliothek wird geladen...")
+                .font(.subheadline)
+                .foregroundColor(.portTextSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var mainScrollView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                if activeFilter == .all || activeFilter == .favorites {
+                    favoritesBanner
+                }
+                if activeFilter == .all || activeFilter == .playlists {
+                    playlistsSection
+                }
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 120)
+        }
+        .refreshable {
+            await loadLibraryData()
+        }
+    }
+
+    private var favoritesBanner: some View {
+        NavigationLink(destination: FavoritesDetailView(tracks: favorites)) {
+            HStack(spacing: 16) {
+                ZStack {
+                    LinearGradient(
+                        colors: [Color.portBrand, Color.portBrand.opacity(0.4), Color.portSurface],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .frame(width: 80, height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Lieblingssongs")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+
+                    Text("\(favorites.count) Lieblingstitel")
+                        .font(.subheadline)
+                        .foregroundColor(.portTextSecondary)
+                }
+
+                Spacer()
+
+                if !favorites.isEmpty {
+                    Button {
+                        if let first = favorites.first {
+                            player.play(song: first, in: favorites)
+                        }
+                    } label: {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 38))
+                            .foregroundColor(.portBrand)
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color.portSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.portBorder, lineWidth: 1)
+            )
+            .cornerRadius(14)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+    }
+
+    private var playlistsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Deine Playlists")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                Button {
+                    showCreatePlaylistSheet = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Neu")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.portBrand)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            if userPlaylists.isEmpty {
+                emptyPlaylistsView
+            } else {
+                playlistsGridView
+            }
+        }
+    }
+
+    private var emptyPlaylistsView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "music.note.list")
+                .font(.system(size: 40))
+                .foregroundColor(.portTextMuted)
+            Text("Noch keine Playlists vorhanden")
+                .font(.headline)
+                .foregroundColor(.white)
+            Text("Erstelle deine erste Playlist mit dem '+' Button oben.")
+                .font(.caption)
+                .foregroundColor(.portTextSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 24)
+    }
+
+    private var playlistsGridView: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 18) {
+            ForEach(userPlaylists) { pl in
+                NavigationLink(destination: PlaylistDetailView(
+                    playlistId: pl.id,
+                    title: pl.title,
+                    description: pl.description,
+                    coverURL: pl.cover_url,
+                    isUserPlaylist: true
+                )) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ZStack {
+                            if let cover = pl.cover_url, !cover.isEmpty {
+                                ArtworkView(urlString: cover)
+                                    .frame(maxWidth: .infinity)
+                                    .aspectRatio(1.0, contentMode: .fill)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            } else {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.portSurfaceLight)
+                                    .aspectRatio(1.0, contentMode: .fit)
+                                    .overlay(
+                                        Image(systemName: "music.note")
+                                            .font(.system(size: 36))
+                                            .foregroundColor(.portTextMuted)
+                                    )
+                            }
+                        }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.portBorder, lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+
+                        Text(pl.title)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        Text("Playlist")
+                            .font(.caption2)
+                            .foregroundColor(.portTextMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
     }
 
     private func loadLibraryData() async {
