@@ -39,20 +39,12 @@ struct RootTabView: View {
                 .tag(AppTab.home)
 
                 NavigationStack {
-                    BrowseView()
+                    SearchView(query: $searchQuery)
                 }
                 .tabItem {
-                    Label("Entdecken", systemImage: "sparkles")
+                    Label("Suche", systemImage: "magnifyingglass")
                 }
-                .tag(AppTab.browse)
-
-                NavigationStack {
-                    RadioView()
-                }
-                .tabItem {
-                    Label("Radio", systemImage: "dot.radiowaves.left.and.right")
-                }
-                .tag(AppTab.radio)
+                .tag(AppTab.search)
 
                 NavigationStack {
                     LibraryView()
@@ -63,12 +55,12 @@ struct RootTabView: View {
                 .tag(AppTab.library)
 
                 NavigationStack {
-                    SearchView(query: $searchQuery)
+                    RadioView()
                 }
                 .tabItem {
-                    Label("Suche", systemImage: "magnifyingglass")
+                    Label("Radio", systemImage: "dot.radiowaves.left.and.right")
                 }
-                .tag(AppTab.search)
+                .tag(AppTab.radio)
             }
             .tint(Color.portBrand)
 

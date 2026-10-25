@@ -15,6 +15,8 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
     case all = "Alle"
     case playlists = "Playlists"
     case favorites = "Lieblingssongs"
+    case artists = "Künstler"
+    case albums = "Alben"
 
     var id: String { rawValue }
 }
@@ -28,6 +30,30 @@ struct LibraryView: View {
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var newPlaylistTitle: String = ""
     @State private var isCreating: Bool = false
+
+    private var libraryArtists: [String] {
+        var names = Set<String>()
+        for song in favorites {
+            let parts = song.artist.components(separatedBy: CharacterSet(charactersIn: ",/&"))
+            for p in parts {
+                let trimmed = p.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { names.insert(trimmed) }
+            }
+        }
+        return names.sorted()
+    }
+
+    private var libraryAlbums: [SongEntity] {
+        var seen = Set<String>()
+        var res: [SongEntity] = []
+        for song in favorites {
+            if let alb = song.albumTitle, !alb.isEmpty, !seen.contains(alb) {
+                seen.insert(alb)
+                res.append(song)
+            }
+        }
+        return res
+    }
 
     var body: some View {
         ZStack {
@@ -128,6 +154,12 @@ struct LibraryView: View {
                 }
                 if activeFilter == .all || activeFilter == .playlists {
                     playlistsSection
+                }
+                if (activeFilter == .all || activeFilter == .artists) && !libraryArtists.isEmpty {
+                    artistsSection
+                }
+                if (activeFilter == .all || activeFilter == .albums) && !libraryAlbums.isEmpty {
+                    albumsSection
                 }
             }
             .padding(.top, 8)
@@ -291,6 +323,93 @@ struct LibraryView: View {
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    private var artistsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Deine Künstler")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(libraryArtists, id: \.self) { artistName in
+                        NavigationLink(destination: ArtistDetailView(artistName: artistName)) {
+                            VStack(spacing: 8) {
+                                Circle()
+                                    .fill(Color.portSurfaceElevated)
+                                    .frame(width: 80, height: 80)
+                                    .overlay(
+                                        Image(systemName: "mic.fill")
+                                            .font(.title2)
+                                            .foregroundColor(.portBrand)
+                                    )
+                                    .overlay(Circle().stroke(Color.portBorder, lineWidth: 1))
+
+                                Text(artistName)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .frame(width: 84)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private var albumsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Deine Alben")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(libraryAlbums) { song in
+                        NavigationLink(destination: AlbumDetailView(
+                            albumId: song.id,
+                            albumTitle: song.albumTitle ?? "",
+                            artist: song.artist,
+                            artworkURL: song.artworkURLString
+                        )) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ArtworkView(urlString: song.artworkURLString)
+                                    .frame(width: 130, height: 130)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.portBorder, lineWidth: 1)
+                                    )
+                                    .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
+
+                                Text(song.albumTitle ?? "")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+
+                                Text(song.artist)
+                                    .font(.caption2)
+                                    .foregroundColor(.portTextMuted)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 130)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
     }
 
     private func loadLibraryData() async {
