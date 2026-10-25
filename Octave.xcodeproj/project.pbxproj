@@ -917,6 +917,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 			};
 			name = Debug;
 		};
@@ -928,6 +929,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 			};
 			name = Release;
 		};
@@ -947,6 +949,7 @@
 				PRODUCT_NAME = octave;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -967,6 +970,7 @@
 				PRODUCT_NAME = octave;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -985,6 +989,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = streaming.octave.dev.OctaveWidgets;
 				PRODUCT_NAME = OctaveWidgetsExtension;
 				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -1003,6 +1008,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = streaming.octave.dev.OctaveWidgets;
 				PRODUCT_NAME = OctaveWidgetsExtension;
 				SWIFT_VERSION = 6.0;
+				SWIFT_STRICT_CONCURRENCY = minimal;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

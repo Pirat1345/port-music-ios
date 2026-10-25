@@ -7,7 +7,7 @@ import SwiftUI
 import Observation
 
 @Observable
-final class NowPlayingPresenter {
+final class NowPlayingPresenter: @unchecked Sendable {
     var isMounted: Bool = false
     var isDragging: Bool = false
     var isFullyOpen: Bool = false

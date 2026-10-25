@@ -7,6 +7,6 @@ import Foundation
 import Observation
 
 @Observable
-final class RateSongPresenter {
+final class RateSongPresenter: @unchecked Sendable {
     func rate(songId: String, stars: Int) {}
 }

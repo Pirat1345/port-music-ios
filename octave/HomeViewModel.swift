@@ -7,7 +7,7 @@ import Foundation
 import Observation
 
 @Observable
-final class HomeViewModel {
+final class HomeViewModel: @unchecked Sendable {
     var featuredSongs: [SongEntity] = []
     var stations: [String] = ["Lo-Fi Beats", "Today's Hits", "Synthwave", "Chill Vibes", "Acoustic Pop"]
     var isLoading: Bool = false
