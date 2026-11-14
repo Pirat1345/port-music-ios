@@ -289,10 +289,7 @@ struct PlayerQueueSheet: View {
             LazyVStack(spacing: 4) {
                 ForEach(upcoming) { song in
                     TrackListRow(song: song) {
-                        if let globalIdx = player.queue.firstIndex(where: { $0.id == song.id }) {
-                            player.currentIndex = globalIdx
-                            player.loadAndPlayCurrent()
-                        }
+                        player.play(song: song)
                     }
                     .padding(.horizontal)
                 }

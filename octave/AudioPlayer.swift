@@ -105,7 +105,7 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
         }
     }
 
-    private func loadAndPlayCurrent() {
+    func loadAndPlayCurrent() {
         guard let song = currentTrack else { return }
         setupAudioSession()
 
