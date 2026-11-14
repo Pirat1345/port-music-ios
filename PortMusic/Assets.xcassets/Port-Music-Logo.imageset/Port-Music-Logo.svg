@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="100%" height="100%">
+  <defs>
+    <!-- Basis-Dreieck und Schnittmaske -->
+    <path id="triangle" d="M 483,70 Q 500,40 517,70 L 955,838 Q 972,868 937,868 L 63,868 Q 28,868 45,838 Z" />
+    <clipPath id="triangleClip">
+      <use href="#triangle" />
+    </clipPath>
+
+    <!-- Geometrisch saubere Ohrmuschel (wird links & rechts gespiegelt genutzt) -->
+    <g id="earcup">
+      <!-- Verbindungsstück zum Bügel + innere Kante parallel zum Dreieck -->
+      <rect x="-24" y="-115" width="48" height="230" rx="24" />
+      <!-- Äußere runde Kopfhörer-Schale -->
+      <path d="M 0,-115 C -115,-115 -115,115 0,115 Z" />
+    </g>
+  </defs>
+
+  <!-- Kopfhörer in einheitlichem, abgedunkeltem Weißton -->
+  <g fill="#c8ccd4">
+    <!-- Kopfhörer-Bügel -->
+    <path d="M 182,435 A 322,322 0 0,1 818,435" fill="none" stroke="#c8ccd4" stroke-width="46" stroke-linecap="round" />
+    
+    <!-- Linke Ohrmuschel (exakt im Dreieckswinkel von 29.74° geneigt) -->
+    <use href="#earcup" transform="translate(192, 495) rotate(29.74)" />
+
+    <!-- Rechte Ohrmuschel (exakt gespiegelt) -->
+    <use href="#earcup" transform="translate(808, 495) scale(-1, 1) rotate(29.74)" />
+  </g>
+
+  <!-- Oranges Haupt-Dreieck -->
+  <use href="#triangle" fill="#fa5c00" />
+
+  <!-- Gesichtselemente (sauber auf das Dreieck zugeschnitten) -->
+  <g clip-path="url(#triangleClip)" fill="#1d1d1b">
+    <!-- Linkes Auge -->
+    <path d="M 308,468 Q 390,502 473,527 C 462,642 280,632 308,468 Z" />
+
+    <!-- Band der Augenklappe -->
+    <path d="M 280,350 Q 500,460 790,462 L 790,504 Q 500,502 280,392 Z" />
+
+    <!-- Rechte Augenklappe -->
+    <path d="M 514,458 L 715,480 C 725,665 495,655 514,458 Z" />
+  </g>
+</svg>

@@ -60,25 +60,9 @@ struct ServerSetupView: View {
     }
 
     private var logoView: some View {
-        Group {
-            if let uiImg = UIImage(named: "PortLogo") ?? UIImage(named: "port-logo") ?? loadFileLogo() {
-                Image(uiImage: uiImg)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                Image(systemName: "play.circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundColor(.white)
-            }
-        }
-    }
-
-    private func loadFileLogo() -> UIImage? {
-        if let path = Bundle.main.path(forResource: "port-logo", ofType: "png") {
-            return UIImage(contentsOfFile: path)
-        }
-        return nil
+        Image("PortLogo")
+            .resizable()
+            .scaledToFit()
     }
 
     // MARK: - Input Section
