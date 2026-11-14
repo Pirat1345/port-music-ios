@@ -1,60 +1,54 @@
 import SwiftUI
 
-public enum AppScreen: Equatable {
-    case serverSetup
-    case login(serverURL: String)
-    case loggedIn(user: UserProfile, serverURL: String)
-}
-
 @main
 struct PortMusicApp: App {
-    @State private var screen: AppScreen = .serverSetup
+    @StateObject private var sessionManager = SessionManager.shared
 
     var body: some Scene {
         WindowGroup {
             ZStack {
-                switch screen {
-                case .serverSetup:
-                    ServerSetupView(onServerVerified: { url in
-                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
-                            screen = .login(serverURL: url)
-                        }
-                    })
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                        removal: .opacity
-                    ))
-
-                case .login(let serverURL):
-                    LoginView(
-                        serverURL: serverURL,
-                        onLoginSuccess: { user in
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
-                                screen = .loggedIn(user: user, serverURL: serverURL)
-                            }
-                        },
-                        onChangeServer: {
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
-                                screen = .serverSetup
-                            }
-                        }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                        removal: .opacity
-                    ))
-
-                case .loggedIn(let user, let serverURL):
+                if sessionManager.isRestoringSession {
+                    splashLoadingView
+                        .transition(.opacity)
+                } else if sessionManager.isAuthenticated,
+                          let user = sessionManager.currentUser,
+                          let serverURL = sessionManager.serverURL {
                     LoggedInView(
                         user: user,
                         serverURL: serverURL,
                         onLogout: {
-                            AuthService.shared.clearSession()
                             withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
-                                screen = .login(serverURL: serverURL)
+                                sessionManager.logout()
                             }
                         }
                     )
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity
+                    ))
+                } else if let serverURL = sessionManager.serverURL, !serverURL.isEmpty {
+                    LoginView(
+                        serverURL: serverURL,
+                        onLoginSuccess: { _ in
+                            // Der SessionManager schaltet isAuthenticated auf true,
+                            // wodurch automatisch auf LoggedInView umgeschaltet wird.
+                        },
+                        onChangeServer: {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                                sessionManager.updateServerURL("")
+                            }
+                        }
+                    )
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity
+                    ))
+                } else {
+                    ServerSetupView(onServerVerified: { url in
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            sessionManager.updateServerURL(url)
+                        }
+                    })
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.96)),
                         removal: .opacity
@@ -62,6 +56,29 @@ struct PortMusicApp: App {
                 }
             }
             .preferredColorScheme(.dark)
+            .task {
+                await sessionManager.restoreSession()
+            }
+        }
+    }
+
+    private var splashLoadingView: some View {
+        ZStack {
+            FluentBackgroundView()
+
+            VStack(spacing: 20) {
+                PortLogoView(size: 76)
+
+                Text("Port Music")
+                    .font(.manosque(size: 48))
+                    .foregroundColor(PortColors.textPrimary)
+                    .shadow(color: .black.opacity(0.6), radius: 6, y: 2)
+
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.1)
+                    .padding(.top, 12)
+            }
         }
     }
 }

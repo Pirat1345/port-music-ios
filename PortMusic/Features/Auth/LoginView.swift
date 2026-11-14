@@ -5,6 +5,8 @@ public struct LoginView: View {
     public let onLoginSuccess: (UserProfile) -> Void
     public let onChangeServer: () -> Void
 
+    @ObservedObject private var sessionManager = SessionManager.shared
+
     @State private var usernameInput: String = ""
     @State private var passwordInput: String = ""
     @State private var showPassword: Bool = false
@@ -20,6 +22,7 @@ public struct LoginView: View {
     // Captcha-Modal
     @State private var showCaptchaModal: Bool = false
     @State private var activeChallengeToken: String = ""
+    @State private var activeCaptchaType: String = "claw"
     @State private var activeTargetToy: String = "duck"
 
     // 2FA-Modus
@@ -38,6 +41,13 @@ public struct LoginView: View {
         self.onChangeServer = onChangeServer
     }
 
+    private var activeServerURL: String {
+        if !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return serverURL
+        }
+        return sessionManager.serverURL ?? ""
+    }
+
     public var body: some View {
         ZStack {
             // Fluent Animated Seiden-Hintergrund
@@ -50,11 +60,18 @@ public struct LoginView: View {
 
                     if is2FAMode {
                         TwoFactorView(
-                            serverURL: serverURL,
+                            serverURL: activeServerURL,
                             pendingToken: pendingLoginToken,
                             availableMethods: twoFactorMethods,
                             maskedEmail: maskedEmail,
-                            onVerificationSuccess: onLoginSuccess,
+                            onVerificationSuccess: { user, token in
+                                sessionManager.loginSuccess(
+                                    user: user,
+                                    token: token ?? "",
+                                    serverURL: activeServerURL
+                                )
+                                onLoginSuccess(user)
+                            },
                             onCancel: {
                                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                     is2FAMode = false
@@ -85,18 +102,22 @@ public struct LoginView: View {
             checkCaptchaStatus()
         }
         .sheet(isPresented: $showCaptchaModal) {
-            CaptchaChallengeSheetView(
-                serverURL: serverURL,
-                challengeToken: activeChallengeToken,
-                targetId: activeTargetToy,
+            CaptchaChallengeContainerView(
+                serverURL: activeServerURL,
+                initialChallengeToken: activeChallengeToken,
+                initialCaptchaType: activeCaptchaType,
+                initialTarget: activeTargetToy,
                 onSuccess: { token in
                     showCaptchaModal = false
                     captchaVerified = true
                     captchaVerificationToken = token
                     errorMessage = nil
+                    // Unmittelbar nach der Captcha-Lösung Anmeldung erneut auslösen
+                    performLogin(withCaptchaToken: token)
                 },
                 onCancel: {
                     showCaptchaModal = false
+                    captchaLoading = false
                 }
             )
         }
@@ -133,7 +154,7 @@ public struct LoginView: View {
     }
 
     private var shortHostName: String {
-        let clean = serverURL
+        let clean = activeServerURL
             .replacingOccurrences(of: "http://", with: "")
             .replacingOccurrences(of: "https://", with: "")
         return clean.components(separatedBy: "/").first ?? clean
@@ -152,7 +173,7 @@ public struct LoginView: View {
                         .foregroundColor(PortColors.textPrimary)
                         .shadow(color: .black.opacity(0.6), radius: 6, y: 2)
 
-                    Text("Melde dich mit deinem Benutzerkonto an.")
+                    Text("Melden Sie sich mit Ihrem Benutzerkonto an.")
                         .font(.system(size: 13))
                         .foregroundColor(PortColors.textSecondary)
                 }
@@ -264,7 +285,7 @@ public struct LoginView: View {
             }
 
             // Anmelden-Button (Monochrom Weiß)
-            Button(action: performLogin) {
+            Button(action: { performLogin() }) {
                 HStack(spacing: 10) {
                     if isSubmitting {
                         ProgressView()
@@ -298,7 +319,7 @@ public struct LoginView: View {
     // MARK: - Server-Aktionen
     private func checkCaptchaStatus() {
         Task {
-            let required = await AuthService.shared.fetchCaptchaStatus(serverURL: serverURL)
+            let required = await AuthService.shared.fetchCaptchaStatus(serverURL: activeServerURL)
             await MainActor.run {
                 if required {
                     self.captchaRequired = true
@@ -312,7 +333,7 @@ public struct LoginView: View {
         errorMessage = nil
 
         Task {
-            guard let challenge = await AuthService.shared.fetchCaptchaChallenge(serverURL: serverURL),
+            guard let challenge = await AuthService.shared.fetchCaptchaChallenge(serverURL: activeServerURL),
                   let token = challenge.challengeToken else {
                 await MainActor.run {
                     captchaLoading = false
@@ -324,29 +345,37 @@ public struct LoginView: View {
             await MainActor.run {
                 captchaLoading = false
                 self.activeChallengeToken = token
+                self.activeCaptchaType = challenge.effectiveType
                 self.activeTargetToy = challenge.target ?? "duck"
                 self.showCaptchaModal = true
             }
         }
     }
 
-    private func performLogin() {
-        guard canSubmit else { return }
+    private func performLogin(withCaptchaToken tokenOverride: String? = nil) {
+        guard canSubmit || tokenOverride != nil else { return }
         isSubmitting = true
         errorMessage = nil
 
+        let tokenToUse = tokenOverride ?? captchaVerificationToken
+
         Task {
             let result = await AuthService.shared.login(
-                serverURL: serverURL,
+                serverURL: activeServerURL,
                 username: usernameInput,
                 password: passwordInput,
-                captchaToken: captchaVerificationToken
+                captchaToken: tokenToUse
             )
 
             await MainActor.run {
                 isSubmitting = false
                 switch result {
-                case .success(let user, _):
+                case .success(let user, let token):
+                    sessionManager.loginSuccess(
+                        user: user,
+                        token: token ?? "",
+                        serverURL: activeServerURL
+                    )
                     onLoginSuccess(user)
 
                 case .requires2FA(let pendingToken, let methods, let masked):
@@ -357,12 +386,12 @@ public struct LoginView: View {
                         self.is2FAMode = true
                     }
 
-                case .requiresCaptcha(let challengeToken, _, let target):
-                    // Der Server verlangt ein Captcha: Modal öffnen, NICHT automatisch lösen!
+                case .requiresCaptcha(let challengeToken, let cType, let target):
                     self.captchaRequired = true
                     self.captchaVerified = false
                     self.captchaVerificationToken = nil
                     self.activeChallengeToken = challengeToken
+                    self.activeCaptchaType = cType ?? "claw"
                     self.activeTargetToy = target ?? "duck"
                     self.showCaptchaModal = true
 

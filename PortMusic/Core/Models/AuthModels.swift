@@ -16,6 +16,13 @@ public struct UserProfile: Codable, Identifiable, Equatable {
     }
 }
 
+public enum LoginResult: Equatable {
+    case success(user: UserProfile, token: String?)
+    case requires2FA(pendingToken: String, methods: [String], maskedEmail: String?)
+    case requiresCaptcha(challengeToken: String, captchaType: String?, target: String?)
+    case failure(reason: String)
+}
+
 public struct LoginResponseData: Codable {
     public let token: String?
     public let user: UserProfile?
@@ -36,11 +43,44 @@ public struct CaptchaStatusResponse: Codable {
     public let enabled: Bool?
 }
 
+public struct CaptchaChallengeRequest: Codable {
+    public let preferredType: String?
+    public let failedBefore: Bool?
+
+    public init(preferredType: String? = nil, failedBefore: Bool? = nil) {
+        self.preferredType = preferredType
+        self.failedBefore = failedBefore
+    }
+}
+
+public struct CaptchaSolution: Codable {
+    public let verified: Bool
+    public let picked: String?
+    public let clumpsRemaining: Int?
+
+    public init(verified: Bool, picked: String? = nil, clumpsRemaining: Int? = nil) {
+        self.verified = verified
+        self.picked = picked
+        self.clumpsRemaining = clumpsRemaining
+    }
+}
+
 public struct CaptchaChallengeResponse: Codable {
     public let challengeToken: String?
     public let type: String?
     public let captchaType: String?
     public let target: String?
+
+    public init(challengeToken: String?, type: String? = nil, captchaType: String? = nil, target: String? = nil) {
+        self.challengeToken = challengeToken
+        self.type = type
+        self.captchaType = captchaType
+        self.target = target
+    }
+
+    public var effectiveType: String {
+        return captchaType ?? type ?? "claw"
+    }
 }
 
 public struct CaptchaVerifyResponse: Codable {

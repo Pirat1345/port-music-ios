@@ -14,6 +14,8 @@ public struct CaptchaWidgetView: View {
     public var body: some View {
         Button(action: {
             if !isVerified && !isLoading {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
                 onCheckboxTapped()
             }
         }) {
@@ -48,7 +50,7 @@ public struct CaptchaWidgetView: View {
 
                 Spacer()
 
-                // Rechte Seite: Captcha-Branding
+                // Right Side Captcha Branding
                 VStack(spacing: 2) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 14))
