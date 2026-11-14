@@ -226,74 +226,90 @@ struct PlayerQueueSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if let current = player.currentTrack {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Aktueller Titel")
-                                    .font(.headline)
-                                    .foregroundColor(.portTextSecondary)
-                                    .padding(.horizontal)
-
-                                TrackListRow(song: current) {
-                                    dismiss()
-                                }
-                                .padding(.horizontal)
-                                .background(Color.white.opacity(0.04))
-                                .cornerRadius(12)
-                                .padding(.horizontal)
-                            }
+            contentView
+                .navigationTitle("Warteschlange")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Fertig") {
+                            dismiss()
                         }
-
-                        let upcoming = player.upcomingQueue
-                        if !upcoming.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Als Nächstes (\(upcoming.count))")
-                                    .font(.headline)
-                                    .foregroundColor(.portTextSecondary)
-                                    .padding(.horizontal)
-
-                                LazyVStack(spacing: 4) {
-                                    ForEach(Array(upcoming.enumerated()), id: \.element.id) { _, song in
-                                        TrackListRow(song: song) {
-                                            if let globalIdx = player.queue.firstIndex(where: { $0.id == song.id }) {
-                                                player.currentIndex = globalIdx
-                                                player.loadAndPlayCurrent()
-                                            }
-                                        }
-                                        .padding(.horizontal)
-                                    }
-                                }
-                            }
-                        } else {
-                            VStack(spacing: 8) {
-                                Image(systemName: "music.note.list")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.portTextMuted)
-                                Text("Keine weiteren Titel in der Warteschlange")
-                                    .font(.subheadline)
-                                    .foregroundColor(.portTextMuted)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 40)
-                        }
+                        .foregroundColor(.portBrand)
                     }
-                    .padding(.vertical, 16)
                 }
-            }
-            .navigationTitle("Warteschlange")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Fertig") {
-                        dismiss()
+        }
+    }
+
+    private var contentView: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if let current = player.currentTrack {
+                        currentTrackView(current)
                     }
-                    .foregroundColor(.portBrand)
+
+                    let upcoming = player.upcomingQueue
+                    if !upcoming.isEmpty {
+                        upcomingListView(upcoming: upcoming)
+                    } else {
+                        emptyQueueView
+                    }
+                }
+                .padding(.vertical, 16)
+            }
+        }
+    }
+
+    private func currentTrackView(_ current: SongEntity) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Aktueller Titel")
+                .font(.headline)
+                .foregroundColor(.portTextSecondary)
+                .padding(.horizontal)
+
+            TrackListRow(song: current) {
+                dismiss()
+            }
+            .padding(.horizontal)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(12)
+            .padding(.horizontal)
+        }
+    }
+
+    private func upcomingListView(upcoming: [SongEntity]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Als Nächstes (\(upcoming.count))")
+                .font(.headline)
+                .foregroundColor(.portTextSecondary)
+                .padding(.horizontal)
+
+            LazyVStack(spacing: 4) {
+                ForEach(upcoming) { song in
+                    TrackListRow(song: song) {
+                        if let globalIdx = player.queue.firstIndex(where: { $0.id == song.id }) {
+                            player.currentIndex = globalIdx
+                            player.loadAndPlayCurrent()
+                        }
+                    }
+                    .padding(.horizontal)
                 }
             }
         }
+    }
+
+    private var emptyQueueView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "music.note.list")
+                .font(.largeTitle)
+                .foregroundColor(.portTextMuted)
+            Text("Keine weiteren Titel in der Warteschlange")
+                .font(.subheadline)
+                .foregroundColor(.portTextMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
     }
 }

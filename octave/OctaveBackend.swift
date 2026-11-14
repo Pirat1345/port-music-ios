@@ -593,7 +593,7 @@ final class OctaveBackend: @unchecked Sendable {
         if let existing = UserDefaults.standard.string(forKey: deviceIdKey), !existing.isEmpty {
             return existing
         }
-        let vendor = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        let vendor = UUID().uuidString
         let generated = "pm-ios-\(vendor.lowercased())"
         UserDefaults.standard.set(generated, forKey: deviceIdKey)
         return generated
@@ -669,7 +669,7 @@ final class OctaveBackend: @unchecked Sendable {
     func applyAuth(to request: inout URLRequest) {
         // Geräte- und Lokalisierungs-Header
         request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
-        request.setValue(UIDevice.current.model, forHTTPHeaderField: "X-Device-Model")
+        request.setValue("iPhone", forHTTPHeaderField: "X-Device-Model")
         request.setValue("PortMusic-iOS", forHTTPHeaderField: "X-Browser")
         request.setValue("de", forHTTPHeaderField: "Accept-Language")
 
