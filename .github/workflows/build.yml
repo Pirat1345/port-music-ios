@@ -25,12 +25,19 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: Build Port Music App & Widgets
+      - name: Install XcodeGen & Generate Project
+        run: |
+          set -e
+          brew install xcodegen
+          xcodegen generate
+          ls -la PortMusic.xcodeproj
+
+      - name: Build Port Music App
         run: |
           set -e
           xcodebuild clean build \
-            -project Octave.xcodeproj \
-            -scheme octave \
+            -project PortMusic.xcodeproj \
+            -scheme PortMusic \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -derivedDataPath derived_data \
