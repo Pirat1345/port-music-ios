@@ -452,41 +452,14 @@ final class DownloadManager: @unchecked Sendable {
             }
 
             // 3. Manifest aktualisieren
-            lock.lock()
-            var manifest = currentManifestLocked()
-            let nowStr = ISO8601DateFormatter().string(from: Date())
-
-            if let idx = manifest.tracks.firstIndex(where: { $0.id == song.id }) {
-                var existing = manifest.tracks[idx]
-                var playlists = Set(existing.playlistIds)
-                if let pid = playlistId { playlists.insert(pid) }
-                existing.playlistIds = Array(playlists)
-                existing.isSavedIndividually = savedIndividually || existing.isSavedIndividually
-                existing.fileSize = fileSize
-                existing.durationSec = song.durationSec > 0 ? song.durationSec : existing.durationSec
-                manifest.tracks[idx] = existing
-            } else {
-                let record = DownloadedTrackRecord(
-                    id: song.id,
-                    title: song.title,
-                    artist: song.artist,
-                    albumTitle: song.albumTitle,
-                    artworkURLString: song.artworkURLString,
-                    localAudioPath: "PortMusicDownloads/tracks/\(audioFileName)",
-                    localArtworkPath: localArtworkRelPath,
-                    fileSize: fileSize,
-                    durationSec: song.durationSec,
-                    downloadDate: nowStr,
-                    lyrics: nil,
-                    playlistIds: playlistId != nil ? [playlistId!] : [],
-                    isSavedIndividually: savedIndividually
-                )
-                manifest.tracks.append(record)
-            }
-
-            saveManifestLocked(manifest)
-            syncStateFromManifest(manifest)
-            lock.unlock()
+            recordDownloadedTrack(
+                song: song,
+                playlistId: playlistId,
+                savedIndividually: savedIndividually,
+                audioFileName: audioFileName,
+                localArtworkRelPath: localArtworkRelPath,
+                fileSize: fileSize
+            )
 
         } catch {
             if fileManager.fileExists(atPath: tempAudioURL.path) {
@@ -496,18 +469,67 @@ final class DownloadManager: @unchecked Sendable {
         }
     }
 
+    private func recordDownloadedTrack(
+        song: SongEntity,
+        playlistId: String?,
+        savedIndividually: Bool,
+        audioFileName: String,
+        localArtworkRelPath: String?,
+        fileSize: Int64
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        var manifest = currentManifestLocked()
+        let nowStr = ISO8601DateFormatter().string(from: Date())
+
+        if let idx = manifest.tracks.firstIndex(where: { $0.id == song.id }) {
+            var existing = manifest.tracks[idx]
+            var playlists = Set(existing.playlistIds)
+            if let pid = playlistId { playlists.insert(pid) }
+            existing.playlistIds = Array(playlists)
+            existing.isSavedIndividually = savedIndividually || existing.isSavedIndividually
+            existing.fileSize = fileSize
+            existing.durationSec = song.durationSec > 0 ? song.durationSec : existing.durationSec
+            manifest.tracks[idx] = existing
+        } else {
+            let record = DownloadedTrackRecord(
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                albumTitle: song.albumTitle,
+                artworkURLString: song.artworkURLString,
+                localAudioPath: "PortMusicDownloads/tracks/\(audioFileName)",
+                localArtworkPath: localArtworkRelPath,
+                fileSize: fileSize,
+                durationSec: song.durationSec,
+                downloadDate: nowStr,
+                lyrics: nil,
+                playlistIds: playlistId != nil ? [playlistId!] : [],
+                isSavedIndividually: savedIndividually
+            )
+            manifest.tracks.append(record)
+        }
+
+        saveManifestLocked(manifest)
+        syncStateFromManifest(manifest)
+    }
+
     func downloadPlaylist(playlist: PlaylistRecord, tracks: [SongEntity]) async throws {
         for track in tracks {
             try await download(song: track, playlistId: playlist.id, savedIndividually: false)
         }
+        recordDownloadedPlaylist(playlist: playlist, trackIds: tracks.map { $0.id })
+    }
 
+    private func recordDownloadedPlaylist(playlist: PlaylistRecord, trackIds: [String]) {
         lock.lock()
+        defer { lock.unlock() }
         var manifest = currentManifestLocked()
         let nowStr = ISO8601DateFormatter().string(from: Date())
         let plRecord = DownloadedPlaylistRecord(
             id: playlist.id,
             title: playlist.title,
-            trackIds: tracks.map { $0.id },
+            trackIds: trackIds,
             coverURL: playlist.cover_url,
             localCoverFileName: nil,
             downloadDate: nowStr
@@ -519,7 +541,6 @@ final class DownloadManager: @unchecked Sendable {
         }
         saveManifestLocked(manifest)
         syncStateFromManifest(manifest)
-        lock.unlock()
     }
 
     // MARK: - Deletion & Storage Purge
