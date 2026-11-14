@@ -11,11 +11,16 @@ public struct LoginView: View {
     @State private var isSubmitting: Bool = false
     @State private var errorMessage: String? = nil
 
-    // Captcha-Status
+    // Captcha-Zustand
     @State private var captchaRequired: Bool = false
     @State private var captchaLoading: Bool = false
     @State private var captchaVerified: Bool = false
     @State private var captchaVerificationToken: String? = nil
+
+    // Captcha-Modal
+    @State private var showCaptchaModal: Bool = false
+    @State private var activeChallengeToken: String = ""
+    @State private var activeTargetToy: String = "duck"
 
     // 2FA-Modus
     @State private var is2FAMode: Bool = false
@@ -79,9 +84,25 @@ public struct LoginView: View {
         .onAppear {
             checkCaptchaStatus()
         }
+        .sheet(isPresented: $showCaptchaModal) {
+            CaptchaChallengeSheetView(
+                serverURL: serverURL,
+                challengeToken: activeChallengeToken,
+                targetId: activeTargetToy,
+                onSuccess: { token in
+                    showCaptchaModal = false
+                    captchaVerified = true
+                    captchaVerificationToken = token
+                    errorMessage = nil
+                },
+                onCancel: {
+                    showCaptchaModal = false
+                }
+            )
+        }
     }
 
-    // MARK: - Dezenter Server-Indikator (kein aufdringlicher Banner)
+    // MARK: - Dezenter Server-Indikator
     private var serverHeaderBadge: some View {
         HStack {
             Button(action: onChangeServer) {
@@ -208,12 +229,12 @@ public struct LoginView: View {
                     )
                 }
 
-                // Captcha-Feld (wird angezeigt wenn vom Server verlangt)
+                // Captcha-Feld
                 if captchaRequired {
                     CaptchaWidgetView(
                         isVerified: captchaVerified,
                         isLoading: captchaLoading,
-                        onCheckboxTapped: solveCaptcha
+                        onCheckboxTapped: openInteractiveCaptcha
                     )
                     .padding(.top, 4)
                 }
@@ -286,12 +307,11 @@ public struct LoginView: View {
         }
     }
 
-    private func solveCaptcha() {
+    private func openInteractiveCaptcha() {
         captchaLoading = true
         errorMessage = nil
 
         Task {
-            // Challenge abrufen falls noch keine vorliegt
             guard let challenge = await AuthService.shared.fetchCaptchaChallenge(serverURL: serverURL),
                   let token = challenge.challengeToken else {
                 await MainActor.run {
@@ -301,21 +321,11 @@ public struct LoginView: View {
                 return
             }
 
-            // Verifizierung durchführen
-            let verifyRes = await AuthService.shared.verifyCaptcha(
-                serverURL: serverURL,
-                challengeToken: token,
-                target: challenge.target
-            )
-
             await MainActor.run {
                 captchaLoading = false
-                if verifyRes.success, let vToken = verifyRes.token {
-                    self.captchaVerified = true
-                    self.captchaVerificationToken = vToken
-                } else {
-                    self.errorMessage = "Captcha-Verifizierung fehlgeschlagen."
-                }
+                self.activeChallengeToken = token
+                self.activeTargetToy = challenge.target ?? "duck"
+                self.showCaptchaModal = true
             }
         }
     }
@@ -348,21 +358,13 @@ public struct LoginView: View {
                     }
 
                 case .requiresCaptcha(let challengeToken, _, let target):
+                    // Der Server verlangt ein Captcha: Modal öffnen, NICHT automatisch lösen!
                     self.captchaRequired = true
                     self.captchaVerified = false
                     self.captchaVerificationToken = nil
-                    // Automatisch Challenge lösen
-                    self.captchaLoading = true
-                    Task {
-                        let res = await AuthService.shared.verifyCaptcha(serverURL: serverURL, challengeToken: challengeToken, target: target)
-                        await MainActor.run {
-                            self.captchaLoading = false
-                            if res.success, let vToken = res.token {
-                                self.captchaVerified = true
-                                self.captchaVerificationToken = vToken
-                            }
-                        }
-                    }
+                    self.activeChallengeToken = challengeToken
+                    self.activeTargetToy = target ?? "duck"
+                    self.showCaptchaModal = true
 
                 case .failure(let reason):
                     self.errorMessage = reason
