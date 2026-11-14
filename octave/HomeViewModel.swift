@@ -37,4 +37,51 @@ final class HomeViewModel: @unchecked Sendable {
         self.userPlaylists = pls ?? []
         self.isLoading = false
     }
+
+    func buildCombinedHomePool(initialSong: SongEntity) -> [SongEntity] {
+        var pool: [SongEntity] = [initialSong]
+        var seen = Set<String>([initialSong.id])
+
+        if let picks = discovery?.topPicks {
+            for p in picks {
+                if !seen.contains(p.id) {
+                    seen.insert(p.id)
+                    pool.append(SongEntity(
+                        id: p.id,
+                        title: p.title,
+                        artist: p.subtitle ?? "Port Music",
+                        artworkURLString: p.cover
+                    ))
+                }
+            }
+        }
+        if let trending = discovery?.trendingEverywhere {
+            for t in trending {
+                let entity = t.toSongEntity()
+                if !seen.contains(entity.id) {
+                    seen.insert(entity.id)
+                    pool.append(entity)
+                }
+            }
+        }
+        if let hits = discovery?.todaysTopHits {
+            for h in hits {
+                let entity = h.track.toSongEntity()
+                if !seen.contains(entity.id) {
+                    seen.insert(entity.id)
+                    pool.append(entity)
+                }
+            }
+        }
+        if let top100 = discovery?.top100Global {
+            for t in top100 {
+                let entity = t.track.toSongEntity()
+                if !seen.contains(entity.id) {
+                    seen.insert(entity.id)
+                    pool.append(entity)
+                }
+            }
+        }
+        return pool
+    }
 }

@@ -8,6 +8,7 @@ import SwiftUI
 struct NowPlayingView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AudioPlayer.self) private var player
+    @Environment(LibraryIndex.self) private var libraryIndex
     @Environment(ThemeEngine.self) private var theme
     @State private var presenter = NowPlayingPresenter()
     @State private var showLyrics: Bool = false
@@ -37,6 +38,17 @@ struct NowPlayingView: View {
                         .lineLimit(1)
                     Spacer()
                     Menu {
+                        if let current = player.currentTrack {
+                            let isFav = libraryIndex.isSaved(id: current.id)
+                            Button {
+                                Task { await libraryIndex.toggle(song: current) }
+                            } label: {
+                                Label(
+                                    isFav ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen",
+                                    systemImage: isFav ? "heart.fill" : "heart"
+                                )
+                            }
+                        }
                         Button("Titel teilen", action: {})
                         Button("Zur Playlist hinzufügen", action: {})
                     } label: {
@@ -84,12 +96,25 @@ struct NowPlayingView: View {
                     }
                     Spacer()
                     Button {
-                        // Toggle favorite
+                        guard let current = player.currentTrack else { return }
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        Task {
+                            await libraryIndex.toggle(song: current)
+                        }
                     } label: {
-                        Image(systemName: "heart")
+                        let isFav = player.currentTrack.map { libraryIndex.isSaved(id: $0.id) } ?? false
+                        Image(systemName: isFav ? "heart.fill" : "heart")
                             .font(.title2)
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(isFav ? Color(red: 252/255, green: 60/255, blue: 68/255) : .white.opacity(0.8))
+                            .scaleEffect(isFav ? 1.08 : 1.0)
+                            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isFav)
                     }
+                    .accessibilityLabel(
+                        player.currentTrack.map { libraryIndex.isSaved(id: $0.id) } == true
+                        ? "Aus Favoriten entfernen"
+                        : "Zu Favoriten hinzufügen"
+                    )
                 }
                 .padding(.horizontal, 24)
 
@@ -183,11 +208,92 @@ struct NowPlayingView: View {
         .sheet(isPresented: $showLyrics) {
             LyricsView()
         }
+        .sheet(isPresented: $showQueue) {
+            PlayerQueueSheet()
+        }
     }
 
     private func formatTime(_ seconds: Double) -> String {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+struct PlayerQueueSheet: View {
+    @Environment(AudioPlayer.self) private var player
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if let current = player.currentTrack {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Aktueller Titel")
+                                    .font(.headline)
+                                    .foregroundColor(.portTextSecondary)
+                                    .padding(.horizontal)
+
+                                TrackListRow(song: current) {
+                                    dismiss()
+                                }
+                                .padding(.horizontal)
+                                .background(Color.white.opacity(0.04))
+                                .cornerRadius(12)
+                                .padding(.horizontal)
+                            }
+                        }
+
+                        let upcoming = player.upcomingQueue
+                        if !upcoming.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Als Nächstes (\(upcoming.count))")
+                                    .font(.headline)
+                                    .foregroundColor(.portTextSecondary)
+                                    .padding(.horizontal)
+
+                                LazyVStack(spacing: 4) {
+                                    ForEach(Array(upcoming.enumerated()), id: \.element.id) { _, song in
+                                        TrackListRow(song: song) {
+                                            if let globalIdx = player.queue.firstIndex(where: { $0.id == song.id }) {
+                                                player.currentIndex = globalIdx
+                                                player.loadAndPlayCurrent()
+                                            }
+                                        }
+                                        .padding(.horizontal)
+                                    }
+                                }
+                            }
+                        } else {
+                            VStack(spacing: 8) {
+                                Image(systemName: "music.note.list")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.portTextMuted)
+                                Text("Keine weiteren Titel in der Warteschlange")
+                                    .font(.subheadline)
+                                    .foregroundColor(.portTextMuted)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        }
+                    }
+                    .padding(.vertical, 16)
+                }
+            }
+            .navigationTitle("Warteschlange")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Fertig") {
+                        dismiss()
+                    }
+                    .foregroundColor(.portBrand)
+                }
+            }
+        }
     }
 }

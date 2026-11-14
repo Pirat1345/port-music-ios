@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 public struct UserInfo: Codable, Sendable, Hashable {
     public let userId: String
@@ -158,18 +159,397 @@ public struct TrackRecord: Codable, Identifiable, Sendable, Hashable {
     public let title: String
     public let artist: String
     public let album: String?
-    public let duration: Double?
-    public let cover_url: String?
+    public let duration: Double
+    public let cover_url: String
+    public let cached_at: Int64
+    public let storage_type: String?
+    public let file_path: String?
+    public let file_hash: String?
+    public let file_size: Int64?
+    public let format: String?
+    public let lyrics: String?
+    public let genre: String?
+    public let year: Int?
+    public let owner_id: String?
+    public let visibility: String?
+    public let shared_with: String?
+    public let track_number: Int?
+
+    public init(
+        id: String,
+        title: String,
+        artist: String,
+        album: String? = nil,
+        duration: Double = 0.0,
+        cover_url: String = "",
+        cached_at: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
+        storage_type: String? = "stream",
+        file_path: String? = nil,
+        file_hash: String? = nil,
+        file_size: Int64? = nil,
+        format: String? = nil,
+        lyrics: String? = nil,
+        genre: String? = nil,
+        year: Int? = nil,
+        owner_id: String? = nil,
+        visibility: String? = "public",
+        shared_with: String? = nil,
+        track_number: Int? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+        self.cover_url = cover_url
+        self.cached_at = cached_at
+        self.storage_type = storage_type
+        self.file_path = file_path
+        self.file_hash = file_hash
+        self.file_size = file_size
+        self.format = format
+        self.lyrics = lyrics
+        self.genre = genre
+        self.year = year
+        self.owner_id = owner_id
+        self.visibility = visibility
+        self.shared_with = shared_with
+        self.track_number = track_number
+    }
+
+    public init(from song: SongEntity) {
+        self.init(
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            album: song.albumTitle,
+            duration: song.durationSec,
+            cover_url: song.artworkURLString ?? "",
+            cached_at: Int64(Date().timeIntervalSince1970 * 1000),
+            storage_type: "stream"
+        )
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.artist = try container.decode(String.self, forKey: .artist)
+        self.album = try container.decodeIfPresent(String.self, forKey: .album)
+        self.duration = (try? container.decodeIfPresent(Double.self, forKey: .duration)) ?? 0.0
+        self.cover_url = (try? container.decodeIfPresent(String.self, forKey: .cover_url)) ?? ""
+        self.cached_at = (try? container.decodeIfPresent(Int64.self, forKey: .cached_at)) ?? Int64(Date().timeIntervalSince1970 * 1000)
+        self.storage_type = try? container.decodeIfPresent(String.self, forKey: .storage_type)
+        self.file_path = try? container.decodeIfPresent(String.self, forKey: .file_path)
+        self.file_hash = try? container.decodeIfPresent(String.self, forKey: .file_hash)
+        self.file_size = try? container.decodeIfPresent(Int64.self, forKey: .file_size)
+        self.format = try? container.decodeIfPresent(String.self, forKey: .format)
+        self.lyrics = try? container.decodeIfPresent(String.self, forKey: .lyrics)
+        self.genre = try? container.decodeIfPresent(String.self, forKey: .genre)
+        self.year = try? container.decodeIfPresent(Int.self, forKey: .year)
+        self.owner_id = try? container.decodeIfPresent(String.self, forKey: .owner_id)
+        self.visibility = try? container.decodeIfPresent(String.self, forKey: .visibility)
+        self.shared_with = try? container.decodeIfPresent(String.self, forKey: .shared_with)
+        self.track_number = try? container.decodeIfPresent(Int.self, forKey: .track_number)
+    }
 
     public func toSongEntity() -> SongEntity {
         SongEntity(
             id: id,
             title: title,
             artist: artist,
-            artworkURLString: cover_url,
+            artworkURLString: cover_url.isEmpty ? nil : cover_url,
             albumTitle: album,
-            durationSec: duration ?? 0.0
+            albumId: nil,
+            artistId: nil,
+            durationSec: duration
         )
+    }
+}
+
+// MARK: - State DTO Models (Matching backend /api/state)
+
+public struct PortMusicTrackDto: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let title: String
+    public let artist: String
+    public let album: String?
+    public let cover: String?
+    public let coverFileId: String?
+    public let duration: String?
+    public let durationSeconds: Int?
+    public let storageType: String?
+    public let streamSource: String?
+    public let sourceType: String?
+    public let sourceUrl: String?
+    public let sourceFileId: String?
+    public let ownerId: String?
+    public let lyrics: String?
+    public let genre: String?
+    public let year: Int?
+    public let bpm: Double?
+    public let trackNumber: Int?
+    public let diskNumber: Int?
+    public let explicitContent: Bool?
+    public let isAudiobook: Bool?
+
+    public init(
+        id: String,
+        title: String,
+        artist: String,
+        album: String? = nil,
+        cover: String? = nil,
+        coverFileId: String? = nil,
+        duration: String? = nil,
+        durationSeconds: Int? = nil,
+        storageType: String? = "stream",
+        streamSource: String? = "youtube",
+        sourceType: String? = "stream",
+        sourceUrl: String? = nil,
+        sourceFileId: String? = nil,
+        ownerId: String? = nil,
+        lyrics: String? = nil,
+        genre: String? = nil,
+        year: Int? = nil,
+        bpm: Double? = nil,
+        trackNumber: Int? = nil,
+        diskNumber: Int? = nil,
+        explicitContent: Bool? = false,
+        isAudiobook: Bool? = false
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.cover = cover
+        self.coverFileId = coverFileId
+        self.duration = duration
+        self.durationSeconds = durationSeconds
+        self.storageType = storageType
+        self.streamSource = streamSource
+        self.sourceType = sourceType
+        self.sourceUrl = sourceUrl
+        self.sourceFileId = sourceFileId
+        self.ownerId = ownerId
+        self.lyrics = lyrics
+        self.genre = genre
+        self.year = year
+        self.bpm = bpm
+        self.trackNumber = trackNumber
+        self.diskNumber = diskNumber
+        self.explicitContent = explicitContent
+        self.isAudiobook = isAudiobook
+    }
+
+    public init(from song: SongEntity) {
+        self.id = song.id
+        self.title = song.title
+        self.artist = song.artist
+        self.album = song.albumTitle
+        self.cover = song.artworkURLString
+        self.coverFileId = nil
+        let durSec = Int(song.durationSec)
+        self.duration = "\(durSec / 60):\(String(format: "%02d", durSec % 60))"
+        self.durationSeconds = durSec
+        self.storageType = "stream"
+        self.streamSource = "youtube"
+        self.sourceType = "stream"
+        self.sourceUrl = nil
+        self.sourceFileId = nil
+        self.ownerId = nil
+        self.lyrics = nil
+        self.genre = nil
+        self.year = nil
+        self.bpm = nil
+        self.trackNumber = nil
+        self.diskNumber = nil
+        self.explicitContent = false
+        self.isAudiobook = false
+    }
+
+    public func toSongEntity() -> SongEntity {
+        SongEntity(
+            id: id,
+            title: title,
+            artist: artist,
+            artworkURLString: cover,
+            albumTitle: album,
+            albumId: nil,
+            artistId: nil,
+            durationSec: Double(durationSeconds ?? 0)
+        )
+    }
+}
+
+public struct PortMusicPlaylistDto: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let name: String
+    public let description: String?
+    public let cover: String?
+    public let tracks: [PortMusicTrackDto]
+    public let folderId: String?
+    public let color: String?
+    public let visibility: String?
+    public let ownerId: String?
+    public let sharedWith: [String]?
+    public let isAudiobook: Bool?
+    public let createdAt: String?
+    public let updatedAt: String?
+
+    public init(
+        id: String,
+        name: String,
+        description: String? = nil,
+        cover: String? = nil,
+        tracks: [PortMusicTrackDto] = [],
+        folderId: String? = nil,
+        color: String? = nil,
+        visibility: String? = "public",
+        ownerId: String? = nil,
+        sharedWith: [String]? = nil,
+        isAudiobook: Bool? = false,
+        createdAt: String? = nil,
+        updatedAt: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.cover = cover
+        self.tracks = tracks
+        self.folderId = folderId
+        self.color = color
+        self.visibility = visibility
+        self.ownerId = ownerId
+        self.sharedWith = sharedWith
+        self.isAudiobook = isAudiobook
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct PortMusicFolderDto: Codable, Identifiable, Sendable, Hashable {
+    public let id: String
+    public let name: String
+    public let parentId: String?
+    public let parentFolderId: String?
+    public let color: String?
+    public let ownerId: String?
+    public let createdAt: String?
+    public let updatedAt: String?
+
+    public init(
+        id: String,
+        name: String,
+        parentId: String? = nil,
+        parentFolderId: String? = nil,
+        color: String? = nil,
+        ownerId: String? = nil,
+        createdAt: String? = nil,
+        updatedAt: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.parentId = parentId
+        self.parentFolderId = parentFolderId
+        self.color = color
+        self.ownerId = ownerId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct PortMusicLibraryState: Codable, Sendable, Hashable {
+    public var savedPlaylists: [String]
+    public var playlistOrder: [String]
+    public var folderOrder: [String]
+    public var savedAlbums: [String]
+    public var savedArtists: [String]
+    public var albumFolderMapping: [String: String]?
+    public var pinnedPlaylists: [String]
+    public var pinnedFolders: [String]
+
+    public init(
+        savedPlaylists: [String] = [],
+        playlistOrder: [String] = [],
+        folderOrder: [String] = [],
+        savedAlbums: [String] = [],
+        savedArtists: [String] = [],
+        albumFolderMapping: [String: String]? = nil,
+        pinnedPlaylists: [String] = [],
+        pinnedFolders: [String] = []
+    ) {
+        self.savedPlaylists = savedPlaylists
+        self.playlistOrder = playlistOrder
+        self.folderOrder = folderOrder
+        self.savedAlbums = savedAlbums
+        self.savedArtists = savedArtists
+        self.albumFolderMapping = albumFolderMapping
+        self.pinnedPlaylists = pinnedPlaylists
+        self.pinnedFolders = pinnedFolders
+    }
+}
+
+public struct PortMusicAudiobookBookmark: Codable, Sendable, Hashable {
+    public let trackId: String
+    public let positionSeconds: Double
+
+    public init(trackId: String, positionSeconds: Double) {
+        self.trackId = trackId
+        self.positionSeconds = positionSeconds
+    }
+}
+
+public struct PortMusicState: Codable, Sendable {
+    public var playlists: [PortMusicPlaylistDto]
+    public var folders: [PortMusicFolderDto]
+    public var favorites: [PortMusicTrackDto]
+    public var globalTracks: [PortMusicTrackDto]
+    public var libraryState: PortMusicLibraryState?
+    public var audiobookBookmarks: [String: PortMusicAudiobookBookmark]?
+    public var ignoredDuplicatePairs: [String]?
+    public var deletedPlaylistIds: [String]?
+    public var deletedFolderIds: [String]?
+    public var deletedFavoriteIds: [String]?
+    public var replaceFavorites: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case playlists
+        case folders
+        case favorites
+        case globalTracks
+        case libraryState
+        case audiobookBookmarks
+        case ignoredDuplicatePairs
+        case deletedPlaylistIds = "_deletedPlaylistIds"
+        case deletedFolderIds = "_deletedFolderIds"
+        case deletedFavoriteIds = "_deletedFavoriteIds"
+        case replaceFavorites = "_replaceFavorites"
+    }
+
+    public init(
+        playlists: [PortMusicPlaylistDto] = [],
+        folders: [PortMusicFolderDto] = [],
+        favorites: [PortMusicTrackDto] = [],
+        globalTracks: [PortMusicTrackDto] = [],
+        libraryState: PortMusicLibraryState? = nil,
+        audiobookBookmarks: [String: PortMusicAudiobookBookmark]? = nil,
+        ignoredDuplicatePairs: [String]? = nil,
+        deletedPlaylistIds: [String]? = nil,
+        deletedFolderIds: [String]? = nil,
+        deletedFavoriteIds: [String]? = nil,
+        replaceFavorites: Bool? = nil
+    ) {
+        self.playlists = playlists
+        self.folders = folders
+        self.favorites = favorites
+        self.globalTracks = globalTracks
+        self.libraryState = libraryState
+        self.audiobookBookmarks = audiobookBookmarks
+        self.ignoredDuplicatePairs = ignoredDuplicatePairs
+        self.deletedPlaylistIds = deletedPlaylistIds
+        self.deletedFolderIds = deletedFolderIds
+        self.deletedFavoriteIds = deletedFavoriteIds
+        self.replaceFavorites = replaceFavorites
     }
 }
 
@@ -207,6 +587,17 @@ final class OctaveBackend: @unchecked Sendable {
     private let serverURLKey = "port_music_server_url"
     private let tokenKey = "port_music_auth_token"
     private let defaultServerURL = "http://192.168.178.19:3000"
+    private let deviceIdKey = "port_music_device_id"
+
+    var deviceId: String {
+        if let existing = UserDefaults.standard.string(forKey: deviceIdKey), !existing.isEmpty {
+            return existing
+        }
+        let vendor = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        let generated = "pm-ios-\(vendor.lowercased())"
+        UserDefaults.standard.set(generated, forKey: deviceIdKey)
+        return generated
+    }
 
     var serverBaseURLString: String {
         get {
@@ -243,8 +634,21 @@ final class OctaveBackend: @unchecked Sendable {
         self.serverBaseURLString = urlString
     }
 
-    func streamURL(for trackId: String, quality: String = "320") -> URL {
-        apiBaseURL.appendingPathComponent("audio").appendingPathComponent(quality).appendingPathComponent(trackId)
+    func streamURL(for trackId: String, quality: String = "320", title: String? = nil, artist: String? = nil, album: String? = nil) -> URL {
+        let base = apiBaseURL.appendingPathComponent("audio").appendingPathComponent(quality).appendingPathComponent(trackId)
+        guard title != nil || artist != nil || album != nil else {
+            return base
+        }
+        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        var queryItems: [URLQueryItem] = []
+        if let title, !title.isEmpty { queryItems.append(URLQueryItem(name: "title", value: title)) }
+        if let artist, !artist.isEmpty { queryItems.append(URLQueryItem(name: "artist", value: artist)) }
+        if let album, !album.isEmpty { queryItems.append(URLQueryItem(name: "album", value: album)) }
+        if !queryItems.isEmpty {
+            components?.queryItems = queryItems
+            return components?.url ?? base
+        }
+        return base
     }
 
     func atmosStreamURL(for trackId: String) -> URL {
@@ -255,11 +659,21 @@ final class OctaveBackend: @unchecked Sendable {
         let url = apiBaseURL.appendingPathComponent("api").appendingPathComponent("lyrics").appendingPathComponent(trackId)
         var req = URLRequest(url: url)
         applyAuth(to: &req)
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        if let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 401 {
+            handle401()
+        }
         return data
     }
 
     func applyAuth(to request: inout URLRequest) {
+        // Geräte- und Lokalisierungs-Header
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
+        request.setValue(UIDevice.current.model, forHTTPHeaderField: "X-Device-Model")
+        request.setValue("PortMusic-iOS", forHTTPHeaderField: "X-Browser")
+        request.setValue("de", forHTTPHeaderField: "Accept-Language")
+
+        // Authentifizierungs-Header
         if let token = authToken, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue(token, forHTTPHeaderField: "octave-account-key")
@@ -381,34 +795,113 @@ final class OctaveBackend: @unchecked Sendable {
         return (user, resolvedToken)
     }
 
-    func checkSession() async throws -> UserInfo? {
-        guard let token = authToken, !token.isEmpty else { return nil }
-        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("me")
+    func testConnection(customURLString: String? = nil) async -> Bool {
+        let baseURL: URL
+        if let custom = customURLString?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            var clean = custom.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if !clean.starts(with: "http://") && !clean.starts(with: "https://") {
+                clean = "http://" + clean
+            }
+            baseURL = URL(string: clean) ?? apiBaseURL
+        } else {
+            baseURL = apiBaseURL
+        }
+
+        let endpoint = baseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("status")
         var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 5.0
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let httpRes = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(httpRes.statusCode)
+        } catch {
+            return false
+        }
+    }
+
+    func checkSession() async throws -> UserInfo {
+        guard let token = authToken, !token.isEmpty else {
+            throw BackendError.missingToken
+        }
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("check")
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = 8.0
         applyAuth(to: &request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
-            return nil
+        guard let httpRes = response as? HTTPURLResponse else {
+            throw BackendError.invalidResponse
         }
 
-        struct MeResponse: Codable {
-            let authenticated: Bool
-            let user: BackendUserDto?
+        if httpRes.statusCode == 401 {
+            handle401()
+            throw BackendError.unauthorized
         }
-        struct BackendUserDto: Codable {
+
+        guard (200...299).contains(httpRes.statusCode) else {
+            throw BackendError.serverError("HTTP \(httpRes.statusCode)")
+        }
+
+        struct CheckResponseDto: Codable {
+            let authenticated: Bool?
+            let userId: String?
+            let username: String?
+            let displayName: String?
+            let role: String?
+            let avatar: String?
+            let email: String?
+            let user: NestedUserDto?
+        }
+        struct NestedUserDto: Codable {
             let userId: String
             let username: String
             let displayName: String
-            let role: String
+            let role: String?
             let avatar: String?
             let email: String?
         }
 
-        if let me = try? JSONDecoder().decode(MeResponse.self, from: data), me.authenticated, let u = me.user {
-            return UserInfo(userId: u.userId, username: u.username, displayName: u.displayName, role: u.role, avatar: u.avatar, email: u.email)
+        let decoded = try JSONDecoder().decode(CheckResponseDto.self, from: data)
+        if let u = decoded.user {
+            return UserInfo(
+                userId: u.userId,
+                username: u.username,
+                displayName: u.displayName,
+                role: u.role ?? "user",
+                avatar: u.avatar,
+                email: u.email
+            )
+        } else if let uid = decoded.userId, let un = decoded.username {
+            return UserInfo(
+                userId: uid,
+                username: un,
+                displayName: decoded.displayName ?? un,
+                role: decoded.role ?? "user",
+                avatar: decoded.avatar,
+                email: decoded.email
+            )
+        } else {
+            throw BackendError.invalidResponse
         }
-        return nil
+    }
+
+    func logout() async {
+        guard let token = authToken, !token.isEmpty else { return }
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("auth").appendingPathComponent("logout")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5.0
+        applyAuth(to: &request)
+
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    func handle401() {
+        Task { @MainActor in
+            AccountStore.shared.signOut(notifyServer: false)
+        }
     }
 
     private func extractSessionCookie(from response: HTTPURLResponse) -> String? {
@@ -431,10 +924,37 @@ final class OctaveBackend: @unchecked Sendable {
         var req = URLRequest(url: endpoint)
         applyAuth(to: &req)
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+        guard let httpRes = response as? HTTPURLResponse else {
+            throw BackendError.invalidResponse
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            throw BackendError.unauthorized
+        }
+        guard (200...299).contains(httpRes.statusCode) else {
             throw BackendError.serverError("Discovery Home konnte nicht geladen werden")
         }
         return try JSONDecoder().decode(DiscoveryHomeResponse.self, from: data)
+    }
+
+    func fetchRecommendations(limit: Int = 10) async throws -> [DiscoveryTrack] {
+        var components = URLComponents(url: apiBaseURL.appendingPathComponent("api").appendingPathComponent("discovery").appendingPathComponent("recommendations"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
+        guard let url = components?.url else { return [] }
+        var req = URLRequest(url: url)
+        applyAuth(to: &req)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse else {
+            return []
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            return []
+        }
+        guard (200...299).contains(httpRes.statusCode) else {
+            return []
+        }
+        return (try? JSONDecoder().decode([DiscoveryTrack].self, from: data)) ?? []
     }
 
     func fetchUserPlaylists() async throws -> [PlaylistRecord] {
@@ -442,7 +962,14 @@ final class OctaveBackend: @unchecked Sendable {
         var req = URLRequest(url: endpoint)
         applyAuth(to: &req)
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+        guard let httpRes = response as? HTTPURLResponse else {
+            return []
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            return []
+        }
+        guard (200...299).contains(httpRes.statusCode) else {
             return []
         }
         return (try? JSONDecoder().decode([PlaylistRecord].self, from: data)) ?? []
@@ -510,22 +1037,136 @@ final class OctaveBackend: @unchecked Sendable {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+        guard let httpRes = response as? HTTPURLResponse else {
+            throw BackendError.invalidResponse
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            throw BackendError.unauthorized
+        }
+        guard (200...299).contains(httpRes.statusCode) else {
             throw BackendError.serverError("Playlist konnte nicht erstellt werden")
         }
         return try JSONDecoder().decode(PlaylistRecord.self, from: data)
     }
 
-    func fetchFavorites() async throws -> [SongEntity] {
+    // MARK: - Favorites API
+
+    public func fetchFavorites() async throws -> [SongEntity] {
         let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("favorites")
         var req = URLRequest(url: endpoint)
         applyAuth(to: &req)
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+        guard let httpRes = response as? HTTPURLResponse else {
+            return []
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            return []
+        }
+        guard (200...299).contains(httpRes.statusCode) else {
             return []
         }
         let records = (try? JSONDecoder().decode([TrackRecord].self, from: data)) ?? []
         return records.map { $0.toSongEntity() }
+    }
+
+    public func addFavorite(song: SongEntity) async throws -> Bool {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("favorites")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(to: &req)
+
+        let record = TrackRecord(from: song)
+        req.httpBody = try JSONEncoder().encode(record)
+
+        let (_, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse else {
+            return false
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            throw BackendError.unauthorized
+        }
+        return (200...299).contains(httpRes.statusCode)
+    }
+
+    public func removeFavorite(id: String) async throws -> Bool {
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let endpoint = URL(string: "\(serverBaseURLString)/api/favorites/\(encoded)") else {
+            return false
+        }
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "DELETE"
+        applyAuth(to: &req)
+
+        let (_, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse else {
+            return false
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            throw BackendError.unauthorized
+        }
+        return (200...299).contains(httpRes.statusCode) || httpRes.statusCode == 404
+    }
+
+    public func checkFavorite(id: String) async throws -> Bool {
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let endpoint = URL(string: "\(serverBaseURLString)/api/favorites/\(encoded)") else {
+            return false
+        }
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            return false
+        }
+        return (try? JSONDecoder().decode(Bool.self, from: data)) ?? false
+    }
+
+    // MARK: - State API
+
+    public func fetchState() async throws -> PortMusicState? {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("state")
+        var req = URLRequest(url: endpoint)
+        applyAuth(to: &req)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse else {
+            return nil
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            throw BackendError.unauthorized
+        }
+        guard (200...299).contains(httpRes.statusCode) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(PortMusicState.self, from: data)
+    }
+
+    public func saveState(_ state: PortMusicState) async throws -> Bool {
+        let endpoint = apiBaseURL.appendingPathComponent("api").appendingPathComponent("state")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        applyAuth(to: &req)
+
+        req.httpBody = try JSONEncoder().encode(state)
+
+        let (_, response) = try await URLSession.shared.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse else {
+            return false
+        }
+        if httpRes.statusCode == 401 {
+            handle401()
+            throw BackendError.unauthorized
+        }
+        return (200...299).contains(httpRes.statusCode)
     }
 
     func fetchDiscoveryArtist(name: String) async throws -> DiscoveryArtistFull {
@@ -598,6 +1239,7 @@ public enum BackendError: LocalizedError {
     case invalidResponse
     case invalidCredentials
     case missingToken
+    case unauthorized
     case serverError(String)
 
     public var errorDescription: String? {
@@ -608,6 +1250,8 @@ public enum BackendError: LocalizedError {
             return "Ungültiger Benutzername oder Passwort."
         case .missingToken:
             return "Authentifizierungstoken nicht erhalten."
+        case .unauthorized:
+            return "Sitzung abgelaufen. Bitte erneut anmelden."
         case .serverError(let msg):
             return "Serverfehler: \(msg)"
         }

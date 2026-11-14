@@ -42,6 +42,15 @@ struct NowPlayingHost: View {
                     Spacer()
 
                     Button {
+                        player.previous()
+                    } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
                         player.togglePlayPause()
                     } label: {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")

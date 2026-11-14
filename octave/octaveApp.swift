@@ -23,6 +23,9 @@ struct PortMusicApp: App {
             .environment(account)
             .environment(libraryIndex)
             .preferredColorScheme(.dark)
+            .task {
+                _ = await account.restoreSession()
+            }
         }
     }
 }

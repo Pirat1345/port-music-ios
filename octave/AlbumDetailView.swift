@@ -17,6 +17,10 @@ struct AlbumDetailView: View {
     @State private var tracks: [SongEntity] = []
     @State private var isLoading: Bool = true
 
+    private var isAlbumDownloaded: Bool {
+        !tracks.isEmpty && tracks.allSatisfy { DownloadManager.shared.isDownloaded(id: $0.id) }
+    }
+
     var body: some View {
         ZStack {
             Color.portBackground
@@ -59,23 +63,66 @@ struct AlbumDetailView: View {
                                 Spacer()
 
                                 if !tracks.isEmpty {
-                                    Button {
-                                        if let first = tracks.first {
-                                            player.play(song: first, in: tracks)
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            if let first = tracks.first {
+                                                player.play(song: first, in: tracks)
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "play.fill")
+                                                    .font(.caption)
+                                                Text("Album abspielen")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.bold)
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(Color.portBrand)
+                                            .foregroundColor(.black)
+                                            .cornerRadius(20)
                                         }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "play.fill")
-                                                .font(.caption)
-                                            Text("Album abspielen")
-                                                .font(.subheadline)
-                                                .fontWeight(.bold)
+
+                                        Button {
+                                            Task {
+                                                if isAlbumDownloaded {
+                                                    for track in tracks {
+                                                        DownloadManager.shared.removeDownload(trackId: track.id)
+                                                    }
+                                                    DownloadManager.shared.removePlaylistDownload(playlistId: "album_\(albumId)")
+                                                } else {
+                                                    let record = PlaylistRecord(
+                                                        id: "album_\(albumId)",
+                                                        title: albumTitle,
+                                                        description: artist,
+                                                        cover_url: artworkURL,
+                                                        folder_id: nil,
+                                                        color: nil,
+                                                        visibility: nil,
+                                                        created_at: nil,
+                                                        updated_at: nil
+                                                    )
+                                                    try? await DownloadManager.shared.downloadPlaylist(playlist: record, tracks: tracks)
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: isAlbumDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
+                                                    .font(.caption)
+                                                Text(isAlbumDownloaded ? "Download entfernen" : "Herunterladen")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                            }
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 8)
+                                            .background(Color.portSurfaceElevated)
+                                            .foregroundColor(isAlbumDownloaded ? .portBrand : .white)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 20)
+                                                    .stroke(Color.portBorder, lineWidth: 1)
+                                            )
+                                            .cornerRadius(20)
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(Color.portBrand)
-                                        .foregroundColor(.black)
-                                        .cornerRadius(20)
                                     }
                                 }
                             }
@@ -113,7 +160,11 @@ struct AlbumDetailView: View {
         do {
             self.tracks = try await OctaveBackend.shared.fetchAlbumTracks(id: albumId)
         } catch {
-            print("Failed to load album tracks: \(error)")
+            if let offlineTracks = DownloadManager.shared.tracksForPlaylist(id: "album_\(albumId)"), !offlineTracks.isEmpty {
+                self.tracks = offlineTracks
+            } else {
+                print("Failed to load album tracks: \(error)")
+            }
         }
         isLoading = false
     }

@@ -10,15 +10,11 @@ struct ArtworkView: View {
 
     var body: some View {
         if let urlString, let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
+            AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
                 switch phase {
                 case .empty:
                     Rectangle()
                         .fill(Color.portSurfaceElevated)
-                        .overlay(
-                            ProgressView()
-                                .tint(.portBrand)
-                        )
                 case .success(let image):
                     image
                         .resizable()

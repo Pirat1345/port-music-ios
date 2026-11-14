@@ -9,8 +9,6 @@ struct AccountSettingsView: View {
     @Environment(AccountStore.self) private var account
     @Environment(\.dismiss) private var dismiss
 
-    @State private var serverAddress: String = ""
-    @State private var isEditingServer: Bool = false
     @State private var showSignOutConfirm: Bool = false
 
     var body: some View {
@@ -40,58 +38,32 @@ struct AccountSettingsView: View {
             }
 
             Section("Backend-Verbindung") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Server-Adresse")
-                            .font(.caption)
-                            .foregroundColor(.portTextMuted)
-                        if isEditingServer {
-                            TextField("http://192.168.178.19:3000", text: $serverAddress)
-                                .textInputAutocapitalization(.never)
-                                .disableAutocorrection(true)
+                NavigationLink {
+                    ServerConfigurationView()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Server-Konfiguration")
                                 .font(.subheadline)
+                                .fontWeight(.medium)
                                 .foregroundColor(.white)
-                        } else {
                             Text(account.serverURL)
-                                .font(.subheadline)
-                                .foregroundColor(.white)
+                                .font(.caption)
+                                .foregroundColor(.portTextMuted)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(account.isAuthenticated ? Color.portBrand : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(account.isAuthenticated ? "Verbunden" : "Getrennt")
+                                .font(.caption)
+                                .foregroundColor(.portTextSecondary)
                         }
                     }
-
-                    Spacer()
-
-                    if isEditingServer {
-                        Button("Fertig") {
-                            account.updateServerURL(serverAddress)
-                            isEditingServer = false
-                        }
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundColor(.portBrand)
-                    } else {
-                        Button("Ändern") {
-                            serverAddress = account.serverURL
-                            isEditingServer = true
-                        }
-                        .font(.caption)
-                        .foregroundColor(.portBrand)
-                    }
-                }
-                .listRowBackground(Color.portSurface)
-
-                HStack {
-                    Text("Status")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(account.isAuthenticated ? Color.portBrand : Color.orange)
-                            .frame(width: 8, height: 8)
-                        Text(account.isAuthenticated ? "Verbunden" : "Getrennt")
-                            .font(.caption)
-                            .foregroundColor(.portTextSecondary)
-                    }
+                    .padding(.vertical, 2)
                 }
                 .listRowBackground(Color.portSurface)
             }
@@ -131,9 +103,6 @@ struct AccountSettingsView: View {
                 dismiss()
             }
             Button("Abbrechen", role: .cancel) {}
-        }
-        .onAppear {
-            self.serverAddress = account.serverURL
         }
     }
 }

@@ -40,9 +40,16 @@ final class AccountStore: @unchecked Sendable {
         }
     }
 
+    @MainActor
     func updateServerURL(_ newURL: String) {
-        OctaveBackend.shared.setServerBaseURL(newURL)
+        let trimmed = newURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        OctaveBackend.shared.setServerBaseURL(trimmed)
         self.serverURL = OctaveBackend.shared.serverBaseURLString
+
+        // Beim Serverwechsel bisherige Sitzung verwerfen und zur Anmeldung leiten
+        signOut(notifyServer: false)
     }
 
     @MainActor
@@ -60,6 +67,9 @@ final class AccountStore: @unchecked Sendable {
             UserDefaults.standard.set(self.username, forKey: userDefaultsUsernameKey)
             UserDefaults.standard.set(self.displayName, forKey: userDefaultsDisplayNameKey)
             UserDefaults.standard.set(self.email, forKey: userDefaultsEmailKey)
+
+            // Post-Login-Synchronisation
+            _ = try? await DataSyncManager.shared.syncAfterLogin()
 
             isLoading = false
             return true
@@ -91,6 +101,9 @@ final class AccountStore: @unchecked Sendable {
             UserDefaults.standard.set(self.displayName, forKey: userDefaultsDisplayNameKey)
             UserDefaults.standard.set(self.email, forKey: userDefaultsEmailKey)
 
+            // Post-Login-Synchronisation
+            _ = try? await DataSyncManager.shared.syncAfterLogin()
+
             isLoading = false
             return true
         } catch {
@@ -101,26 +114,63 @@ final class AccountStore: @unchecked Sendable {
     }
 
     @MainActor
-    func restoreSession() async {
-        guard OctaveBackend.shared.authToken != nil else {
-            isAuthenticated = false
-            return
+    func restoreSession() async -> Bool {
+        guard let token = OctaveBackend.shared.authToken, !token.isEmpty else {
+            self.isAuthenticated = false
+            self.currentUser = nil
+            return false
         }
-        if let user = try? await OctaveBackend.shared.checkSession() {
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let user = try await OctaveBackend.shared.checkSession()
             self.currentUser = user
             self.username = user.username
             self.displayName = user.displayName
             self.email = user.email ?? ""
             self.isAuthenticated = true
+
+            UserDefaults.standard.set(self.username, forKey: userDefaultsUsernameKey)
+            UserDefaults.standard.set(self.displayName, forKey: userDefaultsDisplayNameKey)
+            UserDefaults.standard.set(self.email, forKey: userDefaultsEmailKey)
+
+            // Online-Synchronisation nach erfolgreicher Sitzungsvalidierung
+            _ = try? await DataSyncManager.shared.syncAfterLogin()
+
+            return true
+        } catch BackendError.unauthorized {
+            // Server hat das Token explizit abgewiesen (HTTP 401)
+            signOut(notifyServer: false)
+            return false
+        } catch {
+            // Offline- oder Verbindungsfehler:
+            // Wenn bereits ein Profil im Speicher liegt, Sitzung für Offline-Nutzung erhalten
+            if self.currentUser != nil {
+                self.isAuthenticated = true
+                return true
+            } else {
+                signOut(notifyServer: false)
+                return false
+            }
         }
     }
 
     @MainActor
-    func signOut() {
+    func signOut(notifyServer: Bool = true) {
+        if notifyServer {
+            Task {
+                await OctaveBackend.shared.logout()
+            }
+        }
+
         OctaveBackend.shared.authToken = nil
         UserDefaults.standard.removeObject(forKey: userDefaultsUsernameKey)
         UserDefaults.standard.removeObject(forKey: userDefaultsDisplayNameKey)
         UserDefaults.standard.removeObject(forKey: userDefaultsEmailKey)
+
+        LibraryIndex.shared.clear()
 
         self.currentUser = nil
         self.username = "Listener"

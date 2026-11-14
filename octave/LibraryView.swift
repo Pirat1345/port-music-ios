@@ -6,6 +6,7 @@
 //  - Real user playlists from /api/playlists
 //  - Create new playlist (+ button)
 //  - Lieblingssongs (Favorites)
+//  - Offline downloads filter and cached playback
 //  - Clean dark glassmorphism styling
 //
 
@@ -15,6 +16,7 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
     case all = "Alle"
     case playlists = "Playlists"
     case favorites = "Lieblingssongs"
+    case downloaded = "Heruntergeladen"
     case artists = "Künstler"
     case albums = "Alben"
 
@@ -26,7 +28,7 @@ struct LibraryView: View {
     @State private var userPlaylists: [PlaylistRecord] = []
     @State private var favorites: [SongEntity] = []
     @State private var isLoading: Bool = true
-    @State private var activeFilter: LibraryFilter = .all
+    @State private var activeFilter: LibraryFilter = NetworkMonitor.shared.isConnected ? .all : .downloaded
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var newPlaylistTitle: String = ""
     @State private var isCreating: Bool = false
@@ -102,7 +104,15 @@ struct LibraryView: View {
             Text("Gib einen Namen für deine neue Playlist ein.")
         }
         .task {
+            if !NetworkMonitor.shared.isConnected {
+                activeFilter = .downloaded
+            }
             await loadLibraryData()
+        }
+        .onChange(of: NetworkMonitor.shared.isConnected) { _, isConnected in
+            if !isConnected {
+                activeFilter = .downloaded
+            }
         }
     }
 
@@ -149,17 +159,21 @@ struct LibraryView: View {
     private var mainScrollView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if activeFilter == .all || activeFilter == .favorites {
-                    favoritesBanner
-                }
-                if activeFilter == .all || activeFilter == .playlists {
-                    playlistsSection
-                }
-                if (activeFilter == .all || activeFilter == .artists) && !libraryArtists.isEmpty {
-                    artistsSection
-                }
-                if (activeFilter == .all || activeFilter == .albums) && !libraryAlbums.isEmpty {
-                    albumsSection
+                if activeFilter == .downloaded {
+                    downloadedSection
+                } else {
+                    if activeFilter == .all || activeFilter == .favorites {
+                        favoritesBanner
+                    }
+                    if activeFilter == .all || activeFilter == .playlists {
+                        playlistsSection
+                    }
+                    if (activeFilter == .all || activeFilter == .artists) && !libraryArtists.isEmpty {
+                        artistsSection
+                    }
+                    if (activeFilter == .all || activeFilter == .albums) && !libraryAlbums.isEmpty {
+                        albumsSection
+                    }
                 }
             }
             .padding(.top, 8)
@@ -168,6 +182,119 @@ struct LibraryView: View {
         .refreshable {
             await loadLibraryData()
         }
+    }
+
+    @ViewBuilder
+    private var downloadedSection: some View {
+        let dm = DownloadManager.shared
+        if dm.downloadedTracks.isEmpty && dm.downloadedPlaylists.isEmpty {
+            emptyDownloadsView
+        } else {
+            VStack(alignment: .leading, spacing: 20) {
+                if !dm.downloadedPlaylists.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Heruntergeladene Playlists")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 18) {
+                            ForEach(dm.downloadedPlaylists) { pl in
+                                NavigationLink(destination: PlaylistDetailView(
+                                    playlistId: pl.id,
+                                    title: pl.title,
+                                    description: nil,
+                                    coverURL: pl.coverURL,
+                                    isUserPlaylist: true
+                                )) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        ZStack {
+                                            if let cover = pl.coverURL, !cover.isEmpty {
+                                                ArtworkView(urlString: cover)
+                                                    .frame(maxWidth: .infinity)
+                                                    .aspectRatio(1.0, contentMode: .fill)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                            } else {
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .fill(Color.portSurfaceLight)
+                                                    .aspectRatio(1.0, contentMode: .fit)
+                                                    .overlay(
+                                                        Image(systemName: "music.note")
+                                                            .font(.system(size: 36))
+                                                            .foregroundColor(.portTextMuted)
+                                                    )
+                                            }
+                                        }
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(Color.portBorder, lineWidth: 1)
+                                        )
+                                        .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+
+                                        Text(pl.title)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.white)
+                                            .lineLimit(1)
+
+                                        Text("Playlist · Offline")
+                                            .font(.caption2)
+                                            .foregroundColor(.portTextMuted)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+
+                if !dm.downloadedTracks.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            Text("Heruntergeladene Titel")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            Spacer()
+                            Text("\(dm.downloadedTracks.count) Titel")
+                                .font(.caption)
+                                .foregroundColor(.portTextMuted)
+                        }
+                        .padding(.horizontal, 16)
+
+                        LazyVStack(spacing: 4) {
+                            ForEach(dm.downloadedTracks) { song in
+                                TrackListRow(song: song) {
+                                    player.play(song: song, in: dm.downloadedTracks)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var emptyDownloadsView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 40))
+                .foregroundColor(.portTextMuted)
+            Text("Keine Downloads vorhanden")
+                .font(.headline)
+                .foregroundColor(.white)
+            Text("Lade Titel oder Playlists herunter, um sie offline ohne Internetverbindung anzuhören.")
+                .font(.caption)
+                .foregroundColor(.portTextSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 36)
+        .padding(.horizontal, 24)
     }
 
     private var favoritesBanner: some View {

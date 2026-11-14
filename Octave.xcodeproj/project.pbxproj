@@ -169,6 +169,8 @@
 		200000A00000000000000000 /* WrappedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000A00000000000000000 /* WrappedView.swift */; };
 		200000A10000000000000000 /* ZoomOpenTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000A10000000000000000 /* ZoomOpenTransition.swift */; };
 		200000A20000000000000000 /* octaveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000A20000000000000000 /* octaveApp.swift */; };
+		200000A30000000000000000 /* DataSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000A30000000000000000 /* DataSyncManager.swift */; };
+		200000A40000000000000000 /* ServerConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000A40000000000000000 /* ServerConfigurationView.swift */; };
 		400000100000000000000010 /* OctaveWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000100000000000000010 /* OctaveWidgets.swift */; };
 		400000110000000000000011 /* OctaveWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000110000000000000011 /* OctaveWidgetsBundle.swift */; };
 		400000120000000000000012 /* OctaveWidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000120000000000000012 /* OctaveWidgetIntents.swift */; };
@@ -369,6 +371,8 @@
 		100000A00000000000000000 /* WrappedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrappedView.swift; sourceTree = "<group>"; };
 		100000A10000000000000000 /* ZoomOpenTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomOpenTransition.swift; sourceTree = "<group>"; };
 		100000A20000000000000000 /* octaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = octaveApp.swift; sourceTree = "<group>"; };
+		100000A30000000000000000 /* DataSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataSyncManager.swift; sourceTree = "<group>"; };
+		100000A40000000000000000 /* ServerConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigurationView.swift; sourceTree = "<group>"; };
 		300000100000000000000010 /* OctaveWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctaveWidgets.swift; sourceTree = "<group>"; };
 		300000110000000000000011 /* OctaveWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctaveWidgetsBundle.swift; sourceTree = "<group>"; };
 		300000120000000000000012 /* OctaveWidgetIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctaveWidgetIntents.swift; sourceTree = "<group>"; };
@@ -578,6 +582,8 @@
 				100000A00000000000000000 /* WrappedView.swift */,
 				100000A10000000000000000 /* ZoomOpenTransition.swift */,
 				100000A20000000000000000 /* octaveApp.swift */,
+				100000A30000000000000000 /* DataSyncManager.swift */,
+				100000A40000000000000000 /* ServerConfigurationView.swift */,
 			);
 			path = octave;
 			sourceTree = "<group>";
@@ -885,6 +891,8 @@
 				200000A00000000000000000 /* WrappedView.swift in Sources */,
 				200000A10000000000000000 /* ZoomOpenTransition.swift in Sources */,
 				200000A20000000000000000 /* octaveApp.swift in Sources */,
+				200000A30000000000000000 /* DataSyncManager.swift in Sources */,
+				200000A40000000000000000 /* ServerConfigurationView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

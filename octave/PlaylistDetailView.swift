@@ -19,6 +19,10 @@ struct PlaylistDetailView: View {
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
 
+    private var isPlaylistDownloaded: Bool {
+        DownloadManager.shared.isPlaylistDownloaded(playlistId: playlistId)
+    }
+
     var body: some View {
         ZStack {
             Color.portBackground
@@ -75,23 +79,63 @@ struct PlaylistDetailView: View {
                                 Spacer()
 
                                 if !tracks.isEmpty {
-                                    Button {
-                                        if let first = tracks.first {
-                                            player.play(song: first, in: tracks)
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            if let first = tracks.first {
+                                                player.play(song: first, in: tracks)
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "play.fill")
+                                                    .font(.caption)
+                                                Text("Abspielen")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.bold)
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .background(Color.portBrand)
+                                            .foregroundColor(.black)
+                                            .cornerRadius(20)
                                         }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "play.fill")
-                                                .font(.caption)
-                                            Text("Abspielen")
-                                                .font(.subheadline)
-                                                .fontWeight(.bold)
+
+                                        Button {
+                                            Task {
+                                                if isPlaylistDownloaded {
+                                                    DownloadManager.shared.removePlaylistDownload(playlistId: playlistId)
+                                                } else {
+                                                    let record = PlaylistRecord(
+                                                        id: playlistId,
+                                                        title: title,
+                                                        description: description,
+                                                        cover_url: coverURL,
+                                                        folder_id: nil,
+                                                        color: nil,
+                                                        visibility: nil,
+                                                        created_at: nil,
+                                                        updated_at: nil
+                                                    )
+                                                    try? await DownloadManager.shared.downloadPlaylist(playlist: record, tracks: tracks)
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: isPlaylistDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
+                                                    .font(.caption)
+                                                Text(isPlaylistDownloaded ? "Download entfernen" : "Herunterladen")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                            }
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 8)
+                                            .background(Color.portSurfaceElevated)
+                                            .foregroundColor(isPlaylistDownloaded ? .portBrand : .white)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 20)
+                                                    .stroke(Color.portBorder, lineWidth: 1)
+                                            )
+                                            .cornerRadius(20)
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                        .background(Color.portBrand)
-                                        .foregroundColor(.black)
-                                        .cornerRadius(20)
                                     }
                                 }
                             }
@@ -145,7 +189,11 @@ struct PlaylistDetailView: View {
                 self.tracks = try await OctaveBackend.shared.fetchOnlinePlaylistTracks(id: playlistId)
             }
         } catch {
-            self.errorMessage = "Titel konnten nicht geladen werden"
+            if let offlineTracks = DownloadManager.shared.tracksForPlaylist(id: playlistId), !offlineTracks.isEmpty {
+                self.tracks = offlineTracks
+            } else {
+                self.errorMessage = "Titel konnten nicht geladen werden"
+            }
         }
         isLoading = false
     }

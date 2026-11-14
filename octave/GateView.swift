@@ -32,7 +32,6 @@ struct GateView<Content: View>: View {
     @State private var password: String = ""
     @State private var confirmPassword: String = ""
 
-    @State private var serverURL: String = ""
     @State private var showServerConfig: Bool = false
     @State private var localError: String?
 
@@ -70,8 +69,10 @@ struct GateView<Content: View>: View {
                                     .foregroundColor(.portTextSecondary)
                             }
 
-                            // Server Address Pill
-                            VStack(spacing: 8) {
+                            // Server Address Pill with dedicated modal sheet trigger
+                            Button {
+                                showServerConfig = true
+                            } label: {
                                 HStack(spacing: 10) {
                                     Image(systemName: "server.rack")
                                         .foregroundColor(.portBrand)
@@ -85,16 +86,14 @@ struct GateView<Content: View>: View {
 
                                     Spacer()
 
-                                    Button {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            showServerConfig.toggle()
-                                        }
-                                    } label: {
-                                        Text(showServerConfig ? "Schließen" : "Server ändern")
-                                            .font(.caption2)
-                                            .fontWeight(.semibold)
-                                            .foregroundColor(.portBrand)
-                                    }
+                                    Text("Server ändern")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.portBrand)
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2)
+                                        .foregroundColor(.portTextMuted)
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
@@ -104,43 +103,16 @@ struct GateView<Content: View>: View {
                                         .stroke(Color.portBorder, lineWidth: 1)
                                 )
                                 .cornerRadius(10)
-
-                                if showServerConfig {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("Backend-Adresse (Port Music Server)")
-                                            .font(.caption2)
-                                            .foregroundColor(.portTextMuted)
-
-                                        HStack {
-                                            TextField("http://192.168.178.19:3000", text: $serverURL)
-                                                .textInputAutocapitalization(.never)
-                                                .disableAutocorrection(true)
-                                                .foregroundColor(.white)
-                                                .font(.subheadline)
-
-                                            Button("Speichern") {
-                                                account.updateServerURL(serverURL)
-                                                withAnimation { showServerConfig = false }
-                                            }
-                                            .font(.caption)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.portBrand)
-                                        }
-                                        .padding(10)
-                                        .background(Color.portSurfaceElevated)
-                                        .cornerRadius(8)
-                                    }
-                                    .padding(12)
-                                    .background(Color.portSurface)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color.portBorder, lineWidth: 1)
-                                    )
-                                    .cornerRadius(12)
-                                    .transition(.opacity)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 24)
+                            .sheet(isPresented: $showServerConfig) {
+                                NavigationStack {
+                                    ServerConfigurationView(onSaved: {
+                                        self.mode = .login
+                                    })
                                 }
                             }
-                            .padding(.horizontal, 24)
 
                             // Auth Mode Picker (Anmelden / Registrieren)
                             Picker("Modus", selection: $mode) {
@@ -190,9 +162,6 @@ struct GateView<Content: View>: View {
                         }
                     }
                 }
-            }
-            .onAppear {
-                self.serverURL = account.serverURL
             }
         }
     }

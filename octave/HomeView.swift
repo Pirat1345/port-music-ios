@@ -199,7 +199,8 @@ struct HomeView: View {
                                                         artist: pick.subtitle ?? "Port Music",
                                                         artworkURLString: pick.cover
                                                     )
-                                                    player.play(song: song, in: [song])
+                                                    let pool = viewModel.buildCombinedHomePool(initialSong: song)
+                                                    player.play(song: song, in: pool)
                                                 } label: {
                                                     Image(systemName: "play.circle.fill")
                                                         .font(.system(size: 38))
@@ -235,7 +236,8 @@ struct HomeView: View {
                             LazyVStack(spacing: 4) {
                                 ForEach(songList.prefix(8)) { song in
                                     TrackListRow(song: song) {
-                                        player.play(song: song, in: songList)
+                                        let pool = viewModel.buildCombinedHomePool(initialSong: song)
+                                        player.play(song: song, in: pool)
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 4)
@@ -265,12 +267,88 @@ struct HomeView: View {
                                             .frame(width: 24, alignment: .center)
 
                                         TrackListRow(song: song) {
-                                            player.play(song: song, in: songList)
+                                            let pool = viewModel.buildCombinedHomePool(initialSong: song)
+                                            player.play(song: song, in: pool)
                                         }
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 4)
                                 }
+                            }
+                        }
+                    }
+
+                    // 6b. Top 100: Global (Globale Charts) - Visible in .all and .music
+                    if (viewModel.activeFilter == .all || viewModel.activeFilter == .music),
+                       let top100 = viewModel.discovery?.top100Global, !top100.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Top 100: Global")
+                                        .font(.title3)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.white)
+                                    Text("Tägliche globale Charts")
+                                        .font(.caption)
+                                        .foregroundColor(.portTextMuted)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 14) {
+                                    ForEach(Array(top100.enumerated()), id: \.offset) { index, item in
+                                        let rank = item.rank ?? (index + 1)
+                                        let song = item.track.toSongEntity()
+                                        Button {
+                                            let pool = top100.map { $0.track.toSongEntity() }
+                                            player.play(song: song, in: pool)
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                ZStack(alignment: .topLeading) {
+                                                    ArtworkView(urlString: song.artworkURLString)
+                                                        .frame(width: 58, height: 58)
+                                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                                                    Text("\(rank)")
+                                                        .font(.caption2)
+                                                        .fontWeight(.bold)
+                                                        .foregroundColor(.white)
+                                                        .padding(.horizontal, 5)
+                                                        .padding(.vertical, 2)
+                                                        .background(Color.black.opacity(0.75))
+                                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                                        .padding(4)
+                                                }
+                                                .frame(width: 58, height: 58)
+
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(song.title)
+                                                        .font(.subheadline)
+                                                        .fontWeight(.semibold)
+                                                        .foregroundColor(.white)
+                                                        .lineLimit(1)
+
+                                                    Text(song.artist)
+                                                        .font(.caption)
+                                                        .foregroundColor(.portTextSecondary)
+                                                        .lineLimit(1)
+                                                }
+                                                .frame(width: 140, alignment: .leading)
+                                            }
+                                            .padding(10)
+                                            .background(Color.portSurfaceElevated)
+                                            .cornerRadius(12)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(Color.portBorder, lineWidth: 1)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.horizontal)
                             }
                         }
                     }
@@ -395,7 +473,6 @@ struct HomeView: View {
                                                 ArtworkView(urlString: art.picture)
                                                     .frame(width: 100, height: 100)
                                                     .clipShape(Circle())
-                                                    .overlay(Circle().stroke(Color.portBorder, lineWidth: 1))
                                                     .shadow(color: .black.opacity(0.35), radius: 6)
 
                                                 Text(art.name)
@@ -423,7 +500,6 @@ struct HomeView: View {
                                                     ArtworkView(urlString: art.picture)
                                                         .frame(width: 90, height: 90)
                                                         .clipShape(Circle())
-                                                        .overlay(Circle().stroke(Color.portBorder, lineWidth: 1))
                                                         .shadow(color: .black.opacity(0.35), radius: 6)
 
                                                     Text(art.name)

@@ -8,31 +8,45 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AudioPlayer.self) private var player
     @State private var presenter = SettingsPresenter()
+    @State private var showDeleteConfirm: Bool = false
 
     var body: some View {
         Form {
-            Section("Audio Playback") {
-                Toggle("Gapless Playback", isOn: Binding(
+            Section("Server & Verbindung") {
+                NavigationLink(destination: ServerConfigurationView()) {
+                    HStack {
+                        Text("Server-Adresse")
+                        Spacer()
+                        Text(OctaveBackend.shared.serverBaseURLString)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Section("Audiowiedergabe") {
+                Toggle("Nahtlose Wiedergabe (Gapless)", isOn: Binding(
                     get: { player.gaplessEnabled },
                     set: { player.gaplessEnabled = $0 }
                 ))
 
-                Toggle("Spatial Audio", isOn: Binding(
+                Toggle("3D-Audio / Spatial Audio", isOn: Binding(
                     get: { player.spatialAudio },
                     set: { player.spatialAudio = $0 }
                 ))
 
-                Picker("Automix Mode", selection: Binding(
+                Picker("Automix-Modus", selection: Binding(
                     get: { player.automixStyle },
                     set: { player.automixStyle = $0 }
                 )) {
-                    Text("Off").tag(AudioPlayer.AutomixStyle.off)
-                    Text("Smooth Crossfade").tag(AudioPlayer.AutomixStyle.smooth)
-                    Text("Beat-Matched").tag(AudioPlayer.AutomixStyle.beatmatch)
+                    Text("Aus").tag(AudioPlayer.AutomixStyle.off)
+                    Text("Sanftes Überblenden").tag(AudioPlayer.AutomixStyle.smooth)
+                    Text("Beat-Synchronisiert").tag(AudioPlayer.AutomixStyle.beatmatch)
                 }
 
                 if player.automixStyle != .off {
-                    Stepper("Crossfade: \(Int(player.crossfadeSeconds))s", value: Binding(
+                    Stepper("Überblendung: \(Int(player.crossfadeSeconds))s", value: Binding(
                         get: { player.crossfadeSeconds },
                         set: { player.crossfadeSeconds = $0 }
                     ), in: 1...15)
@@ -40,15 +54,51 @@ struct SettingsView: View {
             }
 
             Section("Streaming & Downloads") {
-                Picker("Audio Streaming Quality", selection: $presenter.streamingQuality) {
-                    Text("Normal (128 kbps)").tag("128")
-                    Text("High (256 kbps)").tag("256")
-                    Text("Maximum (320 kbps / Lossless)").tag("320")
+                Picker("Streaming-Qualität", selection: $presenter.streamingQuality) {
+                    Text("Normal (128 kbit/s)").tag("128")
+                    Text("Hoch (256 kbit/s)").tag("256")
+                    Text("Maximum (320 kbit/s / Verlustfrei)").tag("320")
                 }
 
-                Toggle("Download Over Cellular", isOn: $presenter.allowCellularDownloads)
+                Toggle("Downloads über Mobilfunk (Cellular)", isOn: $presenter.allowCellularDownloads)
+            }
+
+            Section("Downloads & Speicher") {
+                HStack {
+                    Text("Heruntergeladene Titel")
+                    Spacer()
+                    Text("\(DownloadManager.shared.downloadedTrackIds.count)")
+                        .foregroundColor(.secondary)
+                }
+
+                HStack {
+                    Text("Speicherbelegung")
+                    Spacer()
+                    Text(ByteCountFormatter.string(fromByteCount: DownloadManager.shared.totalStorageBytes, countStyle: .file))
+                        .foregroundColor(.secondary)
+                }
+
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Alle Downloads löschen")
+                            .fontWeight(.medium)
+                        Spacer()
+                    }
+                }
+                .disabled(DownloadManager.shared.downloadedTrackIds.isEmpty && DownloadManager.shared.totalStorageBytes == 0)
             }
         }
-        .navigationTitle("Playback Settings")
+        .navigationTitle("Einstellungen")
+        .alert("Downloads löschen?", isPresented: $showDeleteConfirm) {
+            Button("Löschen", role: .destructive) {
+                DownloadManager.shared.clearAllDownloads()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("Möchtest du wirklich alle heruntergeladenen Titel und Playlists vom Gerät entfernen?")
+        }
     }
 }

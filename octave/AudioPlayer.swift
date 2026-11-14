@@ -17,7 +17,13 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
     // Public State
     var queue: [SongEntity] = []
     var currentIndex: Int?
+    var upcomingQueue: [SongEntity] {
+        guard let idx = currentIndex, idx + 1 < queue.count else { return [] }
+        return Array(queue[(idx + 1)...])
+    }
     var isPlaying: Bool = false
+    var isOffline: Bool = false
+    var playbackError: String? = nil
     var currentTime: Double = 0.0
     var duration: Double = 0.0
     var bufferedTime: Double = 0.0
@@ -51,6 +57,7 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
     private var playerB: AVPlayer?
     private var usingA: Bool = true
     private var timeObserver: Any?
+    private var statusObservation: NSKeyValueObservation?
 
     var currentTrack: SongEntity? {
         guard let idx = currentIndex, idx < queue.count else { return nil }
@@ -87,25 +94,68 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
         loadAndPlayCurrent()
     }
 
+    func insertNext(song: SongEntity) {
+        if let idx = currentIndex, idx < queue.count {
+            queue.insert(song, at: idx + 1)
+        } else {
+            queue.append(song)
+            if currentIndex == nil {
+                currentIndex = 0
+            }
+        }
+    }
+
     private func loadAndPlayCurrent() {
         guard let song = currentTrack else { return }
         setupAudioSession()
 
-        // Clean up previous time observer
+        // Clean up previous time observer and KVO
         if let observer = timeObserver {
             playerA?.removeTimeObserver(observer)
             playerB?.removeTimeObserver(observer)
             timeObserver = nil
         }
+        statusObservation?.invalidate()
+        statusObservation = nil
 
-        let streamURL = OctaveBackend.shared.streamURL(for: song.id)
-        print("AudioPlayer: Streaming '\(song.title)' from \(streamURL)")
+        // 1. Lokale Datei-Priorität prüfen
+        let localURL = DownloadManager.shared.localFileURL(for: song.id)
+        let isLocal = localURL != nil && FileManager.default.fileExists(atPath: localURL!.path)
 
-        let playerItem = AVPlayerItem(url: streamURL)
-        playerItem.preferredForwardBufferDuration = 1.0
+        // 2. Konnektivitätsprüfung bei nicht heruntergeladenen Titeln
+        if !isLocal && !NetworkMonitor.shared.isConnected {
+            print("AudioPlayer: Offline und Titel '\(song.title)' (\(song.id)) ist nicht heruntergeladen. Wiedergabe angehalten.")
+            playerA?.pause()
+            playerB?.pause()
+            self.isPlaying = false
+            self.isOffline = false
+            let errorMsg = "Keine Internetverbindung verfügbar. Bitte überprüfe dein Netzwerk."
+            self.playbackError = errorMsg
+            Toaster.shared.show(message: errorMsg)
+            return
+        }
+
+        // 3. Wiedergabe-URL festlegen
+        let playURL: URL
+        if isLocal, let local = localURL {
+            playURL = local
+            self.isOffline = true
+            self.playbackError = nil
+            print("AudioPlayer: Spiele lokale Offline-Datei für '\(song.title)' von \(local.path)")
+        } else {
+            playURL = OctaveBackend.shared.streamURL(for: song.id, title: song.title, artist: song.artist, album: song.albumTitle)
+            self.isOffline = false
+            self.playbackError = nil
+            print("AudioPlayer: Stream '\(song.title)' von \(playURL)")
+        }
+
+        let playerItem = AVPlayerItem(url: playURL)
+        if !isLocal {
+            playerItem.preferredForwardBufferDuration = 1.0
+        }
 
         let player = AVPlayer(playerItem: playerItem)
-        player.automaticallyWaitsToMinimizeStalling = true
+        player.automaticallyWaitsToMinimizeStalling = !isLocal
 
         if usingA {
             playerA?.pause()
@@ -123,8 +173,30 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
             self?.next()
         }
 
+        // KVO für asynchrone Dauer-Ermittlung und Fehlerbehandlung
+        statusObservation = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if item.status == .readyToPlay {
+                    let itemDuration = item.duration.seconds
+                    if itemDuration.isFinite && itemDuration > 0 {
+                        self.duration = itemDuration
+                        self.updateNowPlayingInfo()
+                    }
+                } else if item.status == .failed {
+                    print("AudioPlayer: Fehler bei Wiedergabe von '\(song.title)': \(String(describing: item.error))")
+                    if !NetworkMonitor.shared.isConnected {
+                        self.isPlaying = false
+                        self.playbackError = item.error?.localizedDescription ?? "Wiedergabefehler"
+                    } else {
+                        self.next()
+                    }
+                }
+            }
+        }
+
         self.isPlaying = true
-        self.duration = song.durationSec > 0 ? song.durationSec : 210.0
+        self.duration = song.durationSec > 0 ? song.durationSec : (isLocal ? 0.0 : 210.0)
         updateNowPlayingInfo()
     }
 
@@ -157,14 +229,77 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
         updateNowPlayingPlaybackInfo()
     }
 
+    func replenishOfflineQueue() {
+        guard !NetworkMonitor.shared.isConnected else { return }
+        let downloaded = DownloadManager.shared.downloadedTracks
+        guard !downloaded.isEmpty else { return }
+
+        let currentIdx = currentIndex ?? 0
+
+        // Verbleibende Warteschlange auf heruntergeladene Titel filtern
+        if currentIdx + 1 < queue.count {
+            let history = Array(queue[0...currentIdx])
+            let upcoming = Array(queue[(currentIdx + 1)...])
+            let downloadedSet = DownloadManager.shared.downloadedTrackIds
+            let validUpcoming = upcoming.filter { downloadedSet.contains($0.id) }
+            queue = history + validUpcoming
+        }
+
+        // Warteschlange auffüllen falls weniger als 3 anstehende Titel
+        let upcomingCount = queue.count - currentIdx - 1
+        if upcomingCount < 3 {
+            let queuedIds = Set(queue.map { $0.id })
+            let candidates = downloaded.filter { !queuedIds.contains($0.id) }
+            let pool = candidates.isEmpty ? downloaded.shuffled() : candidates.shuffled()
+            let countToAdd = min(5, pool.count)
+            queue.append(contentsOf: pool.prefix(countToAdd))
+        }
+    }
+
+    private var isReplenishingOnlineQueue = false
+
+    func replenishOnlineQueueIfNeeded() {
+        guard NetworkMonitor.shared.isConnected else { return }
+        guard !isReplenishingOnlineQueue else { return }
+        let currentIdx = currentIndex ?? 0
+        let upcomingCount = queue.count - currentIdx - 1
+        guard upcomingCount < 4 else { return }
+
+        isReplenishingOnlineQueue = true
+        Task { @MainActor in
+            defer { self.isReplenishingOnlineQueue = false }
+            do {
+                let recs = try await OctaveBackend.shared.fetchRecommendations(limit: 10)
+                let existingIds = Set(self.queue.map { $0.id })
+                let candidates = recs.map { $0.toSongEntity() }.filter { !existingIds.contains($0.id) }
+                if !candidates.isEmpty {
+                    self.queue.append(contentsOf: candidates)
+                    print("AudioPlayer: Autoplay hat \(candidates.count) Empfehlungen nachgeladen")
+                }
+            } catch {
+                print("AudioPlayer: Fehler beim Nachladen von Empfehlungen: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func next() {
         guard !queue.isEmpty, let idx = currentIndex else { return }
+
+        if !NetworkMonitor.shared.isConnected {
+            replenishOfflineQueue()
+        } else {
+            replenishOnlineQueueIfNeeded()
+        }
+
         if idx + 1 < queue.count {
             currentIndex = idx + 1
             loadAndPlayCurrent()
         } else if repeatMode == .all {
             currentIndex = 0
             loadAndPlayCurrent()
+        } else if !NetworkMonitor.shared.isConnected {
+            isPlaying = false
+            updateNowPlayingPlaybackInfo()
         }
     }
 
@@ -179,9 +314,26 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
     }
 
     func seek(to seconds: Double) {
-        currentTime = seconds
-        let cmTime = CMTime(seconds: seconds, preferredTimescale: 600)
-        activePlayer?.seek(to: cmTime)
+        let maxTime = max(0.0, duration - 1.0)
+        let clamped = max(0.0, min(seconds, maxTime))
+        currentTime = clamped
+        let cmTime = CMTime(seconds: clamped, preferredTimescale: 600)
+        activePlayer?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        updateNowPlayingPlaybackInfo()
+    }
+
+    func isRadioTrack(_ song: SongEntity?) -> Bool {
+        guard let song else { return false }
+        if song.id.hasPrefix("apple_") ||
+           song.id.hasPrefix("deezer_") ||
+           song.id.hasPrefix("dz_") ||
+           song.id.hasPrefix("yt_") ||
+           song.id.hasPrefix("search:") ||
+           song.id.hasPrefix("loc_") ||
+           song.id.hasPrefix("local_") {
+            return false
+        }
+        return song.id.hasPrefix("radio:")
     }
 
     private var activePlayer: AVPlayer? {
@@ -191,24 +343,24 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
-            self?.resume()
+            DispatchQueue.main.async { self?.resume() }
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            self?.pause()
+            DispatchQueue.main.async { self?.pause() }
             return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            self?.next()
+            DispatchQueue.main.async { self?.next() }
             return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            self?.previous()
+            DispatchQueue.main.async { self?.previous() }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             if let posEvent = event as? MPChangePlaybackPositionCommandEvent {
-                self?.seek(to: posEvent.positionTime)
+                DispatchQueue.main.async { self?.seek(to: posEvent.positionTime) }
                 return .success
             }
             return .commandFailed

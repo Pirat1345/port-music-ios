@@ -18,7 +18,7 @@ final class LyricsService: @unchecked Sendable {
     func fetchLyrics(for trackId: String) async -> [LyricLine] {
         // Return structured lyrics
         return [
-            LyricLine(time: 0.0, text: "♪ (Instrumental Intro) ♪"),
+            LyricLine(time: 0.0, text: "(Instrumental Intro)"),
             LyricLine(time: 14.5, text: "Welcome to the Port Music stream"),
             LyricLine(time: 19.0, text: "Crystal clear sound in your ears"),
             LyricLine(time: 24.2, text: "Feel the bass move through your veins"),

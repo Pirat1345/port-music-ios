@@ -331,7 +331,6 @@ struct ArtistDetailView: View {
                                                     ArtworkView(urlString: rel.picture)
                                                         .frame(width: 90, height: 90)
                                                         .clipShape(Circle())
-                                                        .overlay(Circle().stroke(Color.portBorder, lineWidth: 1))
                                                         .shadow(color: .black.opacity(0.3), radius: 5)
 
                                                     Text(rel.name)
