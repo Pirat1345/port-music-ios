@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ServerSetupView: View {
+    let onServerVerified: (String) -> Void
+
     @State private var serverInput: String = ""
     @State private var status: PingStatus = .idle
     @State private var hasSavedServer: Bool = false
@@ -60,9 +62,25 @@ struct ServerSetupView: View {
     }
 
     private var logoView: some View {
-        Image("PortLogo")
-            .resizable()
-            .scaledToFit()
+        Group {
+            if let uiImg = UIImage(named: "PortLogo") ?? UIImage(named: "port-logo") ?? loadFileLogo() {
+                Image(uiImage: uiImg)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "play.circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.white)
+            }
+        }
+    }
+
+    private func loadFileLogo() -> UIImage? {
+        if let path = Bundle.main.path(forResource: "port-logo", ofType: "png") {
+            return UIImage(contentsOfFile: path)
+        }
+        return nil
     }
 
     // MARK: - Input Section
@@ -241,7 +259,7 @@ struct ServerSetupView: View {
         case .pinging:
             return "Wird geprueft..."
         case .success:
-            return "Server speichern"
+            return "Weiter zur Anmeldung"
         case .failure:
             return "Erneut versuchen"
         }
@@ -254,14 +272,22 @@ struct ServerSetupView: View {
     @ViewBuilder
     private var savedServerNotice: some View {
         if hasSavedServer && !savedServerURL.isEmpty {
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 Text("Gespeicherter Server:")
                     .font(.system(size: 12))
                     .foregroundColor(PortColors.textMuted)
 
-                Text(savedServerURL)
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                Button(action: {
+                    onServerVerified(savedServerURL)
+                }) {
+                    HStack(spacing: 6) {
+                        Text(savedServerURL)
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
                     .foregroundColor(PortColors.textSecondary)
+                }
             }
             .padding(.top, 8)
         }
@@ -270,6 +296,7 @@ struct ServerSetupView: View {
     private func handleAction() {
         if case .success(let verifiedURL, _, _) = status {
             saveServer(url: verifiedURL)
+            onServerVerified(verifiedURL)
             return
         }
 
@@ -279,6 +306,9 @@ struct ServerSetupView: View {
             let result = await ServerPingService.shared.ping(rawInput: raw)
             await MainActor.run {
                 self.status = result
+                if case .success(let verifiedURL, _, _) = result {
+                    saveServer(url: verifiedURL)
+                }
             }
         }
     }

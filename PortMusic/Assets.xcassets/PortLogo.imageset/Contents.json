@@ -1,15 +1,23 @@
 {
   "images": [
     {
-      "filename": "Port-Music-Logo.svg",
-      "idiom": "universal"
+      "filename": "port-logo.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "port-logo.png",
+      "idiom": "universal",
+      "scale": "2x"
+    },
+    {
+      "filename": "port-logo.png",
+      "idiom": "universal",
+      "scale": "3x"
     }
   ],
   "info": {
     "author": "xcode",
     "version": 1
-  },
-  "properties": {
-    "preserves-vector-representation": true
   }
 }

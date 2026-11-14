@@ -11,9 +11,12 @@
 		000000012026111400000013 /* ServerSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000012 /* ServerSetupView.swift */; };
 		000000012026111400000015 /* ServerPingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000014 /* ServerPingService.swift */; };
 		000000012026111400000017 /* PortTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000016 /* PortTheme.swift */; };
+		000000012026111400000041 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000040 /* AuthService.swift */; };
+		000000012026111400000043 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000042 /* LoginView.swift */; };
+		000000012026111400000045 /* LoggedInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000044 /* LoggedInView.swift */; };
 		000000012026111400000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000018 /* Assets.xcassets */; };
 		000000012026111400000031 /* Manosque-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000030 /* Manosque-Regular.ttf */; };
-		000000012026111400000033 /* Port-Music-Logo.svg in Resources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000032 /* Port-Music-Logo.svg */; };
+		000000012026111400000033 /* port-logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000032 /* port-logo.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,10 +25,13 @@
 		000000012026111400000012 /* ServerSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSetupView.swift; sourceTree = "<group>"; };
 		000000012026111400000014 /* ServerPingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerPingService.swift; sourceTree = "<group>"; };
 		000000012026111400000016 /* PortTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortTheme.swift; sourceTree = "<group>"; };
+		000000012026111400000040 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		000000012026111400000042 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		000000012026111400000044 /* LoggedInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoggedInView.swift; sourceTree = "<group>"; };
 		000000012026111400000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000012026111400000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		000000012026111400000030 /* Manosque-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Manosque-Regular.ttf"; sourceTree = "<group>"; };
-		000000012026111400000032 /* Port-Music-Logo.svg */ = {isa = PBXFileReference; lastKnownFileType = image.svg; path = "Port-Music-Logo.svg"; sourceTree = "<group>"; };
+		000000012026111400000032 /* port-logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "port-logo.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,10 +60,13 @@
 				000000012026111400000012 /* ServerSetupView.swift */,
 				000000012026111400000014 /* ServerPingService.swift */,
 				000000012026111400000016 /* PortTheme.swift */,
+				000000012026111400000040 /* AuthService.swift */,
+				000000012026111400000042 /* LoginView.swift */,
+				000000012026111400000044 /* LoggedInView.swift */,
 				000000012026111400000018 /* Assets.xcassets */,
 				000000012026111400000020 /* Info.plist */,
 				000000012026111400000030 /* Manosque-Regular.ttf */,
-				000000012026111400000032 /* Port-Music-Logo.svg */,
+				000000012026111400000032 /* port-logo.png */,
 			);
 			path = PortMusic;
 			sourceTree = "<group>";
@@ -131,7 +140,7 @@
 			files = (
 				000000012026111400000019 /* Assets.xcassets in Resources */,
 				000000012026111400000031 /* Manosque-Regular.ttf in Resources */,
-				000000012026111400000033 /* Port-Music-Logo.svg in Resources */,
+				000000012026111400000033 /* port-logo.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +155,9 @@
 				000000012026111400000013 /* ServerSetupView.swift in Sources */,
 				000000012026111400000015 /* ServerPingService.swift in Sources */,
 				000000012026111400000017 /* PortTheme.swift in Sources */,
+				000000012026111400000041 /* AuthService.swift in Sources */,
+				000000012026111400000043 /* LoginView.swift in Sources */,
+				000000012026111400000045 /* LoggedInView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
