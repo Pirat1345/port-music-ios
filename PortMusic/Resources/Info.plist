@@ -38,6 +38,7 @@
 	<key>UIAppFonts</key>
 	<array>
 		<string>Manosque-Regular.ttf</string>
+		<string>Fonts/Manosque-Regular.ttf</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

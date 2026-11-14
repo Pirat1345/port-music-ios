@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppScreen {
+public enum AppScreen: Equatable {
     case serverSetup
     case login(serverURL: String)
     case loggedIn(user: UserProfile, serverURL: String)
@@ -12,29 +12,37 @@ struct PortMusicApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
+            ZStack {
                 switch screen {
                 case .serverSetup:
                     ServerSetupView(onServerVerified: { url in
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                             screen = .login(serverURL: url)
                         }
                     })
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity
+                    ))
 
                 case .login(let serverURL):
                     LoginView(
                         serverURL: serverURL,
                         onLoginSuccess: { user in
-                            withAnimation(.easeInOut(duration: 0.25)) {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                                 screen = .loggedIn(user: user, serverURL: serverURL)
                             }
                         },
                         onChangeServer: {
-                            withAnimation(.easeInOut(duration: 0.25)) {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                                 screen = .serverSetup
                             }
                         }
                     )
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity
+                    ))
 
                 case .loggedIn(let user, let serverURL):
                     LoggedInView(
@@ -42,27 +50,18 @@ struct PortMusicApp: App {
                         serverURL: serverURL,
                         onLogout: {
                             AuthService.shared.clearSession()
-                            withAnimation(.easeInOut(duration: 0.25)) {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                                 screen = .login(serverURL: serverURL)
                             }
                         }
                     )
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity
+                    ))
                 }
             }
             .preferredColorScheme(.dark)
-            .onAppear {
-                checkInitialState()
-            }
-        }
-    }
-
-    private func checkInitialState() {
-        if let storedURL = UserDefaults.standard.string(forKey: "portmusic_server_url"), !storedURL.isEmpty {
-            if let user = AuthService.shared.currentUser {
-                self.screen = .loggedIn(user: user, serverURL: storedURL)
-            } else {
-                self.screen = .login(serverURL: storedURL)
-            }
         }
     }
 }

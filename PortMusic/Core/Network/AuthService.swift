@@ -1,38 +1,29 @@
 import Foundation
 
-struct UserProfile: Codable, Equatable {
-    let userId: String
-    let username: String
-    let displayName: String
-    let role: String
-    let email: String?
-    let avatar: String?
-}
-
-enum LoginResult {
+public enum LoginResult {
     case success(user: UserProfile, token: String?)
     case requires2FA(pendingToken: String, methods: [String], maskedEmail: String?)
-    case requiresCaptcha(challengeToken: String, captchaType: String?)
+    case requiresCaptcha(challengeToken: String, captchaType: String?, target: String?)
     case failure(reason: String)
 }
 
-final class AuthService {
-    static let shared = AuthService()
+public final class AuthService {
+    public static let shared = AuthService()
     private init() {}
 
     private let tokenKey = "portmusic_auth_token"
     private let userKey = "portmusic_auth_user"
 
-    var currentToken: String? {
+    public var currentToken: String? {
         UserDefaults.standard.string(forKey: tokenKey)
     }
 
-    var currentUser: UserProfile? {
+    public var currentUser: UserProfile? {
         guard let data = UserDefaults.standard.data(forKey: userKey) else { return nil }
         return try? JSONDecoder().decode(UserProfile.self, from: data)
     }
 
-    func saveSession(user: UserProfile, token: String?) {
+    public func saveSession(user: UserProfile, token: String?) {
         if let token = token, !token.isEmpty {
             UserDefaults.standard.set(token, forKey: tokenKey)
         }
@@ -41,13 +32,103 @@ final class AuthService {
         }
     }
 
-    func clearSession() {
+    public func clearSession() {
         UserDefaults.standard.removeObject(forKey: tokenKey)
         UserDefaults.standard.removeObject(forKey: userKey)
     }
 
-    // MARK: - Login Request
-    func login(
+    // MARK: - Captcha Status Abfrage
+    public func fetchCaptchaStatus(serverURL: String) async -> Bool {
+        let base = ServerPingService.normalize(rawInput: serverURL)
+        guard let url = URL(string: "\(base)/api/auth/captcha/status") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("PortMusic-iOS/1.0", forHTTPHeaderField: "User-Agent")
+
+        let session = URLSession(configuration: .ephemeral)
+        do {
+            let (data, response) = try await session.data(for: request)
+            if let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) {
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let required = json["required"] as? Bool {
+                    return required
+                }
+            }
+        } catch {
+            return false
+        }
+        return false
+    }
+
+    // MARK: - Captcha Challenge anfordern
+    public func fetchCaptchaChallenge(serverURL: String) async -> CaptchaChallengeResponse? {
+        let base = ServerPingService.normalize(rawInput: serverURL)
+        guard let url = URL(string: "\(base)/api/auth/captcha/challenge") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("PortMusic-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.httpBody = "{}".data(using: .utf8)
+
+        let session = URLSession(configuration: .ephemeral)
+        do {
+            let (data, response) = try await session.data(for: request)
+            if let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) {
+                return try? JSONDecoder().decode(CaptchaChallengeResponse.self, from: data)
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    // MARK: - Captcha Verifizierung
+    public func verifyCaptcha(serverURL: String, challengeToken: String, target: String? = nil) async -> (success: Bool, token: String?) {
+        let base = ServerPingService.normalize(rawInput: serverURL)
+        guard let url = URL(string: "\(base)/api/auth/captcha/verify") else {
+            return (false, nil)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("PortMusic-iOS/1.0", forHTTPHeaderField: "User-Agent")
+
+        var solutionDict: [String: Any] = ["verified": true]
+        if let t = target {
+            solutionDict["target"] = t
+            solutionDict["picked"] = t
+        }
+
+        let body: [String: Any] = [
+            "challengeToken": challengeToken,
+            "solution": solutionDict
+        ]
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
+            return (false, nil)
+        }
+        request.httpBody = httpBody
+
+        let session = URLSession(configuration: .ephemeral)
+        do {
+            let (data, response) = try await session.data(for: request)
+            if let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) {
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let vToken = json["verificationToken"] as? String {
+                    return (true, vToken)
+                }
+            }
+            return (false, nil)
+        } catch {
+            return (false, nil)
+        }
+    }
+
+    // MARK: - Login
+    public func login(
         serverURL: String,
         username: String,
         password: String,
@@ -55,7 +136,7 @@ final class AuthService {
     ) async -> LoginResult {
         let base = ServerPingService.normalize(rawInput: serverURL)
         guard let url = URL(string: "\(base)/api/login") else {
-            return .failure(reason: "Ungueltige Server-URL.")
+            return .failure(reason: "Ungültige Server-URL.")
         }
 
         var request = URLRequest(url: url)
@@ -84,12 +165,12 @@ final class AuthService {
         do {
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
-                return .failure(reason: "Ungueltige Server-Antwort.")
+                return .failure(reason: "Ungültige Server-Antwort.")
             }
 
             let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
 
-            // 1. Check for 2FA requirement
+            // 1. 2FA Prüfung
             let requiresVerification = (json["requiresVerification"] as? Bool) ?? (json["requires2FA"] as? Bool) ?? false
             if requiresVerification, let pendingToken = json["pendingLoginToken"] as? String {
                 let methods = (json["methods"] as? [String]) ?? ["totp"]
@@ -97,53 +178,52 @@ final class AuthService {
                 return .requires2FA(pendingToken: pendingToken, methods: methods, maskedEmail: masked)
             }
 
-            // 2. Check for Captcha requirement
+            // 2. Captcha Prüfung
             if let reqCaptcha = json["requiresCaptcha"] as? Bool, reqCaptcha {
                 let challenge = (json["challengeToken"] as? String) ?? ""
                 let cType = json["captchaType"] as? String
-                return .requiresCaptcha(challengeToken: challenge, captchaType: cType)
+                let target = json["target"] as? String
+                return .requiresCaptcha(challengeToken: challenge, captchaType: cType, target: target)
             }
 
-            // 3. Success (200 OK)
+            // 3. Erfolgreiche Anmeldung (200..299)
             if (200...299).contains(httpResponse.statusCode) {
                 let userId = (json["userId"] as? String) ?? (json["id"] as? String) ?? UUID().uuidString
                 let uname = (json["username"] as? String) ?? username
-                let dname = (json["displayName"] as? String) ?? uname
                 let role = (json["role"] as? String) ?? "user"
                 let email = json["email"] as? String
-                let avatar = json["avatar"] as? String
+                let createdAt = json["createdAt"] as? String
                 let token = json["token"] as? String
 
                 let profile = UserProfile(
-                    userId: userId,
+                    id: userId,
                     username: uname,
-                    displayName: dname,
-                    role: role,
                     email: email,
-                    avatar: avatar
+                    role: role,
+                    createdAt: createdAt
                 )
                 saveSession(user: profile, token: token)
                 return .success(user: profile, token: token)
             }
 
-            // 4. Error response
-            let msg = (json["message"] as? String) ?? (json["error"] as? String) ?? "Ungueltige Anmeldedaten."
+            // 4. Fehlermeldung
+            let msg = (json["message"] as? String) ?? (json["error"] as? String) ?? "Ungültige Anmeldedaten."
             return .failure(reason: msg)
         } catch {
-            return .failure(reason: "Verbindung zum Server fehlgeschlagen. Bitte Netzwerk ueberpruefen.")
+            return .failure(reason: "Verbindung zum Server fehlgeschlagen. Bitte Netzwerk überprüfen.")
         }
     }
 
-    // MARK: - Verify 2FA Code
-    func verify2FA(
+    // MARK: - 2FA Code Überprüfung
+    public func verify2FA(
         serverURL: String,
         pendingToken: String,
         code: String,
-        method: String // "totp" or "email"
+        method: String // "totp" oder "email"
     ) async -> LoginResult {
         let base = ServerPingService.normalize(rawInput: serverURL)
         guard let url = URL(string: "\(base)/api/login") else {
-            return .failure(reason: "Ungueltige Server-URL.")
+            return .failure(reason: "Ungültige Server-URL.")
         }
 
         var request = URLRequest(url: url)
@@ -172,7 +252,7 @@ final class AuthService {
         do {
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
-                return .failure(reason: "Ungueltige Server-Antwort.")
+                return .failure(reason: "Ungültige Server-Antwort.")
             }
 
             let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
@@ -180,36 +260,34 @@ final class AuthService {
             if (200...299).contains(httpResponse.statusCode) {
                 let userId = (json["userId"] as? String) ?? UUID().uuidString
                 let uname = (json["username"] as? String) ?? "Benutzer"
-                let dname = (json["displayName"] as? String) ?? uname
                 let role = (json["role"] as? String) ?? "user"
                 let email = json["email"] as? String
-                let avatar = json["avatar"] as? String
+                let createdAt = json["createdAt"] as? String
                 let token = json["token"] as? String
 
                 let profile = UserProfile(
-                    userId: userId,
+                    id: userId,
                     username: uname,
-                    displayName: dname,
-                    role: role,
                     email: email,
-                    avatar: avatar
+                    role: role,
+                    createdAt: createdAt
                 )
                 saveSession(user: profile, token: token)
                 return .success(user: profile, token: token)
             }
 
-            let msg = (json["message"] as? String) ?? (json["error"] as? String) ?? "Bestaetigungscode ist unguelltig."
+            let msg = (json["message"] as? String) ?? (json["error"] as? String) ?? "Bestätigungscode ist ungültig."
             return .failure(reason: msg)
         } catch {
             return .failure(reason: "Verbindung fehlgeschlagen.")
         }
     }
 
-    // MARK: - Send Email Login Code
-    func sendEmailCode(serverURL: String, pendingToken: String) async -> (success: Bool, message: String) {
+    // MARK: - E-Mail Login-Code anfordern
+    public func sendEmailCode(serverURL: String, pendingToken: String) async -> (success: Bool, message: String) {
         let base = ServerPingService.normalize(rawInput: serverURL)
         guard let url = URL(string: "\(base)/api/auth/send-login-code") else {
-            return (false, "Ungueltige Server-URL.")
+            return (false, "Ungültige Server-URL.")
         }
 
         var request = URLRequest(url: url)
@@ -233,41 +311,6 @@ final class AuthService {
             return (false, "E-Mail-Code konnte nicht gesendet werden.")
         } catch {
             return (false, "Verbindung zum Server fehlgeschlagen.")
-        }
-    }
-
-    // MARK: - Captcha Verification
-    func verifyCaptcha(serverURL: String, challengeToken: String) async -> (success: Bool, token: String?) {
-        let base = ServerPingService.normalize(rawInput: serverURL)
-        guard let url = URL(string: "\(base)/api/auth/captcha/verify") else {
-            return (false, nil)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "challengeToken": challengeToken,
-            "solution": ["verified": true]
-        ]
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else {
-            return (false, nil)
-        }
-        request.httpBody = httpBody
-
-        let session = URLSession(configuration: .ephemeral)
-        do {
-            let (data, response) = try await session.data(for: request)
-            if let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) {
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let vToken = json["verificationToken"] as? String {
-                    return (true, vToken)
-                }
-            }
-            return (false, nil)
-        } catch {
-            return (false, nil)
         }
     }
 }

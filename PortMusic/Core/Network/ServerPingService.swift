@@ -1,17 +1,17 @@
 import Foundation
 
-enum PingStatus: Equatable {
+public enum PingStatus: Equatable {
     case idle
     case pinging
     case success(url: String, latencyMs: Int, detail: String)
     case failure(reason: String)
 }
 
-final class ServerPingService {
-    static let shared = ServerPingService()
+public final class ServerPingService {
+    public static let shared = ServerPingService()
     private init() {}
 
-    static func normalize(rawInput: String) -> String {
+    public static func normalize(rawInput: String) -> String {
         var trimmed = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
@@ -25,10 +25,10 @@ final class ServerPingService {
         return trimmed
     }
 
-    func ping(rawInput: String) async -> PingStatus {
+    public func ping(rawInput: String) async -> PingStatus {
         let normalized = Self.normalize(rawInput: rawInput)
         guard let baseURL = URL(string: normalized), let host = baseURL.host, !host.isEmpty else {
-            return .failure(reason: "Ungueltige Server-Adresse oder IP.")
+            return .failure(reason: "Ungültige Server-Adresse oder IP.")
         }
 
         let config = URLSessionConfiguration.ephemeral
@@ -59,7 +59,7 @@ final class ServerPingService {
 
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
 
-                // 200..299, 401 (Auth required), 403 all prove the server is reachable and active
+                // 200..299, 401 (Auth required) confirm the Port Music server is active
                 if (200...299).contains(httpResponse.statusCode) || httpResponse.statusCode == 401 {
                     var detail = "Server antwortet (\(httpResponse.statusCode))"
                     if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -76,11 +76,11 @@ final class ServerPingService {
                 if nsError.domain == NSURLErrorDomain {
                     switch nsError.code {
                     case NSURLErrorTimedOut:
-                        return .failure(reason: "Zeitueberschreitung: Der Server hat nicht rechtzeitig geantwortet.")
+                        return .failure(reason: "Zeitüberschreitung: Der Server hat nicht rechtzeitig geantwortet.")
                     case NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost:
-                        return .failure(reason: "Verbindung verweigert: Bitte stelle sicher, dass der Server laeuft und der Port offen ist.")
+                        return .failure(reason: "Verbindung verweigert: Bitte stelle sicher, dass der Port Music Server läuft.")
                     case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
-                        return .failure(reason: "Host nicht gefunden: Bitte ueberpruefe die IP-Adresse oder den Hostnamen.")
+                        return .failure(reason: "Host nicht gefunden: Bitte überprüfe die IP-Adresse oder den Hostnamen.")
                     case NSURLErrorAppTransportSecurityRequiresSecureConnection:
                         return .failure(reason: "Sicherheitsrichtlinie (ATS): HTTPS erforderlich oder HTTP-Ausnahme aktivieren.")
                     default:
