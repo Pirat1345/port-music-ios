@@ -342,25 +342,36 @@ final class AudioPlayer: NSObject, @unchecked Sendable {
 
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async { self?.resume() }
+        center.playCommand.addTarget { _ in
+            DispatchQueue.main.async {
+                AudioPlayer.shared.resume()
+            }
             return .success
         }
-        center.pauseCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async { self?.pause() }
+        center.pauseCommand.addTarget { _ in
+            DispatchQueue.main.async {
+                AudioPlayer.shared.pause()
+            }
             return .success
         }
-        center.nextTrackCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async { self?.next() }
+        center.nextTrackCommand.addTarget { _ in
+            DispatchQueue.main.async {
+                AudioPlayer.shared.next()
+            }
             return .success
         }
-        center.previousTrackCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async { self?.previous() }
+        center.previousTrackCommand.addTarget { _ in
+            DispatchQueue.main.async {
+                AudioPlayer.shared.previous()
+            }
             return .success
         }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+        center.changePlaybackPositionCommand.addTarget { event in
             if let posEvent = event as? MPChangePlaybackPositionCommandEvent {
-                DispatchQueue.main.async { self?.seek(to: posEvent.positionTime) }
+                let pos = posEvent.positionTime
+                DispatchQueue.main.async {
+                    AudioPlayer.shared.seek(to: pos)
+                }
                 return .success
             }
             return .commandFailed
