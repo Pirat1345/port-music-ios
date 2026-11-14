@@ -633,7 +633,7 @@ public struct ClawMachineView: View {
                 .position(x: GW / 2, y: GH - 10)
 
             // Contact Shadow under Claw / Cargo
-            let shadowRad = (sway + breeze) * .pi / 180.0
+            let shadowRad = CGFloat((sway + breeze) * .pi / 180.0)
             let shadowLen = max(2.0, clawY - RAIL_Y)
             let shadowEx = clawX + sin(shadowRad) * shadowLen
             let cargoBottom = (carriedIndex >= 0 && carriedIndex < pile.count) ? (carryPos.y + pile[carriedIndex].w / 2) : (clawY + 58)
@@ -1142,7 +1142,7 @@ public struct ClawMachineView: View {
 
         case .dwell1:
             let p = min(1.0, stageTime / 0.18)
-            clawY = depthY + 3.5 * sin(.pi * p)
+            clawY = depthY + CGFloat(3.5 * sin(.pi * p))
             if p >= 1.0 {
                 clawY = depthY
                 stage = .close
@@ -1184,7 +1184,7 @@ public struct ClawMachineView: View {
 
         case .load:
             let p = min(1.0, stageTime / 0.24)
-            let bell = sin(.pi * p)
+            let bell = CGFloat(sin(.pi * p))
             clawY = depthY + 6.0 * bell
             clawClose = 1.0 + 0.12 * bell
 
@@ -1303,7 +1303,7 @@ public struct ClawMachineView: View {
     // MARK: - Mathematical Helpers
     private func pendulumEnd() -> CGPoint {
         let len = max(2.0, clawY - RAIL_Y)
-        let rad = (sway + breeze) * .pi / 180.0
+        let rad = CGFloat((sway + breeze) * .pi / 180.0)
         return CGPoint(x: clawX + sin(rad) * len, y: RAIL_Y + cos(rad) * len)
     }
 
