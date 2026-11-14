@@ -12,6 +12,8 @@
 		000000012026111400000015 /* ServerPingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000014 /* ServerPingService.swift */; };
 		000000012026111400000017 /* PortTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000016 /* PortTheme.swift */; };
 		000000012026111400000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000018 /* Assets.xcassets */; };
+		000000012026111400000031 /* Manosque-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000030 /* Manosque-Regular.ttf */; };
+		000000012026111400000033 /* port-logo.png in Resources */ = {isa = PBXBuildFile; fileRef = 000000012026111400000032 /* port-logo.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +24,8 @@
 		000000012026111400000016 /* PortTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortTheme.swift; sourceTree = "<group>"; };
 		000000012026111400000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000012026111400000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		000000012026111400000030 /* Manosque-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Manosque-Regular.ttf"; sourceTree = "<group>"; };
+		000000012026111400000032 /* port-logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "port-logo.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +56,8 @@
 				000000012026111400000016 /* PortTheme.swift */,
 				000000012026111400000018 /* Assets.xcassets */,
 				000000012026111400000020 /* Info.plist */,
+				000000012026111400000030 /* Manosque-Regular.ttf */,
+				000000012026111400000032 /* port-logo.png */,
 			);
 			path = PortMusic;
 			sourceTree = "<group>";
@@ -124,6 +130,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				000000012026111400000019 /* Assets.xcassets in Resources */,
+				000000012026111400000031 /* Manosque-Regular.ttf in Resources */,
+				000000012026111400000033 /* port-logo.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -14,15 +14,17 @@ struct ServerSetupView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 28) {
+                VStack(spacing: 24) {
+                    Spacer().frame(height: 24)
                     headerSection
                     inputCardSection
                     statusSection
                     actionButtonSection
                     savedServerNotice
+                    Spacer()
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 40)
+                .padding(.top, 20)
                 .padding(.bottom, 32)
             }
         }
@@ -32,42 +34,68 @@ struct ServerSetupView: View {
         }
     }
 
+    // MARK: - Header (matching Web Login Page: Logo + Manosque Font)
     private var headerSection: some View {
-        VStack(spacing: 14) {
-            Image("port-logo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 88, height: 88)
-                .shadow(color: PortColors.brand.opacity(0.3), radius: 18, y: 6)
+        VStack(spacing: 12) {
+            // Port Music Logo
+            logoView
+                .frame(width: 68, height: 68)
+                .shadow(color: .black.opacity(0.6), radius: 10, y: 4)
 
             VStack(spacing: 6) {
+                // Headline in Manosque custom font (matching <h1 className="font-manosque text-5xl">)
                 Text("Port Music")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.manosque(size: 44))
+                    .tracking(1.0)
                     .foregroundColor(PortColors.textPrimary)
+                    .shadow(color: .black.opacity(0.5), radius: 6, y: 2)
 
                 Text("Gib die IP-Adresse deines Servers ein, um fortzufahren.")
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundColor(PortColors.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 20)
             }
         }
     }
 
+    private var logoView: some View {
+        Group {
+            if let uiImg = UIImage(named: "PortLogo") ?? UIImage(named: "port-logo") ?? loadFileLogo() {
+                Image(uiImage: uiImg)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "play.circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.white)
+            }
+        }
+    }
+
+    private func loadFileLogo() -> UIImage? {
+        if let path = Bundle.main.path(forResource: "port-logo", ofType: "png") {
+            return UIImage(contentsOfFile: path)
+        }
+        return nil
+    }
+
+    // MARK: - Input Section
     private var inputCardSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("SERVER-ADRESSE")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(PortColors.textMuted)
-                .tracking(1)
+                .tracking(1.2)
 
             HStack(spacing: 12) {
                 Image(systemName: "server.rack")
-                    .font(.system(size: 18))
+                    .font(.system(size: 17))
                     .foregroundColor(PortColors.textSecondary)
 
                 TextField("z. B. 192.168.1.100:3000", text: $serverInput)
-                    .font(.system(size: 16))
+                    .font(.system(size: 15))
                     .foregroundColor(PortColors.textPrimary)
                     .keyboardType(.URL)
                     .autocapitalization(.none)
@@ -85,36 +113,38 @@ struct ServerSetupView: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(PortColors.textMuted)
+                            .font(.system(size: 16))
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .background(PortColors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(borderColor, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(inputBorderColor, lineWidth: 1)
             )
 
-            Text("Hinweis: Unterstuetzt lokale IPs, Hostnamen und Domains (HTTP & HTTPS).")
+            Text("Unterstuetzt lokale IPs, Hostnamen und Domains (HTTP & HTTPS).")
                 .font(.system(size: 12))
                 .foregroundColor(PortColors.textMuted)
                 .padding(.horizontal, 4)
         }
     }
 
-    private var borderColor: Color {
+    private var inputBorderColor: Color {
         switch status {
         case .idle, .pinging:
             return PortColors.border
         case .success:
-            return PortColors.success.opacity(0.6)
+            return PortColors.statusSuccessBorder
         case .failure:
-            return PortColors.error.opacity(0.6)
+            return PortColors.statusErrorBorder
         }
     }
 
+    // MARK: - Status Badge (Stylistically White & Monochromatic)
     @ViewBuilder
     private var statusSection: some View {
         switch status {
@@ -124,7 +154,7 @@ struct ServerSetupView: View {
         case .pinging:
             HStack(spacing: 12) {
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: PortColors.brand))
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
 
                 Text("Verbindung wird geprueft...")
                     .font(.system(size: 14, weight: .medium))
@@ -132,48 +162,52 @@ struct ServerSetupView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(PortColors.surfaceElevated)
+            .background(PortColors.surfaceGlass)
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(PortColors.border, lineWidth: 1)
+            )
 
         case .success(let url, let latency, let detail):
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(PortColors.success)
-                        .font(.system(size: 18))
+                        .foregroundColor(.white)
+                        .font(.system(size: 17))
 
-                    Text("Server erfolgreich erreichbar!")
+                    Text("Server erreichbar")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(PortColors.success)
+                        .foregroundColor(.white)
                 }
 
                 Text("\(url) • \(latency) ms Latenz")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(PortColors.textPrimary)
+                    .foregroundColor(PortColors.textSecondary)
 
                 Text(detail)
                     .font(.system(size: 12))
-                    .foregroundColor(PortColors.textSecondary)
+                    .foregroundColor(PortColors.textMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(PortColors.successBackground)
+            .background(PortColors.statusSuccessBg)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(PortColors.success.opacity(0.35), lineWidth: 1)
+                    .stroke(PortColors.statusSuccessBorder, lineWidth: 1)
             )
 
         case .failure(let reason):
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(PortColors.error)
-                        .font(.system(size: 18))
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(Color(red: 239/255, green: 68/255, blue: 68/255))
+                        .font(.system(size: 17))
 
-                    Text("Server nicht erreichbar")
+                    Text("Verbindung fehlgeschlagen")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(PortColors.error)
+                        .foregroundColor(.white)
                 }
 
                 Text(reason)
@@ -182,35 +216,36 @@ struct ServerSetupView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(PortColors.errorBackground)
+            .background(PortColors.statusErrorBg)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(PortColors.error.opacity(0.35), lineWidth: 1)
+                    .stroke(PortColors.statusErrorBorder, lineWidth: 1)
             )
         }
     }
 
+    // MARK: - Stylish White Action Button (matching <button className="bg-white text-neutral-950">)
     private var actionButtonSection: some View {
         Button(action: handleAction) {
             HStack(spacing: 10) {
                 if status == .pinging {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .progressViewStyle(CircularProgressViewStyle(tint: isButtonDisabled ? .white : PortColors.buttonText))
                 } else if case .success = status {
                     Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: 17))
                 }
 
                 Text(buttonTitle)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
             }
-            .foregroundColor(.white)
+            .foregroundColor(isButtonDisabled ? PortColors.buttonDisabledText : PortColors.buttonText)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(isButtonDisabled ? PortColors.surfaceElevated : PortColors.brand)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .shadow(color: isButtonDisabled ? .clear : PortColors.brand.opacity(0.35), radius: 10, y: 4)
+            .padding(.vertical, 14)
+            .background(isButtonDisabled ? PortColors.buttonDisabled : PortColors.buttonBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: isButtonDisabled ? .clear : .white.opacity(0.15), radius: 8, y: 2)
         }
         .disabled(isButtonDisabled)
     }
@@ -236,7 +271,7 @@ struct ServerSetupView: View {
     private var savedServerNotice: some View {
         if hasSavedServer && !savedServerURL.isEmpty {
             VStack(spacing: 4) {
-                Text("Aktuell gespeicherter Server:")
+                Text("Gespeicherter Server:")
                     .font(.system(size: 12))
                     .foregroundColor(PortColors.textMuted)
 
@@ -244,7 +279,7 @@ struct ServerSetupView: View {
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .foregroundColor(PortColors.textSecondary)
             }
-            .padding(.top, 10)
+            .padding(.top, 8)
         }
     }
 
