@@ -1060,15 +1060,37 @@ public struct LyricLine: Identifiable, Equatable, Hashable {
 }
 
 public func parseLRC(_ lrc: String) -> [LyricLine] {
+    let trimmedInput = lrc.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedInput.isEmpty else { return [] }
+
+    // 1. Wenn die Antwort bereits ein JSON-Objekt mit einem "lines"-Array ist
+    if trimmedInput.first == Character(UnicodeScalar(123)) && trimmedInput.contains("\"lines\""),
+       let data = trimmedInput.data(using: .utf8),
+       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+       let rawLines = json["lines"] as? [[String: Any]] {
+        var parsed: [LyricLine] = []
+        for line in rawLines {
+            let text = (line["text"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+            let start = line["start"] as? Double ?? 0.0
+            if !text.isEmpty {
+                parsed.append(LyricLine(time: start, text: text))
+            }
+        }
+        if !parsed.isEmpty {
+            return parsed.sorted { $0.time < $1.time }
+        }
+    }
+
     var lines: [LyricLine] = []
-    let rawLines = lrc.components(separatedBy: .newlines)
-    let pattern = "\\[(\\d{2}):(\\d{2})(?:\\.(\\d{2,3}))?\\](.*)"
-    guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+    let rawLines = trimmedInput.components(separatedBy: .newlines)
+    let pattern = "\\[(\\d{1,2}):(\\d{2})(?:\\.(\\d{1,3}))?\\](.*)"
+    let regex = try? NSRegularExpression(pattern: pattern)
 
     for line in rawLines {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { continue }
         let range = NSRange(location: 0, length: trimmed.utf16.count)
-        if let match = regex.firstMatch(in: trimmed, options: [], range: range) {
+        if let regex = regex, let match = regex.firstMatch(in: trimmed, options: [], range: range) {
             if let minRange = Range(match.range(at: 1), in: trimmed),
                let secRange = Range(match.range(at: 2), in: trimmed),
                let textRange = Range(match.range(at: 4), in: trimmed) {
@@ -1081,13 +1103,28 @@ public func parseLRC(_ lrc: String) -> [LyricLine] {
                     frac = Double(fracStr) ?? 0
                 }
                 let totalSec = min * 60 + sec + frac
-                let text = String(trimmed[textRange]).trimmingCharacters(in: .whitespaces)
+                var text = String(trimmed[textRange]).trimmingCharacters(in: .whitespaces)
+                // Wort-Tags <mm:ss.xx> aus Text entfernen
+                text = text.replacingOccurrences(of: "<\\d{1,2}:\\d{2}(?:\\.\\d{1,3})?>", with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
                 if !text.isEmpty {
                     lines.append(LyricLine(time: totalSec, text: text))
                 }
             }
         }
     }
+
+    // 2. Falls keine LRC-Zeitstempel vorhanden waren, aber Textzeilen existieren (reiner Text-Songtext)
+    if lines.isEmpty {
+        var lineTime = 0.0
+        for line in rawLines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty && !trimmed.hasPrefix("[ti:") && !trimmed.hasPrefix("[ar:") && !trimmed.hasPrefix("[al:") {
+                lines.append(LyricLine(time: lineTime, text: trimmed))
+                lineTime += 4.0 // Standard-Intervall für Textzeilen
+            }
+        }
+    }
+
     return lines.sorted { $0.time < $1.time }
 }
 

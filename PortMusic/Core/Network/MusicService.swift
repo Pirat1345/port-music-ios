@@ -964,12 +964,60 @@ public final class MusicService {
     // MARK: - Synchronized Lyrics Retrieval (Feature #18)
     public func fetchLyrics(trackId: String, title: String, artist: String, serverURL: String, token: String? = nil) async -> String? {
         guard !serverURL.isEmpty else { return nil }
-        var comps = URLComponents(string: "\(serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/lyrics")
-        comps?.queryItems = [
+        let cleanBase = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        // 1. Primärer Weg: POST /api/tracks/fetch-lyrics (wie in der Web-App fetchPortMusicLyrics)
+        if let postUrl = URL(string: "\(cleanBase)/api/tracks/fetch-lyrics") {
+            var postReq = URLRequest(url: postUrl)
+            postReq.httpMethod = "POST"
+            postReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let t = token, !t.isEmpty {
+                postReq.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+            }
+
+            var postBody: [String: Any] = [
+                "title": title,
+                "artist": artist,
+                "trackId": trackId
+            ]
+            let currentTrack = AudioPlayerManager.shared.currentTrack
+            if let album = currentTrack?.album, !album.isEmpty {
+                postBody["album"] = album
+            }
+            if let dur = currentTrack?.durationSeconds, dur > 0 {
+                postBody["duration_seconds"] = dur
+            }
+            if trackId.hasPrefix("yt_") {
+                let vid = trackId.replacingOccurrences(of: "yt_", with: "")
+                postBody["youtubeUrl"] = "https://www.youtube.com/watch?v=\(vid)"
+            }
+
+            if let bodyData = try? JSONSerialization.data(withJSONObject: postBody),
+               let (data, response) = try? await URLSession.shared.upload(for: postReq, from: bodyData),
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let lrc = json["lyrics"] as? String, !lrc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return lrc
+                }
+            }
+        }
+
+        // 2. Sekundärer Fallback: GET /api/lyrics?title=...&artist=...
+        var comps = URLComponents(string: "\(cleanBase)/api/lyrics")
+        var queryItems = [
             URLQueryItem(name: "trackId", value: trackId),
             URLQueryItem(name: "title", value: title),
             URLQueryItem(name: "artist", value: artist)
         ]
+        let currentTrack = AudioPlayerManager.shared.currentTrack
+        if let album = currentTrack?.album, !album.isEmpty {
+            queryItems.append(URLQueryItem(name: "album", value: album))
+        }
+        if let dur = currentTrack?.durationSeconds, dur > 0 {
+            queryItems.append(URLQueryItem(name: "duration", value: String(dur)))
+        }
+        comps?.queryItems = queryItems
+
         guard let url = comps?.url else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -981,8 +1029,23 @@ public final class MusicService {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let lrc = json["lyrics"] as? String ?? json["lrc"] as? String {
+                if let lrc = json["lyrics"] as? String ?? json["lrc"] as? String, !lrc.isEmpty {
                     return lrc
+                }
+                // Strukturierte Backend-Antwort (LyricsResponse mit lines: [{ text, start, end }])
+                if let lines = json["lines"] as? [[String: Any]], !lines.isEmpty {
+                    var lrcBuilder = ""
+                    for line in lines {
+                        let lineText = (line["text"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+                        let start = line["start"] as? Double ?? 0.0
+                        let min = Int(start) / 60
+                        let sec = Int(start) % 60
+                        let hundredths = Int((start.truncatingRemainder(dividingBy: 1.0)) * 100)
+                        lrcBuilder += String(format: "[%02d:%02d.%02d]%@\n", min, sec, hundredths, lineText)
+                    }
+                    if !lrcBuilder.isEmpty {
+                        return lrcBuilder
+                    }
                 }
             }
             return String(data: data, encoding: .utf8)

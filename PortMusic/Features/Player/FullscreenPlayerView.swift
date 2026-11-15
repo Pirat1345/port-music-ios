@@ -81,12 +81,14 @@ public struct FullscreenPlayerView: View {
             .gesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { val in
-                        if val.translation.height > 0 {
+                        if val.translation.height > 0 && abs(val.translation.height) > abs(val.translation.width) {
                             dragOffset = val.translation.height
                         }
                     }
                     .onEnded { val in
-                        if val.translation.height > 120 {
+                        if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
                             onClose()
                         } else {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -115,10 +117,9 @@ public struct FullscreenPlayerView: View {
     // MARK: - Weichgezeichneter Album-Hintergrund (Ambient Glow)
     public func backgroundLayer(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
-            // 1. Blickdichte, solide schwarze Basis
-            // Verhindert jegliche unerwünschte Transparenz zur darunterliegenden Seite:
-            // Ist kein Cover vorhanden, bleibt es absolut blickdicht schwarz.
-            Color(hex: "#0c0c0e")
+            // 1. Blickdichte, absolut solide Basis (#0e0e11)
+            // Verhindert jegliche unerwünschte Transparenz zur darunterliegenden Seite im geöffneten Zustand:
+            Color(hex: "#0e0e11")
                 .frame(width: width, height: height)
 
             // 2. Weichgezeichnetes Cover mit Ambient Glow
@@ -127,8 +128,9 @@ public struct FullscreenPlayerView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: width, height: height)
-                    .blur(radius: 54)
-                    .opacity(0.48)
+                    .blur(radius: 64)
+                    .opacity(0.50)
+                    .scaleEffect(1.25)
                     .clipped()
             } else {
                 let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
@@ -137,20 +139,21 @@ public struct FullscreenPlayerView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: width, height: height)
-                        .blur(radius: 54)
-                        .opacity(0.48)
+                        .blur(radius: 64)
+                        .opacity(0.50)
+                        .scaleEffect(1.25)
                         .clipped()
                 } placeholder: {
                     Color.clear
                 }
             }
 
-            // 3. Dunkler Kontrast-Verlauf für optimale Lesbarkeit
+            // 3. Dunkler Kontrast-Verlauf für optimale Lesbarkeit (wie in der Web-App)
             LinearGradient(
-                colors: [
-                    Color.black.opacity(0.35),
-                    Color.black.opacity(0.65),
-                    Color.black.opacity(0.85)
+                stops: [
+                    .init(color: Color.black.opacity(0.30), location: 0.0),
+                    .init(color: Color.black.opacity(0.48), location: 0.45),
+                    .init(color: Color.black.opacity(0.80), location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -249,34 +252,39 @@ public struct FullscreenPlayerView: View {
 
     // MARK: - PHONE PORTRAIT LAYOUT (Perfekt zentriert, kein Rechts-Versatz, Lyrics zum Runterscrollen)
     private func phoneScrollLayout(geo: GeometryProxy) -> some View {
+        let contentWidth = min(geo.size.width - 36, 420)
+
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
-                Spacer(minLength: 8)
+                Spacer(minLength: 6)
 
                 // Albumcover zentriert
-                artworkSection(maxSize: min(geo.size.width - 64, 320))
+                artworkSection(maxSize: min(contentWidth, 310))
 
                 // Titel, Interpret & Stern-Favorit (☆)
                 trackInfoSection
+                    .frame(width: contentWidth)
 
                 // Scrubber mit negativer Restzeit
                 scrubberSection
+                    .frame(width: contentWidth)
 
                 // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
                 playbackControlsSection
+                    .frame(width: contentWidth)
 
                 // Lautstärke-Regler mit Lautsprecher-Icon
                 volumeSliderSection
+                    .frame(width: contentWidth)
 
                 // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
                 phoneLyricsSection
-                    .padding(.top, 14)
+                    .frame(width: contentWidth)
+                    .padding(.top, 10)
 
                 Spacer(minLength: 40)
             }
-            .frame(maxWidth: min(geo.size.width - 40, 420))
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 20)
+            .frame(width: geo.size.width, alignment: .center)
         }
         .frame(width: geo.size.width)
     }
