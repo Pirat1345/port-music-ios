@@ -41,8 +41,10 @@ public struct FullscreenPlayerView: View {
     private var currentLyricId: String? {
         guard !lyricsLines.isEmpty else { return nil }
         let time = activeProgress
-        let matched = lyricsLines.last(where: { $0.time <= time + 0.15 })
-        return matched?.id ?? lyricsLines.first?.id
+        guard let first = lyricsLines.first, time >= first.time - 0.4 else {
+            return nil
+        }
+        return lyricsLines.last(where: { $0.time <= time + 0.15 })?.id
     }
 
     public var body: some View {
@@ -62,7 +64,7 @@ public struct FullscreenPlayerView: View {
 
                 // 2. Inhalt
                 VStack(spacing: 0) {
-                    // Kopfleiste mit Schließen-Button (xmark) und Drag-Griff
+                    // Kopfleiste mit Drag-Griff
                     topBarSection(safeTop: safeTop)
 
                     if isTablet {
@@ -78,25 +80,6 @@ public struct FullscreenPlayerView: View {
             .frame(width: fullWidth, height: fullHeight)
             .clipped()
             .offset(y: max(0, dragOffset))
-            .gesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { val in
-                        if val.translation.height > 0 && abs(val.translation.height) > abs(val.translation.width) {
-                            dragOffset = val.translation.height
-                        }
-                    }
-                    .onEnded { val in
-                        if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.impactOccurred()
-                            onClose()
-                        } else {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                dragOffset = 0
-                            }
-                        }
-                    }
-            )
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
             }
@@ -182,6 +165,26 @@ public struct FullscreenPlayerView: View {
                 }
         }
         .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 10)
+                .onChanged { val in
+                    if val.translation.height > 0 {
+                        dragOffset = val.translation.height
+                    }
+                }
+                .onEnded { val in
+                    if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        onClose()
+                    } else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
     }
 
     // MARK: - Drag Handle
@@ -195,7 +198,7 @@ public struct FullscreenPlayerView: View {
     private func tabletSplitLayout(geo: GeometryProxy) -> some View {
         HStack(alignment: .center, spacing: min(56, geo.size.width * 0.06)) {
             // LINKE SPALTE: Cover-Artwork & Bedienelemente
-            VStack(spacing: 22) {
+            VStack(spacing: 24) {
                 Spacer(minLength: 6)
 
                 // Großes Albumcover mit Feder-Animation
@@ -209,9 +212,6 @@ public struct FullscreenPlayerView: View {
 
                 // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
                 playbackControlsSection
-
-                // Lautstärke-Regler mit Lautsprecher-Icon
-                volumeSliderSection
 
                 Spacer(minLength: 12)
             }
@@ -248,16 +248,12 @@ public struct FullscreenPlayerView: View {
                 trackInfoSection
                     .frame(width: contentWidth)
 
-                // Scrubber mit negativer Restzeit
-                scrubberSection
+                // Scrubber mit negativer Restzeit (flüssig ohne verschachtelte GeometryReader)
+                scrubberContent(fixedWidth: contentWidth)
                     .frame(width: contentWidth)
 
                 // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
                 playbackControlsSection
-                    .frame(width: contentWidth)
-
-                // Lautstärke-Regler mit Lautsprecher-Icon
-                volumeSliderSection
                     .frame(width: contentWidth)
 
                 // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
@@ -311,6 +307,26 @@ public struct FullscreenPlayerView: View {
         )
         .scaleEffect(player.isPlaying ? 1.0 : 0.86)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 15)
+                .onChanged { val in
+                    if val.translation.height > 0 && abs(val.translation.height) > abs(val.translation.width) {
+                        dragOffset = val.translation.height
+                    }
+                }
+                .onEnded { val in
+                    if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        onClose()
+                    } else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
     }
 
     // MARK: - Titel, Interpret & Stern-Favorit (☆ wie im Web-App Screenshot)
@@ -360,48 +376,20 @@ public struct FullscreenPlayerView: View {
 
     // MARK: - Scrubber mit negativer Restzeit (-M:SS)
     public var scrubberSection: some View {
+        scrubberContent(fixedWidth: nil)
+    }
+
+    @ViewBuilder
+    private func scrubberContent(fixedWidth: CGFloat?) -> some View {
         VStack(spacing: 8) {
-            GeometryReader { geo in
-                let width = geo.size.width
-                let maxDur = max(player.duration, 1.0)
-                let pct = min(1.0, max(0.0, activeProgress / maxDur))
-
-                ZStack(alignment: .leading) {
-                    // Hintergrundleiste
-                    Capsule()
-                        .fill(Color.white.opacity(0.18))
-                        .frame(height: 5)
-
-                    // Gespielte Leiste
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: max(0, width * CGFloat(pct)), height: 5)
-
-                    // Schieberegler-Knopf
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: isScrubbing ? 16 : 12, height: isScrubbing ? 16 : 12)
-                        .shadow(color: Color.black.opacity(0.4), radius: 3)
-                        .offset(x: max(0, min(width * CGFloat(pct) - 6, width - 12)))
+            if let w = fixedWidth {
+                scrubberBar(width: w)
+            } else {
+                GeometryReader { geo in
+                    scrubberBar(width: geo.size.width)
                 }
                 .frame(height: 24)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { val in
-                            isScrubbing = true
-                            let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
-                            scrubPosition = progressRatio * maxDur
-                        }
-                        .onEnded { val in
-                            let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
-                            let target = progressRatio * maxDur
-                            player.seek(to: target)
-                            isScrubbing = false
-                        }
-                )
             }
-            .frame(height: 24)
 
             // Links vergangen, Rechts verbleibend (-M:SS)
             HStack {
@@ -417,6 +405,46 @@ public struct FullscreenPlayerView: View {
                     .foregroundColor(Color.white.opacity(0.60))
             }
         }
+    }
+
+    private func scrubberBar(width: CGFloat) -> some View {
+        let maxDur = max(player.duration, 1.0)
+        let pct = min(1.0, max(0.0, activeProgress / maxDur))
+
+        return ZStack(alignment: .leading) {
+            // Hintergrundleiste
+            Capsule()
+                .fill(Color.white.opacity(0.18))
+                .frame(height: 5)
+
+            // Gespielte Leiste
+            Capsule()
+                .fill(Color.white)
+                .frame(width: max(0, width * CGFloat(pct)), height: 5)
+
+            // Schieberegler-Knopf
+            Circle()
+                .fill(Color.white)
+                .frame(width: isScrubbing ? 16 : 12, height: isScrubbing ? 16 : 12)
+                .shadow(color: Color.black.opacity(0.4), radius: 3)
+                .offset(x: max(0, min(width * CGFloat(pct) - 6, width - 12)))
+        }
+        .frame(width: width, height: 24)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { val in
+                    isScrubbing = true
+                    let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
+                    scrubPosition = progressRatio * maxDur
+                }
+                .onEnded { val in
+                    let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
+                    let target = progressRatio * maxDur
+                    player.seek(to: target)
+                    isScrubbing = false
+                }
+        )
     }
 
     // MARK: - Playback Controls (Exakt wie im Screenshot media_1794768801325_390874e2.jpg)
@@ -599,8 +627,9 @@ public struct FullscreenPlayerView: View {
                             ForEach(lyricsLines) { line in
                                 let isCurrent = currentLyricId == line.id
                                 Text(line.text)
-                                    .font(.system(size: (isCurrent ? 24 : 19) * lyricsSizeScale, weight: isCurrent ? .bold : .medium))
-                                    .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.35))
+                                    .font(.system(size: 22 * lyricsSizeScale, weight: isCurrent ? .bold : .medium))
+                                    .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.32))
+                                    .lineSpacing(4)
                                     .id(line.id)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
@@ -750,12 +779,14 @@ public struct FullscreenPlayerView: View {
                     ForEach(lyricsLines) { line in
                         let isCurrent = currentLyricId == line.id
                         Text(line.text)
-                            .font(.system(size: isCurrent ? 20 : 16, weight: isCurrent ? .bold : .medium))
-                            .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.38))
+                            .font(.system(size: 18, weight: isCurrent ? .bold : .medium))
+                            .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.32))
+                            .lineSpacing(4)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 player.seek(to: line.time)
                             }
+                            .animation(.easeInOut(duration: 0.25), value: isCurrent)
                     }
                 }
                 .padding(.vertical, 8)
