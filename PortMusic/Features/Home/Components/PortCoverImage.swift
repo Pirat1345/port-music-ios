@@ -274,7 +274,6 @@ public struct PortUserAvatarView: View {
 
             if let img = UIImage(data: data) {
                 rasterImage = img
-                PortImageCache.shared.storeImageInMemory(img, for: url)
                 return
             }
         } catch {}
