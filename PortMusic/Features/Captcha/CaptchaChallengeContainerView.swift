@@ -119,27 +119,28 @@ public struct CaptchaChallengeContainerView: View {
                         .id("claw-\(challengeToken)-\(targetToy)")
                     }
 
-                    // Verification Overlay
+                    // Verification Overlay - Dezente minimale Status-Pille
                     if isVerifying {
                         ZStack {
-                            Color.black.opacity(0.65)
+                            Color.black.opacity(0.35)
                                 .ignoresSafeArea()
 
-                            VStack(spacing: 14) {
+                            HStack(spacing: 10) {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(1.3)
+                                    .scaleEffect(0.9)
 
-                                Text("Verifizierung läuft...")
-                                    .font(.system(size: 15, weight: .semibold))
+                                Text("Wird verifiziert...")
+                                    .font(.system(size: 14, weight: .medium))
                                     .foregroundColor(.white)
                             }
-                            .padding(28)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
                             .background(PortColors.surfaceGlassStrong)
-                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .clipShape(Capsule())
                             .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(PortColors.borderGlass, lineWidth: 1.5)
+                                Capsule()
+                                    .stroke(PortColors.borderGlass, lineWidth: 1)
                             )
                         }
                         .transition(.opacity)
@@ -151,6 +152,7 @@ public struct CaptchaChallengeContainerView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .preferredColorScheme(.dark)
+        .tint(.white)
         .onAppear {
             initializeChallenge()
         }
@@ -291,8 +293,8 @@ public struct CaptchaChallengeContainerView: View {
             await MainActor.run {
                 isVerifying = false
                 if res.success, let vToken = res.token {
-                    // Success: Zeit lassen, damit die elegante Erfolgs-Animation im Greifarm sichtbar ausklingt
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.70) {
+                    // Kurze, minimale Pause zum sauberen Ausblenden
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         onSuccess(vToken)
                     }
                 } else {

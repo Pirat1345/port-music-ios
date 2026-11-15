@@ -108,6 +108,8 @@ public struct TwoFactorView: View {
                     .multilineTextAlignment(.center)
                     .keyboardType(.numberPad)
                     .foregroundColor(PortColors.textPrimary)
+                    .tint(.white)
+                    .accentColor(.white)
                     .padding(.vertical, 16)
                     .background(PortColors.surfaceGlass)
                     .clipShape(RoundedRectangle(cornerRadius: 16))

@@ -49,18 +49,13 @@ public struct LoginView: View {
     }
 
     public var body: some View {
-        ZStack {
+        ZStack(alignment: .topTrailing) {
             // Fluent Animated Seiden-Hintergrund
             FluentBackgroundView()
 
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
-                        // Dezenter Server-Indikator oben
-                        serverHeaderBadge
-                            .padding(.top, 16)
-                            .padding(.bottom, 8)
-
                         Spacer(minLength: is2FAMode ? 24 : 12)
 
                         if is2FAMode {
@@ -101,10 +96,17 @@ public struct LoginView: View {
                     .frame(minHeight: geometry.size.height)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.horizontal, 24)
+                    .padding(.top, 44)
                 }
             }
+
+            // Server-Button: Immer fest in der oberen rechten Ecke
+            serverHeaderBadge
+                .padding(.top, 16)
+                .padding(.trailing, 24)
         }
         .preferredColorScheme(.dark)
+        .tint(.white)
         .onAppear {
             checkCaptchaStatus()
         }
@@ -136,31 +138,28 @@ public struct LoginView: View {
 
     // MARK: - Dezenter Server-Indikator
     private var serverHeaderBadge: some View {
-        HStack {
-            Button(action: onChangeServer) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(PortColors.successGreen)
-                        .frame(width: 7, height: 7)
+        Button(action: onChangeServer) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(PortColors.successGreen)
+                    .frame(width: 7, height: 7)
 
-                    Text(shortHostName)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(PortColors.textSecondary)
+                Text(shortHostName)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(PortColors.textSecondary)
 
-                    Image(systemName: "pencil")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(PortColors.surfaceGlass)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(PortColors.borderGlass, lineWidth: 1)
-                )
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white)
             }
-            Spacer()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(PortColors.surfaceGlass)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(PortColors.borderGlass, lineWidth: 1)
+            )
         }
     }
 
@@ -213,6 +212,8 @@ public struct LoginView: View {
                         )
                             .font(.system(size: 15))
                             .foregroundColor(PortColors.textPrimary)
+                            .tint(.white)
+                            .accentColor(.white)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                     }
@@ -247,6 +248,8 @@ public struct LoginView: View {
                             )
                                 .font(.system(size: 15))
                                 .foregroundColor(PortColors.textPrimary)
+                                .tint(.white)
+                                .accentColor(.white)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                         } else {
@@ -258,6 +261,8 @@ public struct LoginView: View {
                             )
                                 .font(.system(size: 15))
                                 .foregroundColor(PortColors.textPrimary)
+                                .tint(.white)
+                                .accentColor(.white)
                         }
 
                         Button(action: { showPassword.toggle() }) {

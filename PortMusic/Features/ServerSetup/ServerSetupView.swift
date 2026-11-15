@@ -50,6 +50,7 @@ public struct ServerSetupView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .tint(.white)
         .onAppear {
             loadSavedServer()
         }
@@ -97,6 +98,8 @@ public struct ServerSetupView: View {
                 )
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(PortColors.textPrimary)
+                    .tint(.white)
+                    .accentColor(.white)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
                     .keyboardType(.URL)

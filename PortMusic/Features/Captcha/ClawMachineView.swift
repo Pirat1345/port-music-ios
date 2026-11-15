@@ -415,28 +415,6 @@ public struct ClawMachineView: View {
     @State private var pile: [PileSlot] = []
     @State private var softBodies: [SoftBodyState] = []
 
-    // Floating Sparkle Orbs on Win (Dynamic continuous particles)
-    private struct SparkleOrb: Identifiable {
-        let id: Int
-        let startX: CGFloat
-        let vx: CGFloat
-        let speedY: CGFloat
-        let size: CGFloat
-        let color: Color
-    }
-
-    private let victorySparkles: [SparkleOrb] = [
-        SparkleOrb(id: 0, startX: -50, vx: -14, speedY: 48, size: 6, color: Color(hex: "#34c759")),
-        SparkleOrb(id: 1, startX: -30, vx: -8,  speedY: 62, size: 5, color: Color(hex: "#a8e6b8")),
-        SparkleOrb(id: 2, startX: -12, vx: -3,  speedY: 54, size: 7, color: Color(hex: "#64d2ff")),
-        SparkleOrb(id: 3, startX: 8,   vx: 4,   speedY: 58, size: 6, color: Color(hex: "#ffd60a")),
-        SparkleOrb(id: 4, startX: 28,  vx: 9,   speedY: 50, size: 5, color: Color(hex: "#34c759")),
-        SparkleOrb(id: 5, startX: 48,  vx: 16,  speedY: 46, size: 6, color: Color(hex: "#a8e6b8")),
-        SparkleOrb(id: 6, startX: 0,   vx: 0,   speedY: 68, size: 8, color: Color(hex: "#30d158")),
-        SparkleOrb(id: 7, startX: -20, vx: 5,   speedY: 44, size: 5, color: Color(hex: "#ffd60a")),
-        SparkleOrb(id: 8, startX: 20,  vx: -5,  speedY: 44, size: 5, color: Color(hex: "#64d2ff"))
-    ]
-
     // Timer loop
     private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
     @State private var lastTick: Date? = nil
@@ -457,34 +435,43 @@ public struct ClawMachineView: View {
 
     public var body: some View {
         GeometryReader { geo in
-            let scale = min(max(geo.size.width / (GW + 24), 0.75), 1.08)
+            let scaleW = max(0.65, min(1.0, (geo.size.width - 24) / GW))
+            let neededH: CGFloat = 525.0
+            let scaleH = max(0.65, min(1.0, (geo.size.height - 20) / neededH))
+            let scale = min(scaleW, scaleH)
 
-            VStack(spacing: 12) {
-                // Header Status Prompt
-                headerView
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 10) {
+                    // Header Status Prompt
+                    headerView
 
-                // Steps Indicator (1 Steuern, 2 Greifen, 3 Abwerfen)
-                stepsIndicator
+                    // Steps Indicator (1 Steuern, 2 Greifen, 3 Abwerfen)
+                    stepsIndicator
 
-                // Claw Machine Box (380x320 scaled)
-                machineView
-                    .frame(width: GW, height: GH)
-                    .scaleEffect(scale)
-                    .frame(width: GW * scale, height: GH * scale)
+                    // Claw Machine Box (380x320 scaled)
+                    machineView
+                        .frame(width: GW, height: GH)
+                        .scaleEffect(scale)
+                        .frame(width: GW * scale, height: GH * scale)
 
-                // Console / Joystick & Controls
-                consoleView
-                    .scaleEffect(scale)
-                    .frame(width: GW * scale)
+                    // Console / Joystick & Controls
+                    consoleView
+                        .scaleEffect(scale)
+                        .frame(width: GW * scale)
 
-                // Hint footer
-                Text("Joystick oder Wischen zum Bewegen · Button zum Greifen & Abwerfen")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.top, 4)
+                    // Hint footer - niemals abgeschnitten mit sicherem Abstand unten
+                    Text("Joystick oder Wischen zum Bewegen · Button zum Greifen & Abwerfen")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(PortColors.textMuted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 24)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: geo.size.height)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {
                 setupPile()
             }
@@ -898,39 +885,14 @@ public struct ClawMachineView: View {
 
             // Status Display (Icon + Label or Victory Seal)
             if trayMode == .win {
-                VStack(spacing: 3) {
-                    ZStack {
-                        // Expanding Radiant Aura Pulse
-                        Circle()
-                            .stroke(Color(hex: "#34c759").opacity(max(0.0, 0.75 - stageTime * 0.55)), lineWidth: 2)
-                            .scaleEffect(1.0 + CGFloat(stageTime) * 1.6)
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(PortColors.successGreen)
 
-                        // Glowing Emerald Success Seal
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [Color(hex: "#34c759"), Color(hex: "#1b6930")],
-                                        center: .center,
-                                        startRadius: 2,
-                                        endRadius: 18
-                                    )
-                                )
-                                .frame(width: 32, height: 32)
-                                .shadow(color: Color(hex: "#34c759").opacity(0.85), radius: 10)
-
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundColor(.white)
-                        }
-                        .scaleEffect(min(1.0, stageTime * 3.4))
-                    }
-
-                    Text("Verifiziert!")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color(hex: "#34c759"))
-                        .shadow(color: Color(hex: "#34c759").opacity(0.5), radius: 4)
-                        .scaleEffect(min(1.0, stageTime * 3.0))
+                    Text("Verifiziert")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
                 }
             } else if trayMode == .no {
                 HStack(spacing: 8) {
@@ -961,25 +923,6 @@ public struct ClawMachineView: View {
                     Text("Hier abwerfen")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white)
-                }
-            }
-
-            // Floating Rising Sparkle Orbs on Win (Dynamic continuous particles)
-            if trayMode == .win {
-                ForEach(victorySparkles) { p in
-                    let yOffset = -CGFloat(stageTime) * p.speedY
-                    let xOffset = p.startX + CGFloat(stageTime) * p.vx
-                    let progress = min(1.0, stageTime / 1.1)
-                    let opacity = max(0.0, 1.0 - progress * 1.1)
-                    let scale = max(0.2, 1.0 - progress * 0.4)
-
-                    Circle()
-                        .fill(p.color)
-                        .frame(width: p.size, height: p.size)
-                        .scaleEffect(scale)
-                        .opacity(opacity)
-                        .offset(x: xOffset, y: yOffset)
-                        .blur(radius: 0.4)
                 }
             }
         }
@@ -1125,11 +1068,11 @@ public struct ClawMachineView: View {
             stepDropSequence(dt: dt)
         } else if phase == .celebrate {
             stageTime += dt
-            if stage == .beat && stageTime >= 0.75 {
+            if stage == .beat && stageTime >= 0.35 {
                 stage = .shine
                 isVerified = true
                 onVerify(targetId)
-            } else if stage == .shine && stageTime >= 1.60 {
+            } else if stage == .shine && stageTime >= 0.80 {
                 phase = .done
             }
         } else if phase == .deny {

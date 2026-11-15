@@ -4,6 +4,12 @@ import SwiftUI
 struct PortMusicApp: App {
     @StateObject private var sessionManager = SessionManager.shared
 
+    public init() {
+        UITextField.appearance().tintColor = .white
+        UITextView.appearance().tintColor = .white
+        UIView.appearance().tintColor = .white
+    }
+
     var body: some Scene {
         WindowGroup {
             ZStack {
@@ -56,6 +62,7 @@ struct PortMusicApp: App {
                 }
             }
             .preferredColorScheme(.dark)
+            .tint(.white)
             .task {
                 await sessionManager.restoreSession()
             }
