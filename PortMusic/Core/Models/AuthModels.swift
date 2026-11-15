@@ -8,6 +8,15 @@ public struct UserProfile: Codable, Identifiable, Equatable {
     public let createdAt: String?
     public let avatar: String?
 
+    enum CodingKeys: String, CodingKey {
+        case id, userId, user_id
+        case username
+        case email
+        case role
+        case createdAt, created_at
+        case avatar, picture, avatarUrl, avatar_url
+    }
+
     public init(
         id: String,
         username: String,
@@ -22,6 +31,33 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         self.role = role
         self.createdAt = createdAt
         self.avatar = avatar
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? container.decode(String.self, forKey: .id))
+            ?? (try? container.decode(String.self, forKey: .userId))
+            ?? (try? container.decode(String.self, forKey: .user_id))
+            ?? UUID().uuidString
+        self.username = (try? container.decode(String.self, forKey: .username)) ?? "Benutzer"
+        self.email = try? container.decodeIfPresent(String.self, forKey: .email)
+        self.role = try? container.decodeIfPresent(String.self, forKey: .role)
+        self.createdAt = (try? container.decodeIfPresent(String.self, forKey: .createdAt))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .created_at))
+        self.avatar = (try? container.decodeIfPresent(String.self, forKey: .avatar))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .picture))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .avatarUrl))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .avatar_url))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(username, forKey: .username)
+        try container.encodeIfPresent(email, forKey: .email)
+        try container.encodeIfPresent(role, forKey: .role)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(avatar, forKey: .avatar)
     }
 }
 

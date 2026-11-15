@@ -22,6 +22,10 @@ public final class SessionManager: ObservableObject {
         if let url = storedURL, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             self.serverURL = url
         }
+        if let cached = loadCachedUserProfile() {
+            self.currentUser = cached
+            self.isAuthenticated = true
+        }
     }
 
     // MARK: - Sitzungswiederherstellung beim App-Start

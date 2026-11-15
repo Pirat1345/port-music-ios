@@ -100,6 +100,7 @@ public struct MainTabView: View {
                         showFullscreenPlayer = false
                     }
                 }
+                .ignoresSafeArea()
                 .transition(.move(edge: .bottom))
                 .zIndex(999)
             }
@@ -127,7 +128,7 @@ public struct MainTabView: View {
                 }) {
                     VStack(spacing: 4) {
                         tabIconView(tab: tab, isSelected: isSelected)
-                            .frame(height: 24)
+                            .frame(height: 26)
 
                         Text(tab.title)
                             .font(.system(size: 10, weight: isSelected ? .bold : .regular))
@@ -157,12 +158,8 @@ public struct MainTabView: View {
                 rawAvatar: curUser.avatar,
                 username: curUser.username,
                 serverURL: serverURL,
-                size: 24,
+                size: 26,
                 isSelected: isSelected
-            )
-            .overlay(
-                Circle()
-                    .stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
             )
         } else {
             Image(systemName: tab.icon)

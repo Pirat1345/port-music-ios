@@ -697,8 +697,16 @@ public struct HomeView: View {
     }
 
     private func playTrackWithFullQueue(_ targetTrack: Track, discovery: DiscoveryHomeResponse) {
-        let queue = makeDiscoveryQueue(targetTrack: targetTrack, discovery: discovery)
-        player.play(track: targetTrack, from: queue, serverURL: serverURL)
+        var resolvedTrack = targetTrack
+        if resolvedTrack.durationSeconds <= 0 {
+            if let m = (discovery.trendingEverywhere ?? []).first(where: { $0.id == targetTrack.id || ($0.title.lowercased() == targetTrack.title.lowercased() && $0.artist.lowercased() == targetTrack.artist.lowercased()) }) {
+                resolvedTrack = m.toTrack()
+            } else if let m = (discovery.todaysTopHits ?? []).first(where: { $0.id == targetTrack.id || ($0.title.lowercased() == targetTrack.title.lowercased() && $0.artist.lowercased() == targetTrack.artist.lowercased()) }) {
+                resolvedTrack = m.toTrack()
+            }
+        }
+        let queue = makeDiscoveryQueue(targetTrack: resolvedTrack, discovery: discovery)
+        player.play(track: resolvedTrack, from: queue, serverURL: serverURL)
     }
 
     // MARK: - Fehleranzeige

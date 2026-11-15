@@ -60,8 +60,15 @@ public final class AudioPlayerManager: ObservableObject {
             self.currentTrack = track
             let savedTime = UserDefaults.standard.double(forKey: lastPlayedTimeKey)
             let savedDur = UserDefaults.standard.double(forKey: lastPlayedDurationKey)
+            let parsed = parseDurationSeconds(from: track)
             self.currentTime = max(0, savedTime)
-            self.duration = savedDur > 0 ? savedDur : parseDurationSeconds(from: track)
+            if parsed > 0 && savedDur > 0 && abs(savedDur - parsed * 2.0) < 25.0 {
+                self.duration = parsed
+            } else if parsed > 0 {
+                self.duration = parsed
+            } else {
+                self.duration = savedDur > 0 ? savedDur : 0.0
+            }
 
             if let qData = UserDefaults.standard.data(forKey: lastPlayedQueueKey),
                let q = try? JSONDecoder().decode([Track].self, from: qData) {
@@ -124,17 +131,51 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     // MARK: - Duration String Parser Helper
-    private func parseDurationSeconds(from track: Track) -> Double {
-        if track.durationSeconds > 0 {
-            return track.durationSeconds
-        }
-        let parts = track.duration.split(separator: ":").compactMap { Double($0) }
+    public func parseDurationSeconds(from track: Track) -> Double {
+        let clean = track.duration.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parsedSec = 0.0
+        let parts = clean.split(separator: ":").compactMap { Double($0) }
         if parts.count == 2 {
-            return parts[0] * 60.0 + parts[1]
+            parsedSec = parts[0] * 60.0 + parts[1]
         } else if parts.count == 3 {
-            return parts[0] * 3600.0 + parts[1] * 60.0 + parts[2]
+            parsedSec = parts[0] * 3600.0 + parts[1] * 60.0 + parts[2]
+        } else if let direct = Double(clean), direct > 0 {
+            parsedSec = direct
         }
-        return 210.0 // Standard fallback (~3:30)
+
+        let rawSec = track.durationSeconds
+        // If rawSec was corrupted by previous doubling bug to ~2x of parsed string, prefer parsedSec
+        if parsedSec > 0 && rawSec > 0 && abs(rawSec - parsedSec * 2.0) < 25.0 {
+            return parsedSec
+        }
+        if rawSec > 0 {
+            return rawSec
+        }
+        if parsedSec > 0 {
+            return parsedSec
+        }
+        return 0.0
+    }
+
+    // MARK: - Duration Resolution Helper (Authoritative Metadata + CoreMedia AAC SBR Fix)
+    public func resolveAuthoritativeDuration(knownTrack: Track?, audioDuration: Double) -> Double {
+        let known = knownTrack != nil ? parseDurationSeconds(from: knownTrack!) : 0.0
+        let validAudioDur = (!audioDuration.isNaN && audioDuration > 1.0) ? audioDuration : 0.0
+
+        // WebKit CoreMedia AAC SBR doubling bug detection (matches frontend/src/context/player/utils.ts)
+        let isDoubled = validAudioDur > 0 && known > 0 &&
+            (abs(validAudioDur - known * 2.0) < 25.0 ||
+             (validAudioDur > known * 1.7 && validAudioDur < known * 2.3))
+
+        if isDoubled {
+            return known > 0 ? known : round(validAudioDur / 2.0)
+        } else if known > 10.0 {
+            // Reale Metadaten-Dauer von Apple/Deezer ist stets die verbindliche Songdauer
+            return known
+        } else if validAudioDur > 0 {
+            return validAudioDur
+        }
+        return known > 0 ? known : 0.0
     }
 
     // MARK: - Playback Control API
@@ -466,9 +507,9 @@ public final class AudioPlayerManager: ObservableObject {
                 case .readyToPlay:
                     self.isBuffering = false
                     let dur = observedItem.duration.seconds
-                    // Metadaten-Dauer niemals mit fehlerhaft verdoppelter AVPlayer VBR-Bitrate-Schaetzung ueberschreiben
-                    if self.duration <= 0 && !dur.isNaN && dur > 1.0 {
-                        self.duration = dur
+                    let resolved = self.resolveAuthoritativeDuration(knownTrack: self.currentTrack, audioDuration: dur)
+                    if resolved > 0 && (self.duration <= 0 || self.duration > resolved * 1.7) {
+                        self.duration = resolved
                     }
                     self.updateNowPlayingInfo()
                 case .failed:
@@ -487,9 +528,9 @@ public final class AudioPlayerManager: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 let dur = observedItem.duration.seconds
-                // Nur wenn keine valide Metadaten-Dauer vorliegt, auf Stream-Schaetzung zurueckgreifen
-                if self.duration <= 0 && !dur.isNaN && dur > 1.0 {
-                    self.duration = dur
+                let resolved = self.resolveAuthoritativeDuration(knownTrack: self.currentTrack, audioDuration: dur)
+                if resolved > 0 && (self.duration <= 0 || self.duration > resolved * 1.7) {
+                    self.duration = resolved
                     self.updateNowPlayingInfo()
                 }
             }
@@ -518,7 +559,7 @@ public final class AudioPlayerManager: ObservableObject {
             if !sec.isNaN {
                 self.currentTime = sec
                 // Automatischer Übergang zum nächsten Track wenn das reale Songende erreicht ist (keine 3 Minuten Stille)
-                if self.duration > 1.0 && self.currentTime >= self.duration - 0.4 {
+                if self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
                     self.playerItemDidReachEnd()
                     return
                 }

@@ -49,15 +49,16 @@ public struct FullscreenPlayerView: View {
         GeometryReader { geo in
             let safeTop = geo.safeAreaInsets.top
             let isTablet = (UIDevice.current.userInterfaceIdiom == .pad) || (geo.size.width >= 700)
-            let totalHeight = geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom
+            let fullWidth = geo.size.width
+            let fullHeight = geo.size.height
 
             // ── GESAMTER MODAL-CONTAINER (Hintergrund + Inhalt wandern gemeinsam) ──
-            // Exakt auf geo.size.width x totalHeight begrenzt und geclippt.
+            // Exakt auf fullWidth x fullHeight begrenzt und geclippt.
             // Beim Ziehen (dragOffset > 0) wandert der Container nach unten.
             // Der freigezogene Bereich oben zeigt direkt die darunterliegende echte Seite (Startseite, Suche, etc.)!
             ZStack(alignment: .top) {
                 // 1. Weichgezeichneter Album-Hintergrund (Exakt an Container gebunden)
-                backgroundLayer(width: geo.size.width, height: totalHeight)
+                backgroundLayer(width: fullWidth, height: fullHeight)
 
                 // 2. Inhalt
                 VStack(spacing: 0) {
@@ -72,9 +73,9 @@ public struct FullscreenPlayerView: View {
                         phoneScrollLayout(geo: geo)
                     }
                 }
-                .frame(width: geo.size.width)
+                .frame(width: fullWidth)
             }
-            .frame(width: geo.size.width, height: totalHeight)
+            .frame(width: fullWidth, height: fullHeight)
             .clipped()
             .offset(y: max(0, dragOffset))
             .gesture(
@@ -121,7 +122,7 @@ public struct FullscreenPlayerView: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: width, height: height)
                     .blur(radius: 64)
-                    .opacity(0.45)
+                    .opacity(0.40)
                     .clipped()
             } placeholder: {
                 Color(hex: "#121214")
@@ -130,7 +131,7 @@ public struct FullscreenPlayerView: View {
 
             // Subtiler dunkler Verlauf für optimalen Lesekontrast
             LinearGradient(
-                colors: [Color.black.opacity(0.35), Color.black.opacity(0.70)],
+                colors: [Color.black.opacity(0.45), Color.black.opacity(0.78)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -429,14 +430,14 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 3. Vorheriger Song
+            // 3. Vorheriger Song (|◀ wie im Screenshot)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 player.previous(serverURL: serverURL)
             }) {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 26, weight: .semibold))
+                Image(systemName: "backward.end.fill")
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
             }
@@ -462,20 +463,20 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 5. Nächster Song
+            // 5. Nächster Song (▶| wie im Screenshot)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 player.next(serverURL: serverURL)
             }) {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 26, weight: .semibold))
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 6. Lyrics Toggle (quote.bubble)
+            // 6. Lyrics Toggle (mic wie im Screenshot)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -484,14 +485,14 @@ public struct FullscreenPlayerView: View {
                     sidePanelMode = (sidePanelMode == .lyrics && !showLyrics) ? .queue : .lyrics
                 }
             }) {
-                Image(systemName: "quote.bubble")
-                    .font(.system(size: 18, weight: .semibold))
+                Image(systemName: (sidePanelMode == .lyrics || showLyrics) ? "mic.fill" : "mic")
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundColor((sidePanelMode == .lyrics || showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 7. Queue Toggle
+            // 7. Queue Toggle (list.bullet)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -504,7 +505,7 @@ public struct FullscreenPlayerView: View {
                 }
             }) {
                 Image(systemName: "list.bullet")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundColor((sidePanelMode == .queue && !showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }

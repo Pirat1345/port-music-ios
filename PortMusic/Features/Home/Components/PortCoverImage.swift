@@ -53,10 +53,21 @@ public func resolveAvatarURL(_ raw: String?, serverURL: String) -> URL? {
         }
         return nil
     }
-    let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-    let cleanBase = base.hasPrefix("http://") || base.hasPrefix("https://") ? base : "http://\(base)"
-    let path = raw.hasPrefix("/") ? raw : "/\(raw)"
-    let full = "\(cleanBase)\(path)"
+    var base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+    if !base.hasPrefix("http://") && !base.hasPrefix("https://") {
+        base = "http://\(base)"
+    }
+    if base.hasSuffix("/api") {
+        base = String(base.dropLast(4))
+    }
+    var path = raw
+    if !path.hasPrefix("/") {
+        path = "/\(path)"
+    }
+    if path.hasPrefix("/files/avatars/") {
+        path = "/api" + path
+    }
+    let full = "\(base)\(path)"
     if let direct = URL(string: full) {
         return direct
     }
@@ -194,19 +205,22 @@ public struct PortUserAvatarView: View {
             }
         }
         .frame(width: size, height: size)
+        .overlay(
+            Circle()
+                .stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
+        )
         .task(id: rawAvatar) {
             await resolveAvatar()
         }
     }
 
     private var fallbackMonogram: some View {
-        let initial = username.prefix(1).uppercased()
-        return ZStack {
+        ZStack {
             Circle()
-                .fill(isSelected ? Color.white : Color(hex: "#ff7d10"))
-            Text(initial.isEmpty ? "U" : initial)
-                .font(.system(size: size * 0.44, weight: .bold))
-                .foregroundColor(isSelected ? .black : .white)
+                .fill(Color.white.opacity(0.12))
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: size * 0.76))
+                .foregroundColor(isSelected ? .white : Color.white.opacity(0.70))
         }
         .frame(width: size, height: size)
     }
@@ -220,7 +234,7 @@ public struct PortUserAvatarView: View {
         // 1. data:image/png or jpeg (base64)
         if raw.hasPrefix("data:image"), !raw.contains("svg") {
             if let base64Part = raw.components(separatedBy: ",").last,
-               let data = Data(base64Encoded: base64Part),
+               let data = Data(base64Encoded: base64Part, options: .ignoreUnknownCharacters),
                let img = UIImage(data: data) {
                 rasterImage = img
                 return
@@ -239,13 +253,25 @@ public struct PortUserAvatarView: View {
         guard let url = resolveAvatarURL(raw, serverURL: serverURL) else { return }
         let urlKey = url.absoluteString
 
-        // Check local cache first
+        // 3a. Sofort aus Memory-Cache laden falls vorhanden
+        if let memImg = PortImageCache.shared.imageFromMemory(for: url) {
+            rasterImage = memImg
+            return
+        }
+
+        // 3b. Vektor-Farben Cache
         if let cached = AvatarDataCache.shared.getCachedColors(for: urlKey) {
             vectorColors = (Color(hex: cached.0), Color(hex: cached.1), Color(hex: cached.2), cached.3)
             return
         }
 
-        // Fetch from network
+        // 3c. Über PortImageCache (Disk + Netzwerk) laden
+        if let loaded = await PortImageCache.shared.loadImage(for: url) {
+            rasterImage = loaded
+            return
+        }
+
+        // 3d. Fallback: Direkte HTTP-Abfrage fuer SVG-Payloads
         do {
             var req = URLRequest(url: url)
             req.timeoutInterval = 8.0
@@ -257,13 +283,11 @@ public struct PortUserAvatarView: View {
                 return
             }
 
-            // Check if raster image
             if let img = UIImage(data: data) {
                 rasterImage = img
                 return
             }
 
-            // Check if SVG text
             if let str = String(data: data, encoding: .utf8), str.contains("<svg") {
                 let parsed = parseSvgColors(str)
                 AvatarDataCache.shared.saveColors(bg: parsed.0, accent: parsed.1, face: parsed.2, rot: parsed.3, for: urlKey)

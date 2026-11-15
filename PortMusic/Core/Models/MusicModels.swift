@@ -35,6 +35,104 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
     }
 
     public var cover: String? { coverUrl }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, name, artist, album, duration, durationSeconds
+        case duration_seconds, duration_secs, durationSecs
+        case coverUrl = "cover_url"
+        case coverUrlAlt = "coverUrl"
+        case cover, artworkUrl
+        case isLive = "is_live"
+        case isExplicit = "is_explicit"
+        case isExplicitAlt = "isExplicit"
+        case explicitContent = "explicit_content"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? container.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        self.title = (try? container.decode(String.self, forKey: .title))
+            ?? (try? container.decode(String.self, forKey: .name))
+            ?? "Unbekannter Titel"
+        self.artist = (try? container.decode(String.self, forKey: .artist)) ?? "Unbekannter Interpret"
+        self.album = try? container.decodeIfPresent(String.self, forKey: .album)
+
+        var durSec: Double = 0.0
+        if let ds = try? container.decodeIfPresent(Double.self, forKey: .durationSeconds) {
+            durSec = ds
+        } else if let dsInt = try? container.decodeIfPresent(Int.self, forKey: .durationSeconds) {
+            durSec = Double(dsInt)
+        } else if let dsSnake = try? container.decodeIfPresent(Double.self, forKey: .duration_seconds) {
+            durSec = dsSnake
+        } else if let dsSnakeInt = try? container.decodeIfPresent(Int.self, forKey: .duration_seconds) {
+            durSec = Double(dsSnakeInt)
+        } else if let dsSecs = try? container.decodeIfPresent(Double.self, forKey: .duration_secs) {
+            durSec = dsSecs
+        } else if let dsSecsInt = try? container.decodeIfPresent(Int.self, forKey: .duration_secs) {
+            durSec = Double(dsSecsInt)
+        }
+
+        var durStr: String = "0:00"
+        if let dStr = try? container.decodeIfPresent(String.self, forKey: .duration) {
+            durStr = dStr
+            if durSec <= 0 {
+                let clean = dStr.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let direct = Double(clean), direct > 0 {
+                    durSec = direct
+                } else {
+                    let parts = clean.split(separator: ":").compactMap { Double($0) }
+                    if parts.count == 2 {
+                        durSec = parts[0] * 60.0 + parts[1]
+                    } else if parts.count == 3 {
+                        durSec = parts[0] * 3600.0 + parts[1] * 60.0 + parts[2]
+                    }
+                }
+            }
+        } else if let dNum = try? container.decodeIfPresent(Double.self, forKey: .duration) {
+            durSec = durSec > 0 ? durSec : dNum
+            let m = Int(durSec) / 60
+            let s = Int(durSec) % 60
+            durStr = String(format: "%d:%02d", m, s)
+        } else if let dInt = try? container.decodeIfPresent(Int.self, forKey: .duration) {
+            durSec = durSec > 0 ? durSec : Double(dInt)
+            let m = Int(durSec) / 60
+            let s = Int(durSec) % 60
+            durStr = String(format: "%d:%02d", m, s)
+        }
+
+        if durStr == "0:00" && durSec > 0 {
+            let m = Int(durSec) / 60
+            let s = Int(durSec) % 60
+            durStr = String(format: "%d:%02d", m, s)
+        }
+
+        self.duration = durStr
+        self.durationSeconds = durSec
+
+        self.coverUrl = (try? container.decodeIfPresent(String.self, forKey: .coverUrl))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .coverUrlAlt))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .cover))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .artworkUrl))
+
+        self.isLive = false
+        self.isExplicit = (try? container.decodeIfPresent(Bool.self, forKey: .isExplicit))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .explicitContent))
+            ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(artist, forKey: .artist)
+        try container.encodeIfPresent(album, forKey: .album)
+        try container.encode(duration, forKey: .duration)
+        try container.encode(durationSeconds, forKey: .durationSeconds)
+        try container.encodeIfPresent(coverUrl, forKey: .coverUrl)
+        try container.encode(isLive, forKey: .isLive)
+        try container.encode(isExplicit, forKey: .isExplicit)
+    }
 }
 
 // MARK: - Discovery API Models
@@ -50,6 +148,137 @@ public struct DiscoveryTrack: Codable, Identifiable, Equatable {
     public let storageType: String?
     public let sourceType: String?
     public let isExplicit: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, name, artist, album, duration, durationSeconds
+        case duration_seconds, duration_secs, durationSecs
+        case durationStr = "duration_str"
+        case cover, coverUrl = "cover_url"
+        case sourceUrl = "source_url"
+        case sourceUrlAlt = "sourceUrl"
+        case storageType = "storage_type"
+        case storageTypeAlt = "storageType"
+        case sourceType = "source_type"
+        case sourceTypeAlt = "sourceType"
+        case isExplicit = "is_explicit"
+        case isExplicitAlt = "isExplicit"
+        case explicitContent = "explicit_content"
+    }
+
+    public init(
+        id: String,
+        title: String,
+        artist: String,
+        album: String? = nil,
+        duration: String? = nil,
+        durationSeconds: Int? = nil,
+        cover: String? = nil,
+        sourceUrl: String? = nil,
+        storageType: String? = nil,
+        sourceType: String? = nil,
+        isExplicit: Bool? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+        self.durationSeconds = durationSeconds
+        self.cover = cover
+        self.sourceUrl = sourceUrl
+        self.storageType = storageType
+        self.sourceType = sourceType
+        self.isExplicit = isExplicit
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? container.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        self.title = (try? container.decode(String.self, forKey: .title))
+            ?? (try? container.decode(String.self, forKey: .name))
+            ?? "Unbekannter Titel"
+        self.artist = (try? container.decode(String.self, forKey: .artist)) ?? "Unbekannter Interpret"
+        self.album = try? container.decodeIfPresent(String.self, forKey: .album)
+
+        var sec: Int? = nil
+        if let ds = try? container.decodeIfPresent(Int.self, forKey: .durationSeconds) {
+            sec = ds
+        } else if let dsDouble = try? container.decodeIfPresent(Double.self, forKey: .durationSeconds) {
+            sec = Int(dsDouble)
+        } else if let dsSnake = try? container.decodeIfPresent(Int.self, forKey: .duration_seconds) {
+            sec = dsSnake
+        } else if let dsSnakeDbl = try? container.decodeIfPresent(Double.self, forKey: .duration_seconds) {
+            sec = Int(dsSnakeDbl)
+        } else if let dsSecs = try? container.decodeIfPresent(Int.self, forKey: .duration_secs) {
+            sec = dsSecs
+        } else if let dsSecsDbl = try? container.decodeIfPresent(Double.self, forKey: .duration_secs) {
+            sec = Int(dsSecsDbl)
+        }
+
+        var dString: String? = (try? container.decodeIfPresent(String.self, forKey: .duration))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .durationStr))
+        if dString == nil {
+            if let dNum = try? container.decodeIfPresent(Double.self, forKey: .duration) {
+                sec = sec ?? Int(dNum)
+                dString = String(format: "%d:%02d", Int(dNum) / 60, Int(dNum) % 60)
+            } else if let dInt = try? container.decodeIfPresent(Int.self, forKey: .duration) {
+                sec = sec ?? dInt
+                dString = String(format: "%d:%02d", dInt / 60, dInt % 60)
+            }
+        }
+
+        if (sec == nil || sec == 0), let str = dString {
+            let clean = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let direct = Int(clean), direct > 0 {
+                sec = direct
+            } else {
+                let parts = clean.split(separator: ":").compactMap { Int($0) }
+                if parts.count == 2 {
+                    sec = parts[0] * 60 + parts[1]
+                } else if parts.count == 3 {
+                    sec = parts[0] * 3600 + parts[1] * 60 + parts[2]
+                }
+            }
+        }
+
+        if (dString == nil || dString == "0:00"), let s = sec, s > 0 {
+            dString = String(format: "%d:%02d", s / 60, s % 60)
+        }
+
+        self.duration = dString
+        self.durationSeconds = sec
+
+        self.cover = (try? container.decodeIfPresent(String.self, forKey: .cover))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .coverUrl))
+
+        self.sourceUrl = (try? container.decodeIfPresent(String.self, forKey: .sourceUrl))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .sourceUrlAlt))
+
+        self.storageType = (try? container.decodeIfPresent(String.self, forKey: .storageType))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .storageTypeAlt))
+
+        self.sourceType = (try? container.decodeIfPresent(String.self, forKey: .sourceType))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .sourceTypeAlt))
+
+        self.isExplicit = (try? container.decodeIfPresent(Bool.self, forKey: .isExplicit))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .explicitContent))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(artist, forKey: .artist)
+        try container.encodeIfPresent(album, forKey: .album)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try container.encodeIfPresent(cover, forKey: .cover)
+        try container.encodeIfPresent(sourceUrl, forKey: .sourceUrl)
+        try container.encodeIfPresent(storageType, forKey: .storageType)
+        try container.encodeIfPresent(sourceType, forKey: .sourceType)
+        try container.encodeIfPresent(isExplicit, forKey: .isExplicit)
+    }
 
     public func toTrack() -> Track {
         Track(
@@ -76,6 +305,95 @@ public struct DiscoveryChartTrack: Codable, Identifiable {
     public let cover: String?
     public let rank: Int?
     public let isExplicit: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, name, artist, album, duration, durationSeconds
+        case duration_seconds, duration_secs
+        case cover, coverUrl = "cover_url"
+        case rank
+        case isExplicit = "is_explicit"
+        case isExplicitAlt = "isExplicit"
+    }
+
+    public init(
+        id: String,
+        title: String,
+        artist: String,
+        album: String? = nil,
+        duration: String? = nil,
+        durationSeconds: Int? = nil,
+        cover: String? = nil,
+        rank: Int? = nil,
+        isExplicit: Bool? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+        self.durationSeconds = durationSeconds
+        self.cover = cover
+        self.rank = rank
+        self.isExplicit = isExplicit
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? container.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        self.title = (try? container.decode(String.self, forKey: .title))
+            ?? (try? container.decode(String.self, forKey: .name))
+            ?? "Unbekannter Titel"
+        self.artist = (try? container.decode(String.self, forKey: .artist)) ?? "Unbekannter Interpret"
+        self.album = try? container.decodeIfPresent(String.self, forKey: .album)
+
+        var sec: Int? = nil
+        if let ds = try? container.decodeIfPresent(Int.self, forKey: .durationSeconds) {
+            sec = ds
+        } else if let dsDouble = try? container.decodeIfPresent(Double.self, forKey: .durationSeconds) {
+            sec = Int(dsDouble)
+        } else if let dsSnake = try? container.decodeIfPresent(Int.self, forKey: .duration_seconds) {
+            sec = dsSnake
+        } else if let dsSecs = try? container.decodeIfPresent(Int.self, forKey: .duration_secs) {
+            sec = dsSecs
+        }
+
+        var dString: String? = try? container.decodeIfPresent(String.self, forKey: .duration)
+        if (sec == nil || sec == 0), let str = dString {
+            let clean = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let direct = Int(clean), direct > 0 {
+                sec = direct
+            } else {
+                let parts = clean.split(separator: ":").compactMap { Int($0) }
+                if parts.count == 2 {
+                    sec = parts[0] * 60 + parts[1]
+                }
+            }
+        }
+        if (dString == nil || dString == "0:00"), let s = sec, s > 0 {
+            dString = String(format: "%d:%02d", s / 60, s % 60)
+        }
+
+        self.duration = dString
+        self.durationSeconds = sec
+        self.cover = (try? container.decodeIfPresent(String.self, forKey: .cover))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .coverUrl))
+        self.rank = try? container.decodeIfPresent(Int.self, forKey: .rank)
+        self.isExplicit = (try? container.decodeIfPresent(Bool.self, forKey: .isExplicit))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(artist, forKey: .artist)
+        try container.encodeIfPresent(album, forKey: .album)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try container.encodeIfPresent(cover, forKey: .cover)
+        try container.encodeIfPresent(rank, forKey: .rank)
+        try container.encodeIfPresent(isExplicit, forKey: .isExplicit)
+    }
 
     public func toTrack() -> Track {
         Track(
@@ -251,7 +569,9 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
     public let trackNumber: Int?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, artist, album, duration, durationSeconds, cover, isExplicit, rank, trackNumber
+        case id, title, artist, album, duration, durationSeconds
+        case duration_seconds, duration_secs
+        case cover, isExplicit = "is_explicit", isExplicitAlt = "isExplicit", rank, trackNumber
     }
 
     public init(
@@ -284,28 +604,60 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
         title = try container.decode(String.self, forKey: .title)
         artist = (try? container.decodeIfPresent(String.self, forKey: .artist)) ?? ""
         album = try container.decodeIfPresent(String.self, forKey: .album)
-        duration = try container.decodeIfPresent(String.self, forKey: .duration)
-        if let ds = try? container.decodeIfPresent(Double.self, forKey: .durationSeconds) {
-            durationSeconds = ds
-        } else if let dsInt = try? container.decodeIfPresent(Int.self, forKey: .durationSeconds) {
-            durationSeconds = Double(dsInt)
-        } else {
-            durationSeconds = nil
+        var durStr = try? container.decodeIfPresent(String.self, forKey: .duration)
+
+        var ds: Double? = nil
+        if let d = try? container.decodeIfPresent(Double.self, forKey: .durationSeconds) {
+            ds = d
+        } else if let dInt = try? container.decodeIfPresent(Int.self, forKey: .durationSeconds) {
+            ds = Double(dInt)
+        } else if let dSnake = try? container.decodeIfPresent(Double.self, forKey: .duration_seconds) {
+            ds = dSnake
+        } else if let dSnakeInt = try? container.decodeIfPresent(Int.self, forKey: .duration_seconds) {
+            ds = Double(dSnakeInt)
+        } else if let dSecs = try? container.decodeIfPresent(Double.self, forKey: .duration_secs) {
+            ds = dSecs
+        } else if let dSecsInt = try? container.decodeIfPresent(Int.self, forKey: .duration_secs) {
+            ds = Double(dSecsInt)
         }
+
+        if (ds == nil || ds == 0), let str = durStr {
+            let parts = str.split(separator: ":").compactMap { Double($0) }
+            if parts.count == 2 {
+                ds = parts[0] * 60.0 + parts[1]
+            } else if parts.count == 3 {
+                ds = parts[0] * 3600.0 + parts[1] * 60.0 + parts[2]
+            }
+        }
+
+        if (durStr == nil || durStr == "0:00"), let s = ds, s > 0 {
+            durStr = String(format: "%d:%02d", Int(s) / 60, Int(s) % 60)
+        }
+
+        duration = durStr
+        durationSeconds = ds
         cover = try container.decodeIfPresent(String.self, forKey: .cover)
-        isExplicit = try container.decodeIfPresent(Bool.self, forKey: .isExplicit)
+        isExplicit = (try? container.decodeIfPresent(Bool.self, forKey: .isExplicit))
+            ?? (try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt))
         rank = try container.decodeIfPresent(Int.self, forKey: .rank)
         trackNumber = try container.decodeIfPresent(Int.self, forKey: .trackNumber)
     }
 
     public func toTrack(fallbackCover: String? = nil, fallbackAlbum: String? = nil) -> Track {
-        Track(
+        var calculatedSec: Double = durationSeconds ?? 0
+        if calculatedSec <= 0, let d = duration {
+            let parts = d.split(separator: ":").compactMap { Double($0) }
+            if parts.count == 2 {
+                calculatedSec = parts[0] * 60.0 + parts[1]
+            }
+        }
+        return Track(
             id: id,
             title: title,
             artist: artist,
             album: album ?? fallbackAlbum,
             duration: duration ?? "0:00",
-            durationSeconds: durationSeconds ?? 0,
+            durationSeconds: calculatedSec,
             coverUrl: cover ?? fallbackCover,
             isLive: false,
             isExplicit: isExplicit ?? false
