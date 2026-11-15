@@ -119,11 +119,6 @@ public struct ServerSetupView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(borderColorForStatus, lineWidth: 1.2)
             )
-
-            Text("Unterstützt IP-Adressen (z. B. 192.168.1.50:3000) oder Domainnamen.")
-                .font(.system(size: 11))
-                .foregroundColor(Color.white.opacity(0.85))
-                .padding(.horizontal, 4)
         }
         .padding(20)
         .glassCard(cornerRadius: 22)
@@ -148,16 +143,7 @@ public struct ServerSetupView: View {
             EmptyView()
 
         case .pinging:
-            HStack(spacing: 10) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(0.85)
-
-                Text("Server wird überprüft...")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(PortColors.textSecondary)
-            }
-            .padding(.vertical, 4)
+            EmptyView()
 
         case .success(_, let latencyMs, let detail):
             HStack(spacing: 12) {
@@ -218,6 +204,7 @@ public struct ServerSetupView: View {
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(PortColors.errorRed.opacity(0.35), lineWidth: 1)
             )
+            .transition(.scale(scale: 0.95).combined(with: .opacity))
         }
     }
 
@@ -268,14 +255,23 @@ public struct ServerSetupView: View {
         let trimmed = serverInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        isPinging = true
-        status = .pinging
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            isPinging = true
+            status = .pinging
+        }
 
         Task {
             let res = await ServerPingService.shared.ping(rawInput: trimmed)
             await MainActor.run {
                 isPinging = false
-                status = res
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
+                    status = res
+                }
+
+                if case .failure = res {
+                    let feedback = UINotificationFeedbackGenerator()
+                    feedback.notificationOccurred(.error)
+                }
 
                 if case .success(let verifiedURL, _, _) = res {
                     UserDefaults.standard.set(verifiedURL, forKey: storageKey)

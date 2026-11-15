@@ -849,73 +849,89 @@ public struct ClawMachineView: View {
 
     private var trayChuteView: some View {
         ZStack {
+            // Recessed arcade chute chamber
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(hex: "#14151a"))
-                .frame(height: 68)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            trayMode == .win ? Color(hex: "#102818") :
+                            trayMode == .no ? Color(hex: "#2a1c12") :
+                            overTray ? Color(hex: "#151b22") :
+                            Color(hex: "#12141a"),
+                            Color(hex: "#090a0d")
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(height: 64)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(
                             trayMode == .win ? Color(hex: "#34c759") :
                             trayMode == .no ? Color(hex: "#ff9500") :
-                            overTray ? Color.white : Color.white.opacity(0.15),
-                            lineWidth: overTray || trayMode == .win ? 2 : 1
+                            overTray ? Color.white : Color.white.opacity(0.18),
+                            lineWidth: overTray || trayMode == .win ? 1.5 : 1.0
                         )
                 )
+                .shadow(
+                    color: trayMode == .win ? Color(hex: "#34c759").opacity(0.25) :
+                           overTray ? Color.white.opacity(0.12) : Color.clear,
+                    radius: 8,
+                    y: 2
+                )
 
-            // Hatch Interior & Sliding Doors
-            ZStack {
-                // Dark Mouth
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black)
-                    .frame(width: 80, height: 24)
+            // Subtle inner vignette & chute aperture glow
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            overTray ? Color.white.opacity(0.30) : Color.white.opacity(0.08),
+                            Color.clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+                .padding(2)
 
-                // Left & Right Hatch Doors
-                let doorOffset: CGFloat = (trayMode == .open) ? 36.0 : 0.0
-                HStack(spacing: 0) {
-                    Rectangle()
-                        .fill(Color(hex: "#282a32"))
-                        .frame(width: 40, height: 24)
-                        .offset(x: -doorOffset)
-
-                    Rectangle()
-                        .fill(Color(hex: "#282a32"))
-                        .frame(width: 40, height: 24)
-                        .offset(x: doorOffset)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .animation(.easeOut(duration: 0.22), value: trayMode)
-            }
-            .offset(y: -14)
-
-            // Label & Icons
-            HStack(spacing: 6) {
+            // Centered Status Display (Icon + Label)
+            HStack(spacing: 8) {
                 if trayMode == .win {
                     Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(Color(hex: "#34c759"))
+
                     Text("Toller Fang!")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(Color(hex: "#34c759"))
                 } else if trayMode == .no {
                     Image(systemName: "arrow.uturn.backward.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundColor(Color(hex: "#ff9500"))
+
                     Text("Falsches Spielzeug")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Color(hex: "#ff9500"))
                 } else if overTray {
                     Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
-                    Text("Loslassen!")
+
+                    Text("Jetzt abwerfen!")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.white)
                 } else {
                     Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.system(size: 14))
                         .foregroundColor(.white)
+
                     Text("Hier abwerfen")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white)
                 }
             }
-            .offset(y: 14)
 
             // Confetti Burst on Win
             if trayMode == .win {

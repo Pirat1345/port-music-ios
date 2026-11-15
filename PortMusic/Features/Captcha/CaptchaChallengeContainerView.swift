@@ -157,15 +157,22 @@ public struct CaptchaChallengeContainerView: View {
     // MARK: - Top Navigation Bar
     private var topBarView: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Sicherheitsüberprüfung")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(PortColors.textPrimary)
-
-                Text(currentCaptchaType == "litter" ? "Partikel-Muster" : "Kuscheltier-Greifarm")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white)
+            // Modus-Badge (ohne umbrechende Überschrift)
+            HStack(spacing: 6) {
+                Image(systemName: currentCaptchaType == "litter" ? "sparkles" : "arcade.stick.console")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(currentCaptchaType == "litter" ? "Partikel-Muster" : "Greifarm")
+                    .font(.system(size: 13, weight: .semibold))
             }
+            .foregroundColor(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(PortColors.surfaceGlass)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(PortColors.borderGlass, lineWidth: 1)
+            )
 
             Spacer()
 
