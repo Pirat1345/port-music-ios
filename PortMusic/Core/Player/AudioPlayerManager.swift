@@ -466,7 +466,8 @@ public final class AudioPlayerManager: ObservableObject {
                 case .readyToPlay:
                     self.isBuffering = false
                     let dur = observedItem.duration.seconds
-                    if !dur.isNaN && dur > 1.0 {
+                    // Metadaten-Dauer niemals mit fehlerhaft verdoppelter AVPlayer VBR-Bitrate-Schaetzung ueberschreiben
+                    if self.duration <= 0 && !dur.isNaN && dur > 1.0 {
                         self.duration = dur
                     }
                     self.updateNowPlayingInfo()
@@ -486,7 +487,8 @@ public final class AudioPlayerManager: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 let dur = observedItem.duration.seconds
-                if !dur.isNaN && dur > 1.0 {
+                // Nur wenn keine valide Metadaten-Dauer vorliegt, auf Stream-Schaetzung zurueckgreifen
+                if self.duration <= 0 && !dur.isNaN && dur > 1.0 {
                     self.duration = dur
                     self.updateNowPlayingInfo()
                 }
@@ -515,6 +517,11 @@ public final class AudioPlayerManager: ObservableObject {
             let sec = time.seconds
             if !sec.isNaN {
                 self.currentTime = sec
+                // Automatischer Übergang zum nächsten Track wenn das reale Songende erreicht ist (keine 3 Minuten Stille)
+                if self.duration > 1.0 && self.currentTime >= self.duration - 0.4 {
+                    self.playerItemDidReachEnd()
+                    return
+                }
                 self.periodicPersistCounter += 1
                 if self.periodicPersistCounter >= 8 { // roughly every 2s
                     self.periodicPersistCounter = 0

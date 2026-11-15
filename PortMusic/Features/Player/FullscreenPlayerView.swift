@@ -41,8 +41,9 @@ public struct FullscreenPlayerView: View {
             let isTablet = UIDevice.current.userInterfaceIdiom == .pad
 
             ZStack {
-                // Reines Schwarz als Basis-Hintergrund gemaess Invariante
+                // Dynamischer Dimming-Hintergrund: verblasst beim Herunterziehen, um die darunterliegende Seite zu zeigen
                 Color.black
+                    .opacity(max(0.0, 0.75 * (1.0 - Double(dragOffset / 450))))
                     .ignoresSafeArea()
 
                 // Verschiebbarer Container: Weichgezeichneter Hintergrund UND Inhalt wandern gemeinsam

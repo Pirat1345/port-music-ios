@@ -1,4 +1,45 @@
 import SwiftUI
+import WebKit
+
+// MARK: - Native SVG Vector Avatar Viewer
+struct SVGAvatarWebView: UIViewRepresentable {
+    let svgString: String
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.backgroundColor = .clear
+        webView.isUserInteractionEnabled = false
+        return webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        let cleanSvg = svgString
+            .replacingOccurrences(of: "%23", with: "#")
+            .replacingOccurrences(of: "%20", with: " ")
+            .replacingOccurrences(of: "%27", with: "'")
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        svg { width: 100%; height: 100%; border-radius: 50%; }
+        </style>
+        </head>
+        <body>
+        \(cleanSvg)
+        </body>
+        </html>
+        """
+        uiView.loadHTMLString(html, baseURL: nil)
+    }
+}
 
 public enum MainTabItem: Int, CaseIterable {
     case home = 0
@@ -34,6 +75,7 @@ public struct MainTabView: View {
     @State private var showFullscreenPlayer: Bool = false
     @State private var searchPath: [AppRoute] = []
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var session = SessionManager.shared
 
     public init(user: UserProfile, serverURL: String, onLogout: @escaping () -> Void) {
         self.user = user
@@ -81,7 +123,9 @@ public struct MainTabView: View {
                 // Schwebende Minibar-Leiste (wenn Track aktiv)
                 if player.currentTrack != nil {
                     PlayerBarView(serverURL: serverURL) {
-                        showFullscreenPlayer = true
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showFullscreenPlayer = true
+                        }
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -89,17 +133,24 @@ public struct MainTabView: View {
                 // Custom Octave Glass TabBar mit Glow & Safe-Area Unterstützung
                 glassTabBar
             }
+
+            // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
+            if showFullscreenPlayer {
+                FullscreenPlayerView(serverURL: serverURL) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showFullscreenPlayer = false
+                    }
+                }
+                .transition(.move(edge: .bottom))
+                .zIndex(999)
+            }
         }
         .preferredColorScheme(.dark)
         .task {
             await player.syncLastPlayedFromServerIfNeeded(serverURL: serverURL, token: SessionManager.shared.currentToken)
             await SessionManager.shared.refreshUserProfile()
         }
-        .fullScreenCover(isPresented: $showFullscreenPlayer) {
-            FullscreenPlayerView(serverURL: serverURL) {
-                showFullscreenPlayer = false
-            }
-        }
+        .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
     // MARK: - Custom Octave TabBar (Clean Minimalist Dark - No Glow, No Separator Line)
@@ -142,42 +193,8 @@ public struct MainTabView: View {
     @ViewBuilder
     private func tabIconView(tab: MainTabItem, isSelected: Bool) -> some View {
         if tab == .profile {
-            let curUser = SessionManager.shared.currentUser ?? user
-            let rawAvatar = curUser.avatar
-            if let avatar = rawAvatar, !avatar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                if avatar.hasPrefix("data:image"),
-                   let base64Part = avatar.components(separatedBy: ",").last,
-                   let data = Data(base64Encoded: base64Part),
-                   let uiImg = UIImage(data: data) {
-                    Image(uiImage: uiImg)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 24, height: 24)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle().stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
-                        )
-                } else if let url = resolveAvatarURL(avatar, serverURL: serverURL) {
-                    PortCachedAsyncImage(url: url) { img in
-                        img
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 24, height: 24)
-                            .clipShape(Circle())
-                            .overlay(
-                                Circle().stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
-                            )
-                    } placeholder: {
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
-                    }
-                } else {
-                    fallbackProfileIcon(isSelected: isSelected)
-                }
-            } else {
-                fallbackProfileIcon(isSelected: isSelected)
-            }
+            let curUser = session.currentUser ?? user
+            avatarView(rawAvatar: curUser.avatar, username: curUser.username, isSelected: isSelected)
         } else {
             Image(systemName: tab.icon)
                 .font(.system(size: 20, weight: isSelected ? .bold : .medium))
@@ -185,10 +202,82 @@ public struct MainTabView: View {
         }
     }
 
-    private func fallbackProfileIcon(isSelected: Bool) -> some View {
-        Image(systemName: "person.crop.circle.fill")
-            .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
+    @ViewBuilder
+    private func avatarView(rawAvatar: String?, username: String, isSelected: Bool) -> some View {
+        ZStack {
+            if let avatar = rawAvatar, !avatar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if avatar.contains("<svg") || avatar.contains("data:image/svg+xml") {
+                    let svgStr = extractSVGContent(from: avatar)
+                    SVGAvatarWebView(svgString: svgStr)
+                        .frame(width: 24, height: 24)
+                        .clipShape(Circle())
+                } else if avatar.hasPrefix("data:image"),
+                          let base64Part = avatar.components(separatedBy: ",").last,
+                          let data = Data(base64Encoded: base64Part),
+                          let uiImg = UIImage(data: data) {
+                    Image(uiImage: uiImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 24, height: 24)
+                        .clipShape(Circle())
+                } else if let url = resolveAvatarURL(avatar, serverURL: serverURL) {
+                    PortCachedAsyncImage(url: url) { img in
+                        img
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 24, height: 24)
+                            .clipShape(Circle())
+                    } placeholder: {
+                        fallbackProfileIcon(username: username, isSelected: isSelected)
+                    }
+                } else {
+                    fallbackProfileIcon(username: username, isSelected: isSelected)
+                }
+            } else {
+                fallbackProfileIcon(username: username, isSelected: isSelected)
+            }
+        }
+        .frame(width: 24, height: 24)
+        .overlay(
+            Circle()
+                .stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
+        )
+    }
+
+    private func extractSVGContent(from raw: String) -> String {
+        if raw.contains(",") {
+            let afterComma = raw.components(separatedBy: ",").dropFirst().joined(separator: ",")
+            if let decoded = afterComma.removingPercentEncoding, decoded.contains("<svg") {
+                return decoded
+            }
+            if let b64 = Data(base64Encoded: afterComma), let str = String(data: b64, encoding: .utf8), str.contains("<svg") {
+                return str
+            }
+            return afterComma
+        }
+        return raw.removingPercentEncoding ?? raw
+    }
+
+    private func fallbackProfileIcon(username: String, isSelected: Bool) -> some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#ff7d10"), Color(hex: "#ff005b")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            let initial = username.prefix(1).uppercased()
+            if !initial.isEmpty && initial != " " {
+                Text(initial)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+            }
+        }
+        .frame(width: 24, height: 24)
+        .clipShape(Circle())
     }
 
     // MARK: - Navigation Destinations
