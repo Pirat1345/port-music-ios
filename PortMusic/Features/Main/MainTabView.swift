@@ -167,6 +167,8 @@ public struct MainTabView: View {
             LikedSongsView(serverURL: serverURL)
         case .libraryCategory(let category):
             LibraryCategoryDetailView(category: category, serverURL: serverURL)
+        case .appleCategory(let id, let title, let artworkUrl, let bgColor):
+            AppleCategoryDetailView(id: id, title: title, artworkUrl: artworkUrl, bgColor: bgColor, serverURL: serverURL)
         }
     }
 }

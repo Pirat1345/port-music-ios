@@ -112,7 +112,7 @@ def main():
     group_defs.append(make_group(gid_cache, "Cache", [get_fid("Core/Cache/PortImageCache.swift")], "Cache"))
 
     gid_models = next_gid("Models")
-    group_defs.append(make_group(gid_models, "Models", [get_fid("Core/Models/AuthModels.swift"), get_fid("Core/Models/MusicModels.swift")], "Models"))
+    group_defs.append(make_group(gid_models, "Models", [get_fid("Core/Models/AuthModels.swift"), get_fid("Core/Models/BrowseCategoryModels.swift"), get_fid("Core/Models/MusicModels.swift")], "Models"))
 
     gid_network = next_gid("Network")
     group_defs.append(make_group(gid_network, "Network", [get_fid("Core/Network/AuthService.swift"), get_fid("Core/Network/MusicService.swift"), get_fid("Core/Network/ServerPingService.swift")], "Network"))
@@ -230,6 +230,7 @@ def main():
     gid_detail = next_gid()
     detail_files = [
         "Features/Detail/AlbumDetailView.swift",
+        "Features/Detail/AppleCategoryDetailView.swift",
         "Features/Detail/AppRoute.swift",
         "Features/Detail/ArtistDetailView.swift"
     ]

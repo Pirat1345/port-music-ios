@@ -1,26 +1,13 @@
 import SwiftUI
 
-public struct SearchBrowseCategory: Identifiable {
-    public let id = UUID()
-    public let name: String
-    public let gradient: [Color]
-    public let iconName: String
-    public let artworkUrl: String?
-
-    public init(name: String, gradient: [Color], iconName: String, artworkUrl: String? = nil) {
-        self.name = name
-        self.gradient = gradient
-        self.iconName = iconName
-        self.artworkUrl = artworkUrl
-    }
-}
-
 public struct SearchView: View {
     public let serverURL: String
 
     @ObservedObject private var player = AudioPlayerManager.shared
+
     @State private var searchQuery: String = ""
     @State private var searchTask: Task<Void, Never>? = nil
+    @State private var autoSaveTask: Task<Void, Never>? = nil
 
     @State private var isSearching: Bool = false
     @State private var searchResponse: DiscoverySearchResponse? = nil
@@ -31,19 +18,7 @@ public struct SearchView: View {
     private let filterOptions = ["Top-Treffer", "Songs", "Künstler", "Alben", "Playlists"]
 
     @State private var recentSearches: [String] = []
-
-    private let browseCategories: [SearchBrowseCategory] = [
-        SearchBrowseCategory(name: "Hits", gradient: [Color(hex: "#2c2a38"), Color(hex: "#1e1d24")], iconName: "chart.bar.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/2e/18/a3/2e18a394-f9b2-1079-8d42-ccfa6d51d20d/88823a4b-bcc9-40c9-be1e-5671776d8837.png/600x600sr.jpg"),
-        SearchBrowseCategory(name: "Deutschrap", gradient: [Color(hex: "#1e293b"), Color(hex: "#0f172a")], iconName: "headphones", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/3f/39/61/3f3961dd-2eea-eb27-a7f2-4b799218f227/313a61ae-8a20-4faf-9a5f-ede8bc713069.png/600x600sr.jpg"),
-        SearchBrowseCategory(name: "Pop", gradient: [Color(hex: "#3b1e38"), Color(hex: "#221124")], iconName: "music.mic", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/16/e0/d7/16e0d799-dd77-b8e1-cce3-f27f7664ead6/80e1dd92-de5f-424f-8e76-2144694ad6f3.png/600x600sr.jpg"),
-        SearchBrowseCategory(name: "Rock", gradient: [Color(hex: "#381e1e"), Color(hex: "#200e0e")], iconName: "guitars.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/b6/13/a6/b613a6a2-0c03-cdb5-eef6-3f104e50ce86/aa8d0f82-c0d4-4a07-aae8-16f1db32c703.png/600x600sr.jpg"),
-        SearchBrowseCategory(name: "Dance & Electro", gradient: [Color(hex: "#102c38"), Color(hex: "#09171f")], iconName: "bolt.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features221/v4/62/61/c4/6261c465-fe72-eb32-5687-b7c015064b39/77b7bb43-5e28-4c40-afbc-97904ab8636a.png/600x600sr.jpg"),
-        SearchBrowseCategory(name: "Chillen", gradient: [Color(hex: "#1c2e2c"), Color(hex: "#0e1817")], iconName: "moon.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features221/v4/0f/17/d5/0f17d5a3-6774-1ae1-4530-2b694d8fb6bf/d7944211-2928-4ccc-b382-f0564bcf00b2.png/600x600sr.jpg"),
-        SearchBrowseCategory(name: "Deutschpop", gradient: [Color(hex: "#381c2a"), Color(hex: "#1f0f18")], iconName: "sparkles", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/48/a5/67/48a5677e-f0d2-cf36-2479-03c240f98fe8/9cee0055-90a3-4814-a7e7-1a46041a2d78.png/600x600sr.jpg"),
-        SearchBrowseCategory(name: "R&B & Soul", gradient: [Color(hex: "#281e3a"), Color(hex: "#160f22")], iconName: "heart.fill", artworkUrl: nil),
-        SearchBrowseCategory(name: "Indie & Alt", gradient: [Color(hex: "#173022"), Color(hex: "#0a1710")], iconName: "leaf.fill", artworkUrl: nil),
-        SearchBrowseCategory(name: "Fitness & Workout", gradient: [Color(hex: "#381a1a"), Color(hex: "#1f0c0c")], iconName: "flame.fill", artworkUrl: nil)
-    ]
+    @State private var categories: [BrowseCategoryItem] = BrowseCategoryItem.defaultCategories
 
     public init(serverURL: String) {
         self.serverURL = serverURL
@@ -89,8 +64,8 @@ public struct SearchView: View {
         }
         .preferredColorScheme(.dark)
         .tint(.white)
-        .onAppear {
-            loadRecentSearches()
+        .task {
+            await initializeData()
         }
     }
 
@@ -188,146 +163,165 @@ public struct SearchView: View {
         }
     }
 
-    // MARK: - Idle State (Recent Searches & Browse Categories)
+    // MARK: - Idle State (Zuletzt gesucht & Browse Categories)
     private var idleDiscoverView: some View {
         VStack(alignment: .leading, spacing: 28) {
-            // Zuletzt gesucht
+            // Zuletzt gesucht / Suchverlauf
             if !recentSearches.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Zuletzt gesucht")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(PortColors.textPrimary)
-
-                        Spacer()
-
-                        Button(action: {
-                            clearAllRecentSearches()
-                        }) {
-                            Text("Löschen")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(Color.white.opacity(0.60))
-                        }
-                    }
-                    .padding(.horizontal, 20)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(recentSearches, id: \.self) { query in
-                                HStack(spacing: 6) {
-                                    Button(action: {
-                                        searchQuery = query
-                                        submitSearch(query: query)
-                                    }) {
-                                        Text(query)
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundColor(.white)
-                                    }
-
-                                    Button(action: {
-                                        removeRecentSearch(query)
-                                    }) {
-                                        Image(systemName: "xmark")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(Color.white.opacity(0.50))
-                                    }
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Color.white.opacity(0.09))
-                                .clipShape(Capsule())
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                                    )
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                }
+                recentSearchesSection
             }
 
-            // Kategorien entdecken
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Kategorien entdecken")
+            // Kategorien entdecken (Alle 44 Kategorien im Octave 2:1 Banner-Design)
+            browseCategoriesSection
+        }
+    }
+
+    // MARK: - Recent Searches Section
+    private var recentSearchesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Zuletzt gesucht")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(PortColors.textPrimary)
-                    .padding(.horizontal, 20)
 
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: 12),
-                        GridItem(.flexible(), spacing: 12)
-                    ],
-                    spacing: 12
-                ) {
-                    ForEach(browseCategories) { cat in
-                        Button(action: {
-                            searchQuery = cat.name
-                            submitSearch(query: cat.name)
-                        }) {
-                            ZStack(alignment: .bottomLeading) {
-                                LinearGradient(
-                                    gradient: Gradient(colors: cat.gradient),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                                .opacity(0.85)
+                Spacer()
 
-                                if let art = cat.artworkUrl, let url = URL(string: art) {
-                                    HStack {
-                                        Spacer()
-                                        PortCachedAsyncImage(url: url) { img in
-                                            img
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 64, height: 64)
-                                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                                .rotationEffect(.degrees(14))
-                                                .offset(x: 10, y: 10)
-                                                .shadow(color: Color.black.opacity(0.4), radius: 5, x: -2, y: 2)
-                                        } placeholder: {
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    HStack {
-                                        Spacer()
-                                        VStack {
-                                            Image(systemName: cat.iconName)
-                                                .font(.system(size: 32, weight: .bold))
-                                                .foregroundColor(Color.white.opacity(0.25))
-                                                .padding(12)
-                                            Spacer()
-                                        }
-                                    }
-                                }
+                Button(action: {
+                    clearAllRecentSearches()
+                }) {
+                    Text("Löschen")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.60))
+                }
+            }
+            .padding(.horizontal, 20)
 
-                                LinearGradient(
-                                    gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.65)]),
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-
-                                Text(cat.name)
-                                    .font(.system(size: 16, weight: .bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(recentSearches, id: \.self) { query in
+                        HStack(spacing: 6) {
+                            Button(action: {
+                                searchQuery = query
+                                submitSearch(query: query)
+                            }) {
+                                Text(query)
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundColor(.white)
-                                    .padding(14)
                             }
-                            .frame(height: 96)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                            )
-                            .shadow(color: Color.black.opacity(0.35), radius: 6, y: 3)
+
+                            Button(action: {
+                                removeRecentSearch(query)
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color.white.opacity(0.50))
+                            }
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Color.white.opacity(0.09))
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                        )
                     }
                 }
                 .padding(.horizontal, 20)
             }
         }
+    }
+
+    // MARK: - Browse Categories Section
+    private var browseCategoriesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Kategorien entdecken")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(PortColors.textPrimary)
+                .padding(.horizontal, 20)
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ],
+                spacing: 12
+            ) {
+                ForEach(categories) { cat in
+                    NavigationLink(value: AppRoute.appleCategory(
+                        id: cat.id,
+                        title: cat.displayTitle,
+                        artworkUrl: cat.artworkUrl,
+                        bgColor: cat.bgColor
+                    )) {
+                        categoryCard(cat)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    // MARK: - 2:1 Category Card
+    private func categoryCard(_ cat: BrowseCategoryItem) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            // Background Gradient Base via Hex Colors
+            LinearGradient(
+                gradient: Gradient(colors: cat.gradient.isEmpty ? [Color(hex: cat.bgColor), Color(hex: "#18181b")] : cat.gradient),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            // Artwork Cover or Fallback Icon
+            if let url = URL(string: cat.bannerUrl) {
+                PortCachedAsyncImage(url: url) { img in
+                    img
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    LinearGradient(
+                        gradient: Gradient(colors: cat.gradient),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            } else {
+                HStack {
+                    Spacer()
+                    Image(systemName: cat.iconName)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.20))
+                        .padding(12)
+                }
+            }
+
+            // Dark gradient overlay from bottom to top for maximum text legibility
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.78),
+                    Color.black.opacity(0.15),
+                    Color.clear
+                ],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+
+            // Category Title
+            Text(cat.displayTitle)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .shadow(color: Color.black.opacity(0.6), radius: 4, x: 0, y: 1)
+                .padding(12)
+        }
+        .aspectRatio(2.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.35), radius: 6, y: 3)
     }
 
     // MARK: - Active Search Results
@@ -663,70 +657,67 @@ public struct SearchView: View {
         }
     }
 
-    // MARK: - Search Track Row
+    // MARK: - Track Row Item
     private func searchTrackRow(track: Track, fullQueue: [Track]) -> some View {
-        Button(action: {
+        let isCurrent = player.currentTrack?.id == track.id
+        return Button(action: {
             player.play(track: track, from: fullQueue, serverURL: serverURL)
         }) {
             HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.08))
+                let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                PortCachedAsyncImage(url: resolved) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
                         .frame(width: 48, height: 48)
-
-                    let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
-                    PortCachedAsyncImage(url: resolved) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 48, height: 48)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    } placeholder: {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white.opacity(0.50))
-                    }
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 48, height: 48)
                 }
-                .frame(width: 48, height: 48)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(PortColors.textPrimary)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(isCurrent ? PortColors.primaryAccent : .white)
                         .lineLimit(1)
 
                     Text(track.artist)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.white.opacity(0.65))
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.white.opacity(0.60))
                         .lineLimit(1)
                 }
 
                 Spacer()
 
-                Text(track.duration)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.50))
+                if isCurrent && player.isPlaying {
+                    Image(systemName: "waveform")
+                        .foregroundColor(PortColors.primaryAccent)
+                        .font(.system(size: 16, weight: .semibold))
+                } else {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color.white.opacity(0.40))
+                }
             }
-            .padding(10)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-            )
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(isCurrent ? Color.white.opacity(0.08) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Status Views
+    // MARK: - Helper Views
     private var loadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                .scaleEffect(1.1)
-            Text("Suche läuft...")
-                .font(.system(size: 13))
-                .foregroundColor(Color.white.opacity(0.65))
+                .scaleEffect(1.2)
+            Text("Suche läuft…")
+                .font(.system(size: 14))
+                .foregroundColor(Color.white.opacity(0.60))
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 60)
@@ -735,14 +726,16 @@ public struct SearchView: View {
     private var emptyResultsView: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 38))
-                .foregroundColor(Color.white.opacity(0.35))
-            Text("Keine Treffer für \"\(searchQuery)\"")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(PortColors.textPrimary)
-            Text("Überprüfe die Schreibweise oder suche nach einem anderen Begriff.")
-                .font(.system(size: 12))
-                .foregroundColor(Color.white.opacity(0.60))
+                .font(.system(size: 40))
+                .foregroundColor(Color.white.opacity(0.30))
+
+            Text("Keine Treffer für „\(searchQuery)“")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+
+            Text("Überprüfe deine Suchbegriffe oder suche nach anderen Titeln.")
+                .font(.system(size: 14))
+                .foregroundColor(Color.white.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
@@ -750,9 +743,11 @@ public struct SearchView: View {
         .padding(.top, 60)
     }
 
-    // MARK: - Search Operations
+    // MARK: - Search Operations & History Sync
     private func scheduleDebouncedSearch(query: String) {
         searchTask?.cancel()
+        autoSaveTask?.cancel()
+
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             searchResponse = nil
@@ -767,10 +762,22 @@ public struct SearchView: View {
                 await executeSearch(query: trimmed, saveHistory: false)
             }
         }
+
+        // Auto-save query to history when viewed and stabilized for 2s (matching web behavior)
+        if trimmed.count >= 2 {
+            autoSaveTask = Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if !Task.isCancelled {
+                    await saveRecentSearch(trimmed)
+                }
+            }
+        }
     }
 
     private func submitSearch(query: String) {
         searchTask?.cancel()
+        autoSaveTask?.cancel()
+
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
@@ -784,7 +791,7 @@ public struct SearchView: View {
         hasSearched = true
 
         if saveHistory {
-            saveRecentSearch(query)
+            await saveRecentSearch(query)
         }
 
         let token = SessionManager.shared.currentToken
@@ -800,30 +807,71 @@ public struct SearchView: View {
         }
     }
 
-    // MARK: - Recent Searches Persistence
-    private func loadRecentSearches() {
+    // MARK: - Initialization & Sync
+    private func initializeData() async {
+        loadRecentSearchesLocally()
+
+        let token = SessionManager.shared.currentToken
+        async let historyTask = MusicService.shared.fetchSearchHistory(serverURL: serverURL, token: token)
+        async let categoriesTask = MusicService.shared.fetchCategories(serverURL: serverURL)
+
+        let (serverHistory, serverCategories) = await (historyTask, categoriesTask)
+
+        await MainActor.run {
+            if !serverHistory.isEmpty {
+                self.recentSearches = serverHistory
+                UserDefaults.standard.set(serverHistory, forKey: "port_music_recent_searches")
+            }
+            if !serverCategories.isEmpty {
+                self.categories = serverCategories
+            }
+        }
+    }
+
+    private func loadRecentSearchesLocally() {
         if let saved = UserDefaults.standard.stringArray(forKey: "port_music_recent_searches") {
             self.recentSearches = saved
         }
     }
 
-    private func saveRecentSearch(_ query: String) {
-        var current = recentSearches.filter { $0.lowercased() != query.lowercased() }
-        current.insert(query, at: 0)
+    private func saveRecentSearch(_ query: String) async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return }
+
+        var current = recentSearches.filter { $0.lowercased() != trimmed.lowercased() }
+        current.insert(trimmed, at: 0)
         if current.count > 12 {
             current = Array(current.prefix(12))
         }
-        recentSearches = current
+
+        await MainActor.run {
+            self.recentSearches = current
+        }
         UserDefaults.standard.set(current, forKey: "port_music_recent_searches")
+
+        let token = SessionManager.shared.currentToken
+        await MusicService.shared.saveSearchHistory(current, serverURL: serverURL, token: token)
     }
 
     private func removeRecentSearch(_ query: String) {
-        recentSearches.removeAll { $0 == query }
-        UserDefaults.standard.set(recentSearches, forKey: "port_music_recent_searches")
+        var current = recentSearches
+        current.removeAll { $0 == query }
+        recentSearches = current
+        UserDefaults.standard.set(current, forKey: "port_music_recent_searches")
+
+        let token = SessionManager.shared.currentToken
+        Task {
+            await MusicService.shared.saveSearchHistory(current, serverURL: serverURL, token: token)
+        }
     }
 
     private func clearAllRecentSearches() {
         recentSearches.removeAll()
         UserDefaults.standard.removeObject(forKey: "port_music_recent_searches")
+
+        let token = SessionManager.shared.currentToken
+        Task {
+            await MusicService.shared.saveSearchHistory([], serverURL: serverURL, token: token)
+        }
     }
 }

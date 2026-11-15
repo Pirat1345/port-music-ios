@@ -210,6 +210,103 @@ public final class MusicService {
         }
     }
 
+    // MARK: - Search History Sync (/api/user-settings/search-history)
+    public func fetchSearchHistory(serverURL: String, token: String?) async -> [String] {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/user-settings/search-history") else {
+            return []
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return []
+            }
+            if let decoded = try? JSONDecoder().decode([String].self, from: data) {
+                return decoded
+            }
+            return []
+        } catch {
+            return []
+        }
+    }
+
+    public func saveSearchHistory(_ history: [String], serverURL: String, token: String?) async {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/user-settings/search-history") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        let cleanList = Array(history.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.prefix(30))
+        guard let bodyData = try? JSONEncoder().encode(cleanList) else { return }
+        request.httpBody = bodyData
+
+        do {
+            _ = try await session.data(for: request)
+        } catch {
+            // Silently handle network errors
+        }
+    }
+
+    // MARK: - Apple Music Browse Categories (/api/categories)
+    public func fetchCategories(serverURL: String) async -> [BrowseCategoryItem] {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/categories") else {
+            return BrowseCategoryItem.defaultCategories
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return BrowseCategoryItem.defaultCategories
+            }
+            let decoded = try JSONDecoder().decode([BrowseCategoryItem].self, from: data)
+            let cleaned = decoded.filter { !$0.title.contains("3D") && $0.id != "1564180390" }
+            return cleaned.isEmpty ? BrowseCategoryItem.defaultCategories : cleaned
+        } catch {
+            return BrowseCategoryItem.defaultCategories
+        }
+    }
+
+    // MARK: - Category Detail (/api/category/:id)
+    public func fetchCategoryDetail(id: String, serverURL: String, token: String?) async -> AppleCategoryDetailData? {
+        let base = cleanURL(serverURL)
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(base)/api/category/\(encoded)") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return nil
+            }
+            return try JSONDecoder().decode(AppleCategoryDetailData.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Device Identifier for Sync
     public var currentDeviceId: String {
         let key = "port_music_device_id_ios"

@@ -6,4 +6,5 @@ public enum AppRoute: Hashable {
     case playlist(id: String, title: String? = nil, coverUrl: String? = nil)
     case likedSongs
     case libraryCategory(category: String)
+    case appleCategory(id: String, title: String, artworkUrl: String? = nil, bgColor: String? = nil)
 }
