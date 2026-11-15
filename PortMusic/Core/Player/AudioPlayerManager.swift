@@ -36,6 +36,10 @@ public final class AudioPlayerManager: ObservableObject {
     private var nowPlayingArtwork: UIImage? = nil
     private var periodicPersistCounter: Int = 0
 
+    public func setVolume(_ volume: Float) {
+        avPlayer?.volume = max(0.0, min(1.0, volume))
+    }
+
     private let lastPlayedTrackKey = "port_music_last_played_track"
     private let lastPlayedTimeKey = "port_music_last_played_time"
     private let lastPlayedDurationKey = "port_music_last_played_duration"

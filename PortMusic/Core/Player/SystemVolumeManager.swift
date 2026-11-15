@@ -58,6 +58,6 @@ public final class SystemVolumeManager: ObservableObject {
                 }
             }
         }
-        AudioPlayerManager.shared.avPlayer?.volume = clamped
+        AudioPlayerManager.shared.setVolume(clamped)
     }
 }
