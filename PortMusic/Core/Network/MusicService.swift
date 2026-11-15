@@ -592,11 +592,15 @@ public final class MusicService {
             }
             if let tracks = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
                 let mapped = tracks.map { $0.toTrack() }
-                FavoritesManager.shared.syncWithList(mapped)
+                await MainActor.run {
+                    FavoritesManager.shared.syncWithList(mapped)
+                }
                 return mapped
             }
             if let directTracks = try? JSONDecoder().decode([Track].self, from: data) {
-                FavoritesManager.shared.syncWithList(directTracks)
+                await MainActor.run {
+                    FavoritesManager.shared.syncWithList(directTracks)
+                }
                 return directTracks
             }
             return []
@@ -626,12 +630,16 @@ public final class MusicService {
                 return false
             }
             if let isFav = try? JSONDecoder().decode(Bool.self, from: data) {
-                FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: isFav)
+                await MainActor.run {
+                    FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: isFav)
+                }
                 return isFav
             }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let isFav = (json["isFavorite"] as? Bool) ?? (json["favorite"] as? Bool) {
-                FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: isFav)
+                await MainActor.run {
+                    FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: isFav)
+                }
                 return isFav
             }
             return false
@@ -672,7 +680,9 @@ public final class MusicService {
         do {
             let (_, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
-                FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: true)
+                await MainActor.run {
+                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: true)
+                }
                 return true
             }
             return false
@@ -699,7 +709,9 @@ public final class MusicService {
         do {
             let (_, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
-                FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: false)
+                await MainActor.run {
+                    FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: false)
+                }
                 return true
             }
             return false

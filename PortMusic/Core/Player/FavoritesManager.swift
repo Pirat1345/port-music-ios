@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 public final class FavoritesManager: ObservableObject {
     public static let shared = FavoritesManager()
 

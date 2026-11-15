@@ -3,6 +3,7 @@ import MediaPlayer
 import AVFoundation
 import Combine
 
+@MainActor
 public final class SystemVolumeManager: ObservableObject {
     public static let shared = SystemVolumeManager()
 
