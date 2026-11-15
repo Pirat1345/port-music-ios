@@ -251,6 +251,7 @@ public struct FullscreenPlayerView: View {
     }
 
     // MARK: - PHONE PORTRAIT LAYOUT (Perfekt zentriert, kein Rechts-Versatz, Lyrics zum Runterscrollen)
+    @ViewBuilder
     private func phoneScrollLayout(geo: GeometryProxy) -> some View {
         let contentWidth = min(geo.size.width - 36, 420)
 

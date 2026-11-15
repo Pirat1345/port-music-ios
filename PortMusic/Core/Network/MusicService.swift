@@ -962,9 +962,15 @@ public final class MusicService {
     }
 
     // MARK: - Synchronized Lyrics Retrieval (Feature #18)
-    public func fetchLyrics(trackId: String, title: String, artist: String, serverURL: String, token: String? = nil) async -> String? {
+    public func fetchLyrics(trackId: String, title: String, artist: String, album: String? = nil, durationSeconds: Double? = nil, serverURL: String, token: String? = nil) async -> String? {
         guard !serverURL.isEmpty else { return nil }
         let cleanBase = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        // Track-Informationen sicher auf dem MainActor auflösen
+        let (currentAlbum, currentDur): (String?, Double?) = await MainActor.run {
+            let tr = AudioPlayerManager.shared.currentTrack
+            return (album ?? tr?.album, durationSeconds ?? tr?.durationSeconds)
+        }
 
         // 1. Primärer Weg: POST /api/tracks/fetch-lyrics (wie in der Web-App fetchPortMusicLyrics)
         if let postUrl = URL(string: "\(cleanBase)/api/tracks/fetch-lyrics") {
@@ -980,12 +986,11 @@ public final class MusicService {
                 "artist": artist,
                 "trackId": trackId
             ]
-            let currentTrack = AudioPlayerManager.shared.currentTrack
-            if let album = currentTrack?.album, !album.isEmpty {
-                postBody["album"] = album
+            if let a = currentAlbum, !a.isEmpty {
+                postBody["album"] = a
             }
-            if let dur = currentTrack?.durationSeconds, dur > 0 {
-                postBody["duration_seconds"] = dur
+            if let d = currentDur, d > 0 {
+                postBody["duration_seconds"] = d
             }
             if trackId.hasPrefix("yt_") {
                 let vid = trackId.replacingOccurrences(of: "yt_", with: "")
@@ -1009,12 +1014,11 @@ public final class MusicService {
             URLQueryItem(name: "title", value: title),
             URLQueryItem(name: "artist", value: artist)
         ]
-        let currentTrack = AudioPlayerManager.shared.currentTrack
-        if let album = currentTrack?.album, !album.isEmpty {
-            queryItems.append(URLQueryItem(name: "album", value: album))
+        if let a = currentAlbum, !a.isEmpty {
+            queryItems.append(URLQueryItem(name: "album", value: a))
         }
-        if let dur = currentTrack?.durationSeconds, dur > 0 {
-            queryItems.append(URLQueryItem(name: "duration", value: String(dur)))
+        if let d = currentDur, d > 0 {
+            queryItems.append(URLQueryItem(name: "duration", value: String(d)))
         }
         comps?.queryItems = queryItems
 
