@@ -14,6 +14,7 @@ public enum PortColors {
     public static let textMuted = Color.white.opacity(0.85)
 
     public static let accentWhite = Color.white
+    public static let primaryAccent = Color.white
     public static let accentOrange = Color.white // Aligned to pure white standard
     public static let successGreen = Color(red: 0.13, green: 0.77, blue: 0.45)
     public static let errorRed = Color(red: 0.94, green: 0.27, blue: 0.27)
