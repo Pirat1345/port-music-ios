@@ -34,11 +34,64 @@ public final class AudioPlayerManager: ObservableObject {
     private var itemDurationObserver: NSKeyValueObservation? = nil
     private var itemBufferObserver: NSKeyValueObservation? = nil
     private var nowPlayingArtwork: UIImage? = nil
+    private var periodicPersistCounter: Int = 0
+
+    private let lastPlayedTrackKey = "port_music_last_played_track"
+    private let lastPlayedTimeKey = "port_music_last_played_time"
+    private let lastPlayedDurationKey = "port_music_last_played_duration"
+    private let lastPlayedQueueKey = "port_music_last_played_queue"
 
     private init() {
         setupAudioSession()
         setupRemoteCommandCenter()
         loadPersistedRecentTracks()
+        loadPersistedPlayerState()
+    }
+
+    // MARK: - Last Played State Persistence & Restoration
+    public func loadPersistedPlayerState() {
+        if self.currentTrack != nil { return }
+        if let data = UserDefaults.standard.data(forKey: lastPlayedTrackKey),
+           let track = try? JSONDecoder().decode(Track.self, from: data) {
+            self.currentTrack = track
+            let savedTime = UserDefaults.standard.double(forKey: lastPlayedTimeKey)
+            let savedDur = UserDefaults.standard.double(forKey: lastPlayedDurationKey)
+            self.currentTime = max(0, savedTime)
+            self.duration = savedDur > 0 ? savedDur : parseDurationSeconds(from: track)
+
+            if let qData = UserDefaults.standard.data(forKey: lastPlayedQueueKey),
+               let q = try? JSONDecoder().decode([Track].self, from: qData) {
+                self.queue = q
+            } else {
+                self.queue = [track]
+            }
+        }
+    }
+
+    public func persistPlayerState() {
+        guard let track = currentTrack else { return }
+        if let data = try? JSONEncoder().encode(track) {
+            UserDefaults.standard.set(data, forKey: lastPlayedTrackKey)
+        }
+        UserDefaults.standard.set(self.currentTime, forKey: lastPlayedTimeKey)
+        UserDefaults.standard.set(self.duration, forKey: lastPlayedDurationKey)
+        if let qData = try? JSONEncoder().encode(self.queue) {
+            UserDefaults.standard.set(qData, forKey: lastPlayedQueueKey)
+        }
+    }
+
+    public func syncLastPlayedFromServerIfNeeded(serverURL: String, token: String?) async {
+        if self.currentTrack != nil { return }
+        let statsTracks = await MusicService.shared.fetchStats(serverURL: serverURL, token: token)
+        if let first = statsTracks.first, self.currentTrack == nil {
+            await MainActor.run {
+                self.currentTrack = first
+                self.duration = self.parseDurationSeconds(from: first)
+                self.currentTime = 0
+                self.queue = statsTracks
+                self.persistPlayerState()
+            }
+        }
     }
 
     // MARK: - Local Recent Tracks Persistence
@@ -209,7 +262,17 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func resume() {
-        guard let player = avPlayer else { return }
+        guard let player = avPlayer else {
+            if let current = currentTrack {
+                let startPos = self.currentTime
+                let effUrl = self.currentServerURL ?? SessionManager.shared.serverURL ?? ""
+                play(track: current, from: queue.isEmpty ? [current] : queue, serverURL: effUrl)
+                if startPos > 0 {
+                    seek(to: startPos)
+                }
+            }
+            return
+        }
         player.play()
         self.isPlaying = true
         updateNowPlayingInfo()
@@ -220,6 +283,7 @@ public final class AudioPlayerManager: ObservableObject {
         player.pause()
         self.isPlaying = false
         updateNowPlayingInfo()
+        persistPlayerState()
     }
 
     public func next(serverURL: String? = nil) {
@@ -430,6 +494,11 @@ public final class AudioPlayerManager: ObservableObject {
             let sec = time.seconds
             if !sec.isNaN {
                 self.currentTime = sec
+                self.periodicPersistCounter += 1
+                if self.periodicPersistCounter >= 8 { // roughly every 2s
+                    self.periodicPersistCounter = 0
+                    self.persistPlayerState()
+                }
             }
         }
     }

@@ -5,37 +5,43 @@ public struct PlayerBarView: View {
     public let serverURL: String
     public let onOpenFullscreen: () -> Void
 
+    @State private var dragProgress: Double? = nil
+
     public init(serverURL: String, onOpenFullscreen: @escaping () -> Void) {
         self.serverURL = serverURL
         self.onOpenFullscreen = onOpenFullscreen
     }
 
+    private var progress: Double {
+        if let drag = dragProgress {
+            return drag
+        }
+        guard player.duration > 0, !player.currentTime.isNaN && player.currentTime.isFinite else {
+            return 0.0
+        }
+        return max(0.0, min(1.0, player.currentTime / player.duration))
+    }
+
+    private var activeProgress: Double {
+        progress
+    }
+
     public var body: some View {
         if let track = player.currentTrack {
             VStack(spacing: 0) {
-                // 1. Schlanker Fortschrittsbalken oben (2px)
-                GeometryReader { geo in
-                    let progress = (player.duration > 0 && !player.currentTime.isNaN && player.currentTime.isFinite) ? max(0.0, min(1.0, player.currentTime / player.duration)) : 0.0
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.12))
-                            .frame(height: 2)
+                // Top border line
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: 1)
 
-                        Rectangle()
-                            .fill(Color.white)
-                            .frame(width: max(0, min(geo.size.width * CGFloat(progress), geo.size.width)), height: 2)
-                    }
-                }
-                .frame(height: 2)
-
-                // 2. Minibar Inhalt
+                // Main Info & Transport Controls Row
                 HStack(spacing: 12) {
-                    // Tap-Zone: Cover + Titel + Artist öffnet Fullscreen-Player
+                    // Left area: Cover + Titles (Click opens Fullscreen Player)
                     Button(action: onOpenFullscreen) {
                         HStack(spacing: 12) {
-                            // Cover Artwork mit Hochleistungs-Cache
+                            // Cover Artwork (44x44, rounded-md)
                             ZStack {
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: 6)
                                     .fill(PortColors.surfaceGlassStrong)
                                     .frame(width: 44, height: 44)
 
@@ -45,16 +51,16 @@ public struct PlayerBarView: View {
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
                                         .frame(width: 44, height: 44)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
                                 } placeholder: {
                                     Image(systemName: "music.note")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(Color.white.opacity(0.6))
+                                        .font(.system(size: 16))
+                                        .foregroundColor(Color.white.opacity(0.5))
                                 }
                             }
                             .frame(width: 44, height: 44)
 
-                            // Titel & Interpret mit Fallback
+                            // Title & Artist
                             let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
                             let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
 
@@ -66,7 +72,7 @@ public struct PlayerBarView: View {
 
                                 Text(displayArtist)
                                     .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(Color.white.opacity(0.70))
+                                    .foregroundColor(Color.white.opacity(0.60))
                                     .lineLimit(1)
                             }
                         }
@@ -75,77 +81,115 @@ public struct PlayerBarView: View {
 
                     Spacer(minLength: 8)
 
-                    // Transport-Steuerung: Zurück, Play/Pause & Weiter
-                    HStack(spacing: 12) {
-                        // Zurück-Button
+                    // Right area: Transport Controls (|◀, Solid White Play/Pause Circle, ▶|)
+                    HStack(spacing: 14) {
+                        // Previous Track (|◀)
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.impactOccurred()
                             player.previous(serverURL: serverURL)
                         }) {
-                            Image(systemName: "backward.fill")
-                                .font(.system(size: 15, weight: .semibold))
+                            Image(systemName: "backward.end.fill")
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(Color.white.opacity(0.85))
-                                .frame(width: 28, height: 28)
+                                .frame(width: 32, height: 32)
                         }
                         .buttonStyle(PlainButtonStyle())
 
-                        // Play/Pause-Button mit Ladeindikator
+                        // Play/Pause Solid White Circle
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.impactOccurred()
                             player.togglePlayPause()
                         }) {
                             ZStack {
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 38, height: 38)
+                                    .shadow(color: Color.black.opacity(0.3), radius: 4, y: 1)
+
                                 if player.isBuffering {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .black))
                                         .scaleEffect(0.85)
                                 } else {
                                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(.white)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .offset(x: player.isPlaying ? 0 : 1)
                                 }
                             }
-                            .frame(width: 32, height: 32)
                         }
                         .buttonStyle(PlainButtonStyle())
 
-                        // Weiter-Button
+                        // Next Track (▶|)
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.impactOccurred()
                             player.next(serverURL: serverURL)
                         }) {
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 15, weight: .semibold))
+                            Image(systemName: "forward.end.fill")
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(Color.white.opacity(0.85))
-                                .frame(width: 28, height: 28)
+                                .frame(width: 32, height: 32)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(.trailing, 6)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+                // Timeline Scrubber at the Bottom of PlayerBar
+                timelineScrubberSection
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
             }
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(PortColors.surfaceGlassStrong)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.black.opacity(0.75))
-                            .blur(radius: 8)
-                    )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(PortColors.borderGlass, lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.4), radius: 12, y: 4)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 6)
+            .background(Color.black)
         }
+    }
+
+    // MARK: - Timeline Scrubber Section
+    private var timelineScrubberSection: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let pct = max(0.0, min(1.0, activeProgress))
+            let thumbX = width * CGFloat(pct)
+
+            ZStack(alignment: .leading) {
+                // Background Track
+                Capsule()
+                    .fill(Color.white.opacity(0.20))
+                    .frame(height: 2)
+
+                // Progress Fill Track
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: max(0, min(thumbX, width)), height: 2)
+
+                // Thumb Knob (white dot)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 12, height: 12)
+                    .shadow(color: Color.black.opacity(0.4), radius: 2)
+                    .offset(x: max(0, min(thumbX - 6, width - 12)))
+            }
+            .frame(height: 18)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let newPct = max(0.0, min(1.0, Double(value.location.x / width)))
+                        dragProgress = newPct
+                    }
+                    .onEnded { value in
+                        let finalPct = max(0.0, min(1.0, Double(value.location.x / width)))
+                        dragProgress = nil
+                        let targetTime = finalPct * player.duration
+                        player.seek(to: targetTime)
+                    }
+            )
+        }
+        .frame(height: 18)
     }
 }

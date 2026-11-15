@@ -3,6 +3,7 @@ import SwiftUI
 public struct SearchView: View {
     public let serverURL: String
 
+    @Environment(\.presentationMode) private var presentationMode
     @ObservedObject private var player = AudioPlayerManager.shared
 
     @State private var searchQuery: String = ""
@@ -77,23 +78,58 @@ public struct SearchView: View {
         return !hasTracks && !hasAlbums && !hasArtists && !hasPlaylists
     }
 
-    // MARK: - Suchleiste
+    // MARK: - Suchleiste & Navigation
     private var searchHeaderSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Suche")
-                .font(.system(size: 30, weight: .bold))
-                .foregroundColor(PortColors.textPrimary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                // Back Button (<)
+                Button(action: {
+                    presentationMode.wrappedValue.dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color(hex: "#161618"))
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Forward Button (>)
+                Button(action: {}) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.35))
+                        .frame(width: 32, height: 32)
+                        .background(Color(hex: "#161618"))
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(true)
+
+                Text("Suche")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(PortColors.textPrimary)
+
+                Spacer()
+            }
 
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.60))
+                    .foregroundColor(Color.white.opacity(0.45))
 
                 TextField(
                     "",
                     text: $searchQuery,
-                    prompt: Text("Songs, Alben oder Künstler...")
-                        .foregroundColor(Color.white.opacity(0.45))
+                    prompt: Text("Artists, Songs, Lyrics, and More")
+                        .foregroundColor(Color.white.opacity(0.35))
                 )
                 .font(.system(size: 15))
                 .foregroundColor(PortColors.textPrimary)
@@ -124,11 +160,11 @@ public struct SearchView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(Color.white.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .background(Color(hex: "#161618"))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
         }
     }
@@ -180,7 +216,7 @@ public struct SearchView: View {
     private var recentSearchesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Zuletzt gesucht")
+                Text("Recent searches")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(PortColors.textPrimary)
 
@@ -233,19 +269,32 @@ public struct SearchView: View {
     }
 
     // MARK: - Browse Categories Section
+    private var categoryGridColumns: [GridItem] {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return [
+                GridItem(.flexible(), spacing: 14),
+                GridItem(.flexible(), spacing: 14),
+                GridItem(.flexible(), spacing: 14),
+                GridItem(.flexible(), spacing: 14)
+            ]
+        } else {
+            return [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ]
+        }
+    }
+
     private var browseCategoriesSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Kategorien entdecken")
+            Text("Browse Categories")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(PortColors.textPrimary)
                 .padding(.horizontal, 20)
 
             LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12)
-                ],
-                spacing: 12
+                columns: categoryGridColumns,
+                spacing: UIDevice.current.userInterfaceIdiom == .pad ? 14 : 12
             ) {
                 ForEach(categories) { cat in
                     NavigationLink(value: AppRoute.appleCategory(

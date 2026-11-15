@@ -8,10 +8,10 @@ public enum MainTabItem: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .home: return "Home"
+        case .home: return "Startseite"
         case .search: return "Suche"
         case .library: return "Bibliothek"
-        case .profile: return "Profil"
+        case .profile: return "Menü"
         }
     }
 
@@ -90,6 +90,9 @@ public struct MainTabView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            await player.syncLastPlayedFromServerIfNeeded(serverURL: serverURL, token: SessionManager.shared.currentToken)
+        }
         .fullScreenCover(isPresented: $showFullscreenPlayer) {
             FullscreenPlayerView(serverURL: serverURL) {
                 showFullscreenPlayer = false
@@ -97,7 +100,7 @@ public struct MainTabView: View {
         }
     }
 
-    // MARK: - Custom Octave Glass TabBar
+    // MARK: - Custom Octave TabBar (Clean Minimalist Dark - No Glow)
     private var glassTabBar: some View {
         HStack(spacing: 0) {
             ForEach(MainTabItem.allCases, id: \.self) { tab in
@@ -111,21 +114,10 @@ public struct MainTabView: View {
                     }
                 }) {
                     VStack(spacing: 4) {
-                        ZStack {
-                            // Subtiler Active Glow hinter dem aktiven Icon
-                            if isSelected {
-                                Circle()
-                                    .fill(Color.white.opacity(0.14))
-                                    .frame(width: 38, height: 38)
-                                    .blur(radius: 4)
-                            }
-
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
-                                .shadow(color: isSelected ? Color.white.opacity(0.35) : Color.clear, radius: 4)
-                        }
-                        .frame(height: 26)
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
+                            .frame(height: 24)
 
                         Text(tab.title)
                             .font(.system(size: 10, weight: isSelected ? .bold : .regular))
@@ -138,17 +130,17 @@ public struct MainTabView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
         .background(
-            Color.black.opacity(0.85)
+            Color.black
                 .background(.ultraThinMaterial)
                 .ignoresSafeArea(edges: .bottom)
         )
         .overlay(
             Rectangle()
-                .fill(PortColors.borderGlass)
-                .frame(height: 0.8),
+                .fill(Color.white.opacity(0.12))
+                .frame(height: 1),
             alignment: .top
         )
     }
