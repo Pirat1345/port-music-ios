@@ -164,49 +164,31 @@ public struct FullscreenPlayerView: View {
         .clipped()
     }
 
-    // MARK: - Obere Kopfleiste (Schließen-Button oben links & Drag-Griff)
+    // MARK: - Obere Kopfleiste (Drag-Griff zentriert zum Herunterziehen)
     private func topBarSection(safeTop: CGFloat) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
+            // Ausreichender Abstand nach oben, sodass die Leiste nicht an der Dynamic Island/Notch klebt
             Color.clear
-                .frame(height: max(10, safeTop))
+                .frame(height: max(16, safeTop + 12))
 
-            HStack {
-                // Schließen-Button oben links (X)
-                Button(action: {
+            // Zentrierter Drag-Griff (Pill Handle)
+            pullDownHandle
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+                .onTapGesture {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
                     onClose()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.85))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(PlainButtonStyle())
-
-                Spacer()
-
-                // Zentrierter Drag-Pill Griff oben
-                pullDownHandle
-                    .onTapGesture {
-                        onClose()
-                    }
-
-                Spacer()
-
-                Color.clear
-                    .frame(width: 44, height: 44)
-            }
-            .padding(.horizontal, 16)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Drag Handle
     public var pullDownHandle: some View {
         Capsule()
-            .fill(Color.white.opacity(0.35))
-            .frame(width: 38, height: 5)
+            .fill(Color.white.opacity(0.38))
+            .frame(width: 42, height: 5)
     }
 
     // MARK: - TABLET / IPAD 2-SPALTEN LAYOUT (Exakt wie im Web-App Screenshot)
