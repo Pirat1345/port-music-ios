@@ -4,6 +4,7 @@ public struct PortPosterCard: View {
     public let title: String
     public let subtitle: String
     public let coverUrl: String?
+    public let serverURL: String
     public let isPlaying: Bool
     public let onPlay: () -> Void
 
@@ -11,12 +12,14 @@ public struct PortPosterCard: View {
         title: String,
         subtitle: String,
         coverUrl: String?,
+        serverURL: String = "",
         isPlaying: Bool = false,
         onPlay: @escaping () -> Void
     ) {
         self.title = title
         self.subtitle = subtitle
         self.coverUrl = coverUrl
+        self.serverURL = serverURL
         self.isPlaying = isPlaying
         self.onPlay = onPlay
     }
@@ -24,19 +27,34 @@ public struct PortPosterCard: View {
     public var body: some View {
         Button(action: onPlay) {
             ZStack(alignment: .bottomLeading) {
-                // Hintergrund & Cover-Bild
+                // Hintergrund & Cover-Präsentation
                 ZStack {
                     Color(hex: "#1a1a1c")
 
-                    if let cover = coverUrl, let url = URL(string: cover) {
-                        AsyncImage(url: url) { phase in
+                    if let resolved = resolveCoverURL(coverUrl, serverURL: serverURL) {
+                        AsyncImage(url: resolved) { phase in
                             switch phase {
                             case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 155, height: 207)
-                                    .clipped()
+                                ZStack {
+                                    // Untere Reflexions-Weichzeichnung
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 155, height: 207)
+                                        .blur(radius: 16)
+                                        .scaleEffect(1.1)
+                                        .opacity(0.85)
+
+                                    // Scharfes Cover-Bild oben
+                                    VStack(spacing: 0) {
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 155, height: 155)
+                                            .clipped()
+                                        Spacer(minLength: 0)
+                                    }
+                                }
                             default:
                                 Image(systemName: "music.note")
                                     .font(.system(size: 32))
@@ -49,12 +67,12 @@ public struct PortPosterCard: View {
                             .foregroundColor(Color.white.opacity(0.20))
                     }
 
-                    // Weicher Schatten-Gradient fuer Textlesbarkeit
+                    // Weicher Schattenverlauf fuer perfekte Typografie-Lesbarkeit wie im Web
                     LinearGradient(
                         stops: [
                             .init(color: .clear, location: 0.35),
                             .init(color: Color.black.opacity(0.40), location: 0.65),
-                            .init(color: Color.black.opacity(0.88), location: 1.0)
+                            .init(color: Color.black.opacity(0.92), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -70,7 +88,7 @@ public struct PortPosterCard: View {
                         .foregroundColor(.white)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                        .shadow(color: .black.opacity(0.7), radius: 3, y: 1)
+                        .shadow(color: .black.opacity(0.8), radius: 3, y: 1)
 
                     Text(subtitle)
                         .font(.system(size: 11, weight: .medium))
@@ -107,7 +125,7 @@ public struct PortPosterCard: View {
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.36), radius: 10, y: 4)
+            .shadow(color: Color.black.opacity(0.4), radius: 10, y: 4)
         }
         .buttonStyle(PlainButtonStyle())
     }

@@ -16,6 +16,7 @@ public final class AudioPlayerManager: ObservableObject {
     @Published public private(set) var duration: Double = 0.0
     @Published public private(set) var queue: [Track] = []
     @Published public private(set) var queueIndex: Int = 0
+    @Published public private(set) var recentTracks: [Track] = []
 
     @Published public var isShuffle: Bool = false
     @Published public var isRepeat: Bool = false
@@ -68,6 +69,15 @@ public final class AudioPlayerManager: ObservableObject {
         self.duration = max(track.durationSeconds, 1.0)
         self.isBuffering = true
 
+        // Zuletzt gehört aktualisieren
+        if let existingIdx = self.recentTracks.firstIndex(where: { $0.id == track.id }) {
+            self.recentTracks.remove(at: existingIdx)
+        }
+        self.recentTracks.insert(track, at: 0)
+        if self.recentTracks.count > 30 {
+            self.recentTracks.removeLast()
+        }
+
         guard let streamURL = MusicService.shared.streamURL(for: track, serverURL: serverURL) else {
             self.isBuffering = false
             return
@@ -105,6 +115,17 @@ public final class AudioPlayerManager: ObservableObject {
             name: .AVPlayerItemDidPlayToEndTime,
             object: playerItem
         )
+    }
+
+    public func mergeServerHistory(_ serverList: [Track]) {
+        for t in serverList {
+            if !recentTracks.contains(where: { $0.id == t.id }) {
+                recentTracks.append(t)
+            }
+        }
+        if recentTracks.count > 40 {
+            recentTracks = Array(recentTracks.prefix(40))
+        }
     }
 
     public func togglePlayPause() {

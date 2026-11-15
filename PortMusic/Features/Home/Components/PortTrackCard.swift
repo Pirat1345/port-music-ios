@@ -4,6 +4,7 @@ public struct PortTrackCard: View {
     public let title: String
     public let subtitle: String
     public let coverUrl: String?
+    public let serverURL: String
     public let rank: Int?
     public let isPlaying: Bool
     public let onPlay: () -> Void
@@ -12,6 +13,7 @@ public struct PortTrackCard: View {
         title: String,
         subtitle: String,
         coverUrl: String?,
+        serverURL: String = "",
         rank: Int? = nil,
         isPlaying: Bool = false,
         onPlay: @escaping () -> Void
@@ -19,6 +21,7 @@ public struct PortTrackCard: View {
         self.title = title
         self.subtitle = subtitle
         self.coverUrl = coverUrl
+        self.serverURL = serverURL
         self.rank = rank
         self.isPlaying = isPlaying
         self.onPlay = onPlay
@@ -29,39 +32,20 @@ public struct PortTrackCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Cover-Box 1:1
                 ZStack(alignment: .topLeading) {
-                    ZStack {
-                        Color(hex: "#181818")
-
-                        if let cover = coverUrl, let url = URL(string: cover) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 145, height: 145)
-                                        .clipped()
-                                default:
-                                    Image(systemName: "music.note")
-                                        .font(.system(size: 28))
-                                        .foregroundColor(Color.white.opacity(0.25))
-                                }
-                            }
-                        } else {
-                            Image(systemName: "music.note")
-                                .font(.system(size: 28))
-                                .foregroundColor(Color.white.opacity(0.25))
-                        }
-                    }
+                    PortCoverImage(
+                        coverUrl: coverUrl,
+                        serverURL: serverURL,
+                        placeholderIcon: "music.note"
+                    )
                     .frame(width: 145, height: 145)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
-                    // Rang-Badge (falls vorhanden)
+                    // Rang-Badge (falls vorhanden z. B. in Top Hits)
                     if let r = rank {
                         Text("\(r)")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(Color.black.opacity(0.75))
                             .clipShape(Capsule())

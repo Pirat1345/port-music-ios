@@ -42,6 +42,9 @@ public struct MainTabView: View {
 
     public var body: some View {
         ZStack(alignment: .bottom) {
+            Color.black
+                .ignoresSafeArea()
+
             // Aktiver Tab-Inhalt
             Group {
                 switch selectedTab {

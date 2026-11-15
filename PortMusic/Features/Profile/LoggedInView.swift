@@ -13,7 +13,8 @@ public struct LoggedInView: View {
 
     public var body: some View {
         ZStack {
-            FluentBackgroundView()
+            Color.black
+                .ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 28) {

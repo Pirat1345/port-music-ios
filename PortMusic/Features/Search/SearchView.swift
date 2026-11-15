@@ -15,7 +15,8 @@ public struct SearchView: View {
 
     public var body: some View {
         ZStack {
-            FluentBackgroundView()
+            Color.black
+                .ignoresSafeArea()
 
             VStack(spacing: 16) {
                 // Header & Suchleiste

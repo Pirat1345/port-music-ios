@@ -11,7 +11,8 @@ public struct LibraryView: View {
 
     public var body: some View {
         ZStack {
-            FluentBackgroundView()
+            Color.black
+                .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {

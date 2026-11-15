@@ -4,6 +4,7 @@ public struct PortAlbumCard: View {
     public let title: String
     public let subtitle: String
     public let coverUrl: String?
+    public let serverURL: String
     public let rank: Int?
     public let isPlaying: Bool
     public let onPlay: () -> Void
@@ -12,6 +13,7 @@ public struct PortAlbumCard: View {
         title: String,
         subtitle: String,
         coverUrl: String?,
+        serverURL: String = "",
         rank: Int? = nil,
         isPlaying: Bool = false,
         onPlay: @escaping () -> Void
@@ -19,6 +21,7 @@ public struct PortAlbumCard: View {
         self.title = title
         self.subtitle = subtitle
         self.coverUrl = coverUrl
+        self.serverURL = serverURL
         self.rank = rank
         self.isPlaying = isPlaying
         self.onPlay = onPlay
@@ -28,39 +31,20 @@ public struct PortAlbumCard: View {
         Button(action: onPlay) {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .topLeading) {
-                    ZStack {
-                        Color(hex: "#181818")
-
-                        if let cover = coverUrl, let url = URL(string: cover) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 155, height: 155)
-                                        .clipped()
-                                default:
-                                    Image(systemName: "opticaldisc")
-                                        .font(.system(size: 32))
-                                        .foregroundColor(Color.white.opacity(0.25))
-                                }
-                            }
-                        } else {
-                            Image(systemName: "opticaldisc")
-                                .font(.system(size: 32))
-                                .foregroundColor(Color.white.opacity(0.25))
-                        }
-                    }
+                    PortCoverImage(
+                        coverUrl: coverUrl,
+                        serverURL: serverURL,
+                        placeholderIcon: "opticaldisc"
+                    )
                     .frame(width: 155, height: 155)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    // Rang-Badge (falls vorhanden)
+                    // Rang-Badge (falls vorhanden z. B. in Top 100: Global)
                     if let r = rank {
                         Text("\(r)")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(Color.black.opacity(0.75))
                             .clipShape(Capsule())

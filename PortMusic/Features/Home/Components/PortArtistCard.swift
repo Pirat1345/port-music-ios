@@ -2,10 +2,16 @@ import SwiftUI
 
 public struct PortArtistCard: View {
     public let artist: DiscoveryArtist
+    public let serverURL: String
     public let onSelect: () -> Void
 
-    public init(artist: DiscoveryArtist, onSelect: @escaping () -> Void) {
+    public init(
+        artist: DiscoveryArtist,
+        serverURL: String = "",
+        onSelect: @escaping () -> Void
+    ) {
         self.artist = artist
+        self.serverURL = serverURL
         self.onSelect = onSelect
     }
 
@@ -42,8 +48,8 @@ public struct PortArtistCard: View {
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(Color.white.opacity(0.70))
 
-                    if let pic = artist.picture, let url = URL(string: pic) {
-                        AsyncImage(url: url) { phase in
+                    if let resolved = resolveCoverURL(artist.picture, serverURL: serverURL) {
+                        AsyncImage(url: resolved) { phase in
                             switch phase {
                             case .success(let image):
                                 image

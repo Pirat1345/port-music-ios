@@ -103,4 +103,39 @@ public final class MusicService {
             return []
         }
     }
+
+    // MARK: - Fetch Listening History (/api/history)
+    public struct HistoryEntry: Codable {
+        public let track: DiscoveryTrack?
+        public let timestamp: Int64?
+    }
+
+    public func fetchHistory(serverURL: String, token: String?) async -> [Track] {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/history") else {
+            return []
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return []
+            }
+            if let entries = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
+                return entries.compactMap { $0.track?.toTrack() }
+            }
+            if let directTracks = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
+                return directTracks.map { $0.toTrack() }
+            }
+            return []
+        } catch {
+            return []
+        }
+    }
 }
