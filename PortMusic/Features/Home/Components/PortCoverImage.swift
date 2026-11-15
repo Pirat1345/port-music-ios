@@ -167,7 +167,6 @@ public struct PortUserAvatarView: View {
     public let size: CGFloat
     public let isSelected: Bool
 
-    @State private var vectorColors: (bg: Color, accent: Color, face: Color, rot: Double)?
     @State private var rasterImage: UIImage?
 
     public init(
@@ -192,14 +191,6 @@ public struct PortUserAvatarView: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size, height: size)
                     .clipShape(Circle())
-            } else if let c = vectorColors {
-                NativeBoringAvatarView(
-                    bgColor: c.bg,
-                    accentColor: c.accent,
-                    faceColor: c.face,
-                    rotation: c.rot,
-                    size: size
-                )
             } else {
                 fallbackMonogram
             }
@@ -217,10 +208,23 @@ public struct PortUserAvatarView: View {
     private var fallbackMonogram: some View {
         ZStack {
             Circle()
-                .fill(Color.white.opacity(0.12))
-            Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: size * 0.76))
-                .foregroundColor(isSelected ? .white : Color.white.opacity(0.70))
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "#2c2d35"), Color(hex: "#16161a")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            if !username.isEmpty {
+                Text(String(username.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.46, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: size * 0.44, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.85))
+            }
         }
         .frame(width: size, height: size)
     }
@@ -231,7 +235,7 @@ public struct PortUserAvatarView: View {
             return
         }
 
-        // 1. data:image/png or jpeg (base64)
+        // 1. data:image/png oder jpeg (base64)
         if raw.hasPrefix("data:image"), !raw.contains("svg") {
             if let base64Part = raw.components(separatedBy: ",").last,
                let data = Data(base64Encoded: base64Part, options: .ignoreUnknownCharacters),
@@ -241,37 +245,22 @@ public struct PortUserAvatarView: View {
             }
         }
 
-        // 2. Inline SVG string (or data:image/svg+xml)
-        if raw.contains("<svg") || raw.contains("svg+xml") {
-            let clean = raw.removingPercentEncoding ?? raw
-            let parsed = parseSvgColors(clean)
-            vectorColors = (Color(hex: parsed.0), Color(hex: parsed.1), Color(hex: parsed.2), parsed.3)
-            return
-        }
-
-        // 3. Remote URL (e.g. /api/files/avatars/... or http...)
+        // 2. Remote URL (z.B. /api/files/avatars/... oder http...)
         guard let url = resolveAvatarURL(raw, serverURL: serverURL) else { return }
-        let urlKey = url.absoluteString
 
-        // 3a. Sofort aus Memory-Cache laden falls vorhanden
+        // 2a. Sofort aus Memory-Cache laden falls vorhanden
         if let memImg = PortImageCache.shared.imageFromMemory(for: url) {
             rasterImage = memImg
             return
         }
 
-        // 3b. Vektor-Farben Cache
-        if let cached = AvatarDataCache.shared.getCachedColors(for: urlKey) {
-            vectorColors = (Color(hex: cached.0), Color(hex: cached.1), Color(hex: cached.2), cached.3)
-            return
-        }
-
-        // 3c. Über PortImageCache (Disk + Netzwerk) laden
+        // 2b. Über PortImageCache (Disk + Netzwerk) laden
         if let loaded = await PortImageCache.shared.loadImage(for: url) {
             rasterImage = loaded
             return
         }
 
-        // 3d. Fallback: Direkte HTTP-Abfrage fuer SVG-Payloads
+        // 2c. Direkte HTTP-Abfrage fuer Bilddateien
         do {
             var req = URLRequest(url: url)
             req.timeoutInterval = 8.0
@@ -285,47 +274,10 @@ public struct PortUserAvatarView: View {
 
             if let img = UIImage(data: data) {
                 rasterImage = img
-                return
-            }
-
-            if let str = String(data: data, encoding: .utf8), str.contains("<svg") {
-                let parsed = parseSvgColors(str)
-                AvatarDataCache.shared.saveColors(bg: parsed.0, accent: parsed.1, face: parsed.2, rot: parsed.3, for: urlKey)
-                vectorColors = (Color(hex: parsed.0), Color(hex: parsed.1), Color(hex: parsed.2), parsed.3)
+                PortImageCache.shared.storeImageInMemory(img, for: url)
                 return
             }
         } catch {}
-    }
-
-    private func parseSvgColors(_ svg: String) -> (String, String, String, Double) {
-        let clean = svg.replacingOccurrences(of: "%23", with: "#")
-        let pattern = "#[0-9a-fA-F]{6}"
-        var colors: [String] = []
-        if let regex = try? NSRegularExpression(pattern: pattern) {
-            let ns = clean as NSString
-            let matches = regex.matches(in: clean, range: NSRange(location: 0, length: ns.length))
-            for m in matches {
-                let c = ns.substring(with: m.range).lowercased()
-                if c != "#ffffff" && !colors.contains(c) {
-                    colors.append(c)
-                }
-            }
-        }
-
-        let bg = colors.count > 0 ? colors[0] : "#ffb238"
-        let accent = colors.count > 1 ? colors[1] : "#ff4b4b"
-        let face = colors.contains("#000000") ? "#000000" : (colors.count > 2 ? colors[2] : "#000000")
-
-        var rot = 65.0
-        if let rotRange = clean.range(of: "rotate(") {
-            let after = clean[rotRange.upperBound...]
-            let numStr = after.prefix(while: { $0.isNumber || $0 == "-" })
-            if let parsed = Double(numStr) {
-                rot = parsed
-            }
-        }
-
-        return (bg, accent, face, rot)
     }
 }
 

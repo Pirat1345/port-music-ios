@@ -145,10 +145,7 @@ public struct MainTabView: View {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
                     if tab == .profile {
-                        if selectedTab != .profile {
-                            previousTab = selectedTab
-                        }
-                        selectedTab = tab
+                        // Menü öffnet ausschließlich die Seitenleiste (Drawer), ohne die aktuelle Hauptseite umzuschalten
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                             showMenuDrawer = true
                         }

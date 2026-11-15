@@ -153,26 +153,11 @@ public struct PortMenuDrawerView: View {
     // MARK: - 1. Branding Header (Logo + "Port Music" + Schließen-Button)
     private var headerBrandingSection: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: "#8b5cf6"), Color(hex: "#6366f1")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 32, height: 32)
-
-                Image(systemName: "waveform")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-            }
+            PortLogoView(size: 32)
 
             Text("Port Music")
-                .font(.system(size: 20, weight: .black, design: .rounded))
+                .font(.manosque(size: 22))
                 .foregroundColor(.white)
-                .tracking(-0.3)
 
             Spacer()
 

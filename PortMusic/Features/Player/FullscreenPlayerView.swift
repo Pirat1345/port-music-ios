@@ -164,8 +164,7 @@ public struct FullscreenPlayerView: View {
     // MARK: - Obere Kopfleiste (Drag-Griff zentriert zum Herunterziehen)
     private func topBarSection(safeTop: CGFloat) -> some View {
         let effectiveSafeTop = max(safeTop, deviceSafeTop)
-        // Wesentlich mehr Abstand nach oben zur Dynamic Island / Notch
-        let topDistance = effectiveSafeTop + 24
+        let topDistance = effectiveSafeTop + 10
 
         return VStack(spacing: 0) {
             Color.clear
@@ -173,25 +172,23 @@ public struct FullscreenPlayerView: View {
 
             // Zentrierter Drag-Griff (Pill Handle)
             pullDownHandle
-                .padding(.vertical, 14)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    onClose()
-                }
-
-            Spacer(minLength: 4)
+                .padding(.top, 6)
+                .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .gesture(
-            DragGesture(minimumDistance: 5)
+            DragGesture(minimumDistance: 1)
                 .onChanged { val in
                     dragOffset = max(0, val.translation.height)
                 }
                 .onEnded { val in
-                    if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
+                    if val.translation.height < 6 {
+                        // Kurzes Tippen schließt die Großansicht direkt
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        onClose()
+                    } else if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                         onClose()
@@ -256,9 +253,7 @@ public struct FullscreenPlayerView: View {
         let contentWidth = min(geo.size.width - 36, 420)
 
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 20) {
-                Spacer(minLength: 6)
-
+            VStack(spacing: 18) {
                 // Albumcover zentriert
                 artworkSection(maxSize: min(contentWidth, 310))
 
