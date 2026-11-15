@@ -45,60 +45,67 @@ public struct FullscreenPlayerView: View {
                 Color.black
                     .ignoresSafeArea()
 
-                // Weichgezeichneter Album-Hintergrund
-                backgroundLayer
+                // Verschiebbarer Container: Weichgezeichneter Hintergrund UND Inhalt wandern gemeinsam
+                ZStack {
+                    // Weichgezeichneter Album-Hintergrund
+                    backgroundLayer
 
-                VStack(spacing: 0) {
-                    // Safe Top Clearance (stellt sicher, dass Griff und Header nicht in Notch/Statusbar rutschen)
-                    Color.clear
-                        .frame(height: max(14, safeTop))
+                    VStack(spacing: 0) {
+                        // Safe Top Clearance (stellt sicher, dass Griff und Header nicht in Notch/Statusbar rutschen)
+                        Color.clear
+                            .frame(height: max(14, safeTop))
 
-                    // Drag-Pill Griff oben
-                    pullDownHandle
-                        .padding(.top, 4)
-                        .padding(.bottom, 6)
-
-                    // Obere Leiste mit Schliessen-Button
-                    headerBar
-                        .padding(.horizontal, isTablet ? 32 : 24)
-                        .padding(.vertical, 6)
-
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: isTablet ? 26 : 22) {
-                            Spacer(minLength: 4)
-
-                            // Artwork oder synchronisierter Songtext (Feature #18)
-                            if showLyrics {
-                                lyricsSection
-                                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                            } else {
-                                // Grosses Albumcover mit Feder-Animation (Spring-Bounce) auf Play/Pause
-                                artworkSection
+                        // Drag-Pill Griff oben
+                        pullDownHandle
+                            .padding(.top, 4)
+                            .padding(.bottom, 6)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onClose()
                             }
 
-                            // Titel, Interpret & Herz-Favoriten-Button
-                            trackInfoSection
+                        // Obere Leiste mit zentriertem Albumtitel
+                        headerBar
+                            .padding(.horizontal, isTablet ? 32 : 24)
+                            .padding(.vertical, 6)
 
-                            // Interaktiver Scrubber (Timeline mit negativer Restzeit)
-                            scrubberSection
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: isTablet ? 26 : 22) {
+                                Spacer(minLength: 4)
 
-                            // Steuerungselemente (Shuffle, Vorheriger, Play/Pause, Naechster, Repeat)
-                            playbackControlsSection
+                                // Artwork oder synchronisierter Songtext (Feature #18)
+                                if showLyrics {
+                                    lyricsSection
+                                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                                } else {
+                                    // Grosses Albumcover mit Feder-Animation (Spring-Bounce) auf Play/Pause
+                                    artworkSection
+                                }
 
-                            // Lautstaerke-Regler
-                            volumeSliderSection
+                                // Titel, Interpret & Herz-Favoriten-Button
+                                trackInfoSection
 
-                            // Zusatz-Aktionen: Songtext, AirPlay, Warteschlange
-                            bottomActionsSection
+                                // Interaktiver Scrubber (Timeline mit negativer Restzeit)
+                                scrubberSection
 
-                            // Song-Details & Empfehlungen (Feature #20)
-                            songDetailsAndRecommendationsSection
+                                // Steuerungselemente (Shuffle, Vorheriger, Play/Pause, Naechster, Repeat)
+                                playbackControlsSection
 
-                            Spacer(minLength: 28)
+                                // Lautstaerke-Regler
+                                volumeSliderSection
+
+                                // Zusatz-Aktionen: Songtext, AirPlay, Warteschlange
+                                bottomActionsSection
+
+                                // Song-Details & Empfehlungen (Feature #20)
+                                songDetailsAndRecommendationsSection
+
+                                Spacer(minLength: 28)
+                            }
+                            .frame(maxWidth: isTablet ? 480 : 440)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.horizontal, isTablet ? 36 : 28)
                         }
-                        .frame(maxWidth: isTablet ? 480 : 440)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.horizontal, isTablet ? 36 : 28)
                     }
                 }
                 .offset(y: max(0, dragOffset))
@@ -168,18 +175,9 @@ public struct FullscreenPlayerView: View {
         }
     }
 
-    // MARK: - Header (Clean dismiss button)
+    // MARK: - Header (Zentrierter Albumtitel, kein redundanter Chevron)
     private var headerBar: some View {
         HStack {
-            Button(action: onClose) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 19, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.80))
-                    .frame(width: 38, height: 38)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Circle())
-            }
-
             Spacer()
 
             if let album = player.currentTrack?.album, !album.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -190,11 +188,8 @@ public struct FullscreenPlayerView: View {
             }
 
             Spacer()
-
-            // Platzhalter fuer Symmetrie
-            Color.clear
-                .frame(width: 38, height: 38)
         }
+        .frame(height: 28)
     }
 
     // MARK: - Album Cover mit Feder-Animation (Spring Scale)
@@ -586,53 +581,17 @@ public struct FullscreenPlayerView: View {
         .padding(.top, 6)
     }
 
-    // MARK: - Song Details & Empfehlungen (Feature #20)
+    // MARK: - Empfehlungen (Feature #20 - Titelinformationen entfernt, da oben bereits sichtbar)
+    @ViewBuilder
     private var songDetailsAndRecommendationsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Divider()
-                .background(Color.white.opacity(0.12))
-                .padding(.top, 10)
+        if !recommendations.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                Divider()
+                    .background(Color.white.opacity(0.12))
+                    .padding(.top, 10)
 
-            trackCreditsCard
-
-            if !recommendations.isEmpty {
                 recommendationsCard
             }
-        }
-    }
-
-    private var trackCreditsCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Titelinformationen")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundColor(Color.white)
-
-            if let album = player.currentTrack?.album, !album.isEmpty {
-                creditRow(label: "Album", value: album)
-            }
-
-            if let artist = player.currentTrack?.artist, !artist.isEmpty {
-                creditRow(label: "Künstler", value: artist)
-            }
-
-            if let dur = player.currentTrack?.duration {
-                creditRow(label: "Dauer", value: dur)
-            }
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func creditRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundColor(Color.white.opacity(0.50))
-            Spacer()
-            Text(value)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color.white)
         }
     }
 

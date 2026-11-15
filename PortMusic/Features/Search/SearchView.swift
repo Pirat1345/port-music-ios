@@ -21,8 +21,60 @@ public struct SearchView: View {
     @State private var recentSearches: [String] = []
     @State private var categories: [BrowseCategoryItem] = BrowseCategoryItem.defaultCategories
 
-    public init(serverURL: String) {
+    // Navigation History (Vor & Zurück)
+    @State private var forwardQuery: String = ""
+    @State private var forwardRouteHistory: [AppRoute] = []
+    private var navigationPath: Binding<[AppRoute]>?
+
+    public init(serverURL: String, navigationPath: Binding<[AppRoute]>? = nil) {
         self.serverURL = serverURL
+        self.navigationPath = navigationPath
+    }
+
+    private var canGoBack: Bool {
+        let hasPushedRoute = (navigationPath?.wrappedValue.count ?? 0) > 0
+        return hasPushedRoute || !searchQuery.isEmpty
+    }
+
+    private var canGoForward: Bool {
+        let hasForwardRoute = !forwardRouteHistory.isEmpty
+        return hasForwardRoute || !forwardQuery.isEmpty
+    }
+
+    private func handleGoBack() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+
+        if let path = navigationPath, !path.wrappedValue.isEmpty {
+            let popped = path.wrappedValue.removeLast()
+            forwardRouteHistory.append(popped)
+            return
+        }
+
+        if !searchQuery.isEmpty {
+            forwardQuery = searchQuery
+            searchQuery = ""
+            return
+        }
+
+        presentationMode.wrappedValue.dismiss()
+    }
+
+    private func handleGoForward() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+
+        if !forwardRouteHistory.isEmpty, let path = navigationPath {
+            let next = forwardRouteHistory.removeLast()
+            path.wrappedValue.append(next)
+            return
+        }
+
+        if !forwardQuery.isEmpty {
+            searchQuery = forwardQuery
+            forwardQuery = ""
+            return
+        }
     }
 
     public var body: some View {
@@ -83,35 +135,34 @@ public struct SearchView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 // Back Button (<)
-                Button(action: {
-                    presentationMode.wrappedValue.dismiss()
-                }) {
+                Button(action: handleGoBack) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(canGoBack ? .white : Color.white.opacity(0.35))
                         .frame(width: 32, height: 32)
                         .background(Color(hex: "#161618"))
                         .clipShape(Circle())
                         .overlay(
-                            Circle().stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            Circle().stroke(Color.white.opacity(canGoBack ? 0.18 : 0.08), lineWidth: 1)
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
+                .disabled(!canGoBack)
 
                 // Forward Button (>)
-                Button(action: {}) {
+                Button(action: handleGoForward) {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.35))
+                        .foregroundColor(canGoForward ? .white : Color.white.opacity(0.35))
                         .frame(width: 32, height: 32)
                         .background(Color(hex: "#161618"))
                         .clipShape(Circle())
                         .overlay(
-                            Circle().stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            Circle().stroke(Color.white.opacity(canGoForward ? 0.18 : 0.08), lineWidth: 1)
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(true)
+                .disabled(!canGoForward)
 
                 Text("Suche")
                     .font(.system(size: 28, weight: .bold))

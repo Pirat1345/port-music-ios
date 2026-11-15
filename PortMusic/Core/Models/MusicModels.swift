@@ -137,6 +137,77 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
     public let cover: String
     public let nbTracks: Int?
     public let user: String?
+
+    public init(
+        id: String,
+        title: String,
+        cover: String = "",
+        nbTracks: Int? = nil,
+        user: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.cover = cover
+        self.nbTracks = nbTracks
+        self.user = user
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case name
+        case cover
+        case coverUrl = "cover_url"
+        case nbTracks
+        case trackCount
+        case user
+        case owner = "owner_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? container.decode(String.self, forKey: .id)) ?? UUID().uuidString
+        if let t = try? container.decode(String.self, forKey: .title) {
+            self.title = t
+        } else if let n = try? container.decode(String.self, forKey: .name) {
+            self.title = n
+        } else {
+            self.title = "Playlist"
+        }
+
+        if let c = try? container.decode(String.self, forKey: .cover) {
+            self.cover = c
+        } else if let cu = try? container.decode(String.self, forKey: .coverUrl) {
+            self.cover = cu
+        } else {
+            self.cover = ""
+        }
+
+        if let nb = try? container.decode(Int.self, forKey: .nbTracks) {
+            self.nbTracks = nb
+        } else if let tc = try? container.decode(Int.self, forKey: .trackCount) {
+            self.nbTracks = tc
+        } else {
+            self.nbTracks = nil
+        }
+
+        if let u = try? container.decode(String.self, forKey: .user) {
+            self.user = u
+        } else if let o = try? container.decode(String.self, forKey: .owner) {
+            self.user = o
+        } else {
+            self.user = nil
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(cover, forKey: .cover)
+        try container.encodeIfPresent(nbTracks, forKey: .nbTracks)
+        try container.encodeIfPresent(user, forKey: .user)
+    }
 }
 
 public struct DiscoveryMoodGenre: Codable, Identifiable {

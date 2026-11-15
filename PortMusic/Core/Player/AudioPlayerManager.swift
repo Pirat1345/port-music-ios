@@ -291,8 +291,15 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func next(serverURL: String? = nil) {
-        guard !queue.isEmpty else { return }
         let activeURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
+        if queue.isEmpty {
+            if let track = currentTrack {
+                self.queue = [track]
+                self.queueIndex = 0
+                extendAutoplayQueueAndPlayNext(serverURL: activeURL)
+            }
+            return
+        }
 
         var nextIndex = queueIndex + 1
         if isShuffle && queue.count > 1 {
@@ -375,6 +382,16 @@ public final class AudioPlayerManager: ObservableObject {
 
         if !pastTracks.isEmpty {
             let prevTrack = pastTracks.removeLast()
+            self.queue.insert(prevTrack, at: 0)
+            self.queueIndex = 0
+            self.isNavigatingBackward = true
+            play(track: prevTrack, from: queue, serverURL: activeURL)
+            self.isNavigatingBackward = false
+            return
+        }
+
+        if recentTracks.count > 1 {
+            let prevTrack = recentTracks[1]
             self.queue.insert(prevTrack, at: 0)
             self.queueIndex = 0
             self.isNavigatingBackward = true

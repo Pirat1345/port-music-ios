@@ -549,64 +549,159 @@ public final class MusicService {
         }
     }
 
-    // MARK: - Fetch User Playlists (/api/playlists)
+    // MARK: - Fetch User Playlists (/api/playlists & /api/state)
     public func fetchPlaylists(serverURL: String, token: String?) async -> [DiscoveryPlaylist] {
         let base = cleanURL(serverURL)
-        guard let url = URL(string: "\(base)/api/playlists") else { return [] }
+        var resultPlaylists: [DiscoveryPlaylist] = []
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        if let tok = token, !tok.isEmpty {
-            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        // 1. Try /api/playlists
+        if let url = URL(string: "\(base)/api/playlists") {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            }
+
+            if let (data, response) = try? await session.data(for: request),
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                if let list = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: data), !list.isEmpty {
+                    resultPlaylists.append(contentsOf: list)
+                } else if let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    for item in jsonArray {
+                        guard let id = item["id"] as? String else { continue }
+                        let title = item["title"] as? String ?? item["name"] as? String ?? "Playlist"
+                        let cover = item["cover_url"] as? String ?? item["cover"] as? String ?? ""
+                        let user = item["owner_id"] as? String ?? item["user"] as? String
+                        resultPlaylists.append(DiscoveryPlaylist(id: id, title: title, cover: cover, nbTracks: nil, user: user))
+                    }
+                }
+            }
         }
 
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return []
+        // 2. Also check /api/state if empty or to get full user playlists with track counts
+        if resultPlaylists.isEmpty, let stateUrl = URL(string: "\(base)/api/state") {
+            var request = URLRequest(url: stateUrl)
+            request.httpMethod = "GET"
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
             }
-            if let list = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: data) {
-                return list
+
+            if let (data, response) = try? await session.data(for: request),
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let pls = json["playlists"] as? [[String: Any]] {
+                for pl in pls {
+                    guard let id = pl["id"] as? String else { continue }
+                    let title = pl["name"] as? String ?? pl["title"] as? String ?? "Playlist"
+                    let cover = pl["cover"] as? String ?? pl["cover_url"] as? String ?? ""
+                    let tracks = pl["tracks"] as? [Any]
+                    let nbTracks = tracks?.count
+                    resultPlaylists.append(DiscoveryPlaylist(id: id, title: title, cover: cover, nbTracks: nbTracks, user: nil))
+                }
             }
-            return []
-        } catch {
-            return []
         }
+
+        return resultPlaylists
     }
 
-    // MARK: - Fetch Favorites (/api/favorites)
+    // MARK: - Fetch Favorites (/api/favorites & /api/state)
     public func fetchFavorites(serverURL: String, token: String?) async -> [Track] {
         let base = cleanURL(serverURL)
-        guard let url = URL(string: "\(base)/api/favorites") else { return [] }
+        var resultTracks: [Track] = []
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        if let tok = token, !tok.isEmpty {
-            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        // Helper to parse dynamic track dictionaries from backend TrackRecord / ApiTrackDto
+        func parseTrackDict(_ item: [String: Any]) -> Track? {
+            guard let id = item["id"] as? String, !id.isEmpty else { return nil }
+            let title = item["title"] as? String ?? item["name"] as? String ?? "Kein Titel"
+            let artist = item["artist"] as? String ?? "Unbekannter Interpret"
+            let album = item["album"] as? String
+            let cover = item["cover_url"] as? String ?? item["cover"] as? String ?? item["coverUrl"] as? String
+
+            let durationSeconds: Double
+            if let d = item["duration"] as? Double {
+                durationSeconds = d
+            } else if let d = item["durationSeconds"] as? Double {
+                durationSeconds = d
+            } else if let d = item["durationSeconds"] as? Int {
+                durationSeconds = Double(d)
+            } else if let d = item["duration_seconds"] as? Int {
+                durationSeconds = Double(d)
+            } else {
+                durationSeconds = 0
+            }
+
+            let durationStr: String
+            if let s = item["duration"] as? String, !s.isEmpty {
+                durationStr = s
+            } else {
+                let sec = Int(max(0, durationSeconds))
+                let m = sec / 60
+                let s = sec % 60
+                durationStr = String(format: "%d:%02d", m, s)
+            }
+
+            let isExp = (item["isExplicit"] as? Bool) ?? (item["explicit_content"] as? Bool) ?? false
+            return Track(
+                id: id,
+                title: title,
+                artist: artist,
+                album: album,
+                duration: durationStr,
+                durationSeconds: durationSeconds,
+                coverUrl: cover,
+                isLive: false,
+                isExplicit: isExp
+            )
         }
 
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return []
+        // 1. Try /api/favorites
+        if let url = URL(string: "\(base)/api/favorites") {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
             }
-            if let tracks = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
-                let mapped = tracks.map { $0.toTrack() }
-                await MainActor.run {
-                    FavoritesManager.shared.syncWithList(mapped)
+
+            if let (data, response) = try? await session.data(for: request),
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                if let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    for item in jsonArray {
+                        if let track = parseTrackDict(item) {
+                            resultTracks.append(track)
+                        }
+                    }
+                } else if let tracks = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
+                    resultTracks.append(contentsOf: tracks.map { $0.toTrack() })
+                } else if let directTracks = try? JSONDecoder().decode([Track].self, from: data) {
+                    resultTracks.append(contentsOf: directTracks)
                 }
-                return mapped
             }
-            if let directTracks = try? JSONDecoder().decode([Track].self, from: data) {
-                await MainActor.run {
-                    FavoritesManager.shared.syncWithList(directTracks)
-                }
-                return directTracks
-            }
-            return []
-        } catch {
-            return []
         }
+
+        // 2. Also check /api/state if /api/favorites was empty
+        if resultTracks.isEmpty, let stateUrl = URL(string: "\(base)/api/state") {
+            var request = URLRequest(url: stateUrl)
+            request.httpMethod = "GET"
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            }
+
+            if let (data, response) = try? await session.data(for: request),
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let favList = json["favorites"] as? [[String: Any]] {
+                for item in favList {
+                    if let track = parseTrackDict(item) {
+                        resultTracks.append(track)
+                    }
+                }
+            }
+        }
+
+        await MainActor.run {
+            FavoritesManager.shared.syncWithList(resultTracks)
+        }
+        return resultTracks
     }
 
     // MARK: - Check Favorite (/api/favorites/:id)

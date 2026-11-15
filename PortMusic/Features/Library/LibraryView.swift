@@ -69,7 +69,10 @@ public struct LibraryView: View {
         .preferredColorScheme(.dark)
         .tint(.white)
         .task {
-            if favorites.isEmpty && playlists.isEmpty {
+            await loadLibraryData()
+        }
+        .onAppear {
+            Task {
                 await loadLibraryData()
             }
         }
@@ -584,10 +587,23 @@ public struct LibraryView: View {
 
             // Heart favorite toggle with 44x44 touch frame
             Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                let wasFav = favorites.contains(where: { $0.id == track.id })
+                if wasFav {
+                    favorites.removeAll(where: { $0.id == track.id })
+                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: false)
+                } else {
+                    favorites.append(track)
+                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: true)
+                }
                 Task {
-                    await MusicService.shared.toggleFavorite(trackId: track.id, serverURL: serverURL, token: SessionManager.shared.currentToken)
+                    await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: SessionManager.shared.currentToken)
                     if let token = SessionManager.shared.currentToken {
-                        self.favorites = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
+                        let refreshed = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
+                        await MainActor.run {
+                            self.favorites = refreshed
+                        }
                     }
                 }
             }) {

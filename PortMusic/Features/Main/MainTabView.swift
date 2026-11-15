@@ -32,6 +32,7 @@ public struct MainTabView: View {
 
     @State private var selectedTab: MainTabItem = .home
     @State private var showFullscreenPlayer: Bool = false
+    @State private var searchPath: [AppRoute] = []
     @ObservedObject private var player = AudioPlayerManager.shared
 
     public init(user: UserProfile, serverURL: String, onLogout: @escaping () -> Void) {
@@ -56,8 +57,8 @@ public struct MainTabView: View {
                             }
                     }
                 case .search:
-                    NavigationStack {
-                        SearchView(serverURL: serverURL)
+                    NavigationStack(path: $searchPath) {
+                        SearchView(serverURL: serverURL, navigationPath: $searchPath)
                             .navigationDestination(for: AppRoute.self) { route in
                                 destinationForRoute(route)
                             }
