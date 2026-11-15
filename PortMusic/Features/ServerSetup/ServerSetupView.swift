@@ -6,6 +6,8 @@ public struct ServerSetupView: View {
     @State private var serverInput: String = ""
     @State private var status: PingStatus = .idle
     @State private var isPinging: Bool = false
+    @State private var isTransitioning: Bool = false
+    @State private var checkmarkScale: CGFloat = 0.4
 
     private let storageKey = "portmusic_server_url"
 
@@ -39,6 +41,10 @@ public struct ServerSetupView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
                 .padding(.bottom, 40)
+                .opacity(isTransitioning ? 0.0 : 1.0)
+                .scaleEffect(isTransitioning ? 0.96 : 1.0)
+                .offset(y: isTransitioning ? -16 : 0)
+                .animation(.easeInOut(duration: 0.32), value: isTransitioning)
             }
         }
         .preferredColorScheme(.dark)
@@ -154,19 +160,26 @@ public struct ServerSetupView: View {
             .padding(.vertical, 4)
 
         case .success(_, let latencyMs, let detail):
-            HStack(spacing: 10) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(PortColors.successGreen)
-                    .font(.system(size: 16))
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(PortColors.successGreen.opacity(0.22))
+                        .frame(width: 32, height: 32)
 
-                VStack(alignment: .leading, spacing: 2) {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(PortColors.successGreen)
+                        .font(.system(size: 15, weight: .bold))
+                        .scaleEffect(checkmarkScale)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Server erreichbar (\(latencyMs) ms)")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(PortColors.textPrimary)
+                        .foregroundColor(.white)
 
                     Text(detail)
                         .font(.system(size: 11))
-                        .foregroundColor(PortColors.textSecondary)
+                        .foregroundColor(Color.white.opacity(0.85))
                 }
             }
             .padding(14)
@@ -175,8 +188,9 @@ public struct ServerSetupView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(PortColors.successGreen.opacity(0.35), lineWidth: 1)
+                    .stroke(PortColors.successGreen.opacity(0.40), lineWidth: 1.2)
             )
+            .transition(.scale(scale: 0.95).combined(with: .opacity))
 
         case .failure(let reason):
             HStack(alignment: .top, spacing: 10) {
@@ -211,23 +225,32 @@ public struct ServerSetupView: View {
     private var actionButtonSection: some View {
         Button(action: performPing) {
             HStack(spacing: 10) {
-                if isPinging {
+                if case .success = status {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .scaleEffect(checkmarkScale)
+                    Text("Server verbunden")
+                        .font(.system(size: 16, weight: .semibold))
+                } else if isPinging {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .black))
                         .scaleEffect(0.9)
-                }
 
-                Text(isPinging ? "Überprüfe..." : "Weiter")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(PortColors.buttonPrimaryText)
+                    Text("Überprüfe...")
+                        .font(.system(size: 16, weight: .semibold))
+                } else {
+                    Text("Weiter")
+                        .font(.system(size: 16, weight: .semibold))
+                }
             }
+            .foregroundColor(PortColors.buttonPrimaryText)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(canSubmit ? PortColors.buttonPrimaryBg : PortColors.buttonPrimaryBg.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: canSubmit ? Color.white.opacity(0.15) : Color.clear, radius: 10, y: 3)
         }
-        .disabled(!canSubmit || isPinging)
+        .disabled(!canSubmit || isPinging || isTransitioning)
     }
 
     private var canSubmit: Bool {
@@ -256,9 +279,22 @@ public struct ServerSetupView: View {
 
                 if case .success(let verifiedURL, _, _) = res {
                     UserDefaults.standard.set(verifiedURL, forKey: storageKey)
-                    // Sanfter Übergang zur Anmeldeseite
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        onServerVerified(verifiedURL)
+
+                    let feedback = UINotificationFeedbackGenerator()
+                    feedback.notificationOccurred(.success)
+
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
+                        checkmarkScale = 1.0
+                    }
+
+                    // Sichtbare Verweilzeit (850ms), gefolgt von einer weichen Übergangsanimation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) {
+                        withAnimation(.easeInOut(duration: 0.32)) {
+                            isTransitioning = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                            onServerVerified(verifiedURL)
+                        }
                     }
                 }
             }

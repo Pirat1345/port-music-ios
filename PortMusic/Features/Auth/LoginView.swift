@@ -112,8 +112,12 @@ public struct LoginView: View {
                     captchaVerified = true
                     captchaVerificationToken = token
                     errorMessage = nil
-                    // Unmittelbar nach der Captcha-Lösung Anmeldung erneut auslösen
-                    performLogin(withCaptchaToken: token)
+                    // Nur automatisch anmelden, falls Anmeldedaten bereits eingetragen sind
+                    let hasCreds = !usernameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && !passwordInput.isEmpty
+                    if hasCreds {
+                        performLogin(withCaptchaToken: token)
+                    }
                 },
                 onCancel: {
                     showCaptchaModal = false
@@ -368,7 +372,10 @@ public struct LoginView: View {
     }
 
     private func performLogin(withCaptchaToken tokenOverride: String? = nil) {
-        guard canSubmit || tokenOverride != nil else { return }
+        let hasCreds = !usernameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !passwordInput.isEmpty
+        guard hasCreds else { return }
+        if captchaRequired && !captchaVerified && tokenOverride == nil { return }
         isSubmitting = true
         errorMessage = nil
 

@@ -34,24 +34,24 @@ struct PortMusicApp: App {
                             // wodurch automatisch auf LoggedInView umgeschaltet wird.
                         },
                         onChangeServer: {
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            withAnimation(.spring(response: 0.50, dampingFraction: 0.85)) {
                                 sessionManager.updateServerURL("")
                             }
                         }
                     )
                     .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                        removal: .opacity
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity.combined(with: .scale(scale: 0.98))
                     ))
                 } else {
                     ServerSetupView(onServerVerified: { url in
-                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                        withAnimation(.spring(response: 0.50, dampingFraction: 0.85)) {
                             sessionManager.updateServerURL(url)
                         }
                     })
                     .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                        removal: .opacity
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity.combined(with: .scale(scale: 0.98))
                     ))
                 }
             }

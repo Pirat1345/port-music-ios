@@ -347,7 +347,7 @@ public struct ClawMachineView: View {
     private let TRAY_MAX: CGFloat = 320.0
     private let MOUTH_Y: CGFloat = 353.0
     private let DROP_G: CGFloat = 1150.0
-    private let ENTRANCE_G: CGFloat = 1500.0
+    private let ENTRANCE_G: CGFloat = 850.0
 
     // Lifecycle phases
     private enum Phase {
@@ -691,6 +691,8 @@ public struct ClawMachineView: View {
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .allowsHitTesting(false)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipped()
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -1401,8 +1403,8 @@ public struct ClawMachineView: View {
                     b: CGFloat.random(in: 0.0...2.0),
                     z: isTarget ? 4 : 2,
                     rot: Double.random(in: -7.0...7.0),
-                    dropFrom: -CGFloat.random(in: 340.0...440.0),
-                    delay: Double(i) * 0.05 + Double.random(in: 0.0...0.1)
+                    dropFrom: -CGFloat.random(in: 25.0...45.0),
+                    delay: Double(i) * 0.02 + Double.random(in: 0.0...0.03)
                 )
             )
         }
@@ -1427,8 +1429,8 @@ public struct ClawMachineView: View {
                     b: CGFloat.random(in: 6.0...16.0),
                     z: 1,
                     rot: Double.random(in: -8.0...8.0),
-                    dropFrom: -CGFloat.random(in: 360.0...470.0),
-                    delay: 0.45 + Double(ti) * 0.08 + Double.random(in: 0.0...0.1)
+                    dropFrom: -CGFloat.random(in: 30.0...55.0),
+                    delay: 0.10 + Double(ti) * 0.03 + Double.random(in: 0.0...0.04)
                 )
             )
         }
