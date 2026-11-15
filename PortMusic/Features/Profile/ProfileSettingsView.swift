@@ -131,30 +131,16 @@ public struct ProfileSettingsView: View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
                 // Avatar mit Bild oder Monogramm
-                ZStack {
+                PortUserAvatarView(
+                    rawAvatar: user.avatar,
+                    username: user.username,
+                    serverURL: serverURL,
+                    size: 72
+                )
+                .overlay(
                     Circle()
-                        .fill(PortColors.surfaceGlassStrong)
-                        .frame(width: 72, height: 72)
-                        .overlay(
-                            Circle()
-                                .stroke(PortColors.borderGlass, lineWidth: 1.5)
-                        )
-
-                    if let avatarURLString = user.avatar,
-                       let avatarURL = URL(string: avatarURLString) {
-                        PortCachedAsyncImage(url: avatarURL) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 72, height: 72)
-                                .clipShape(Circle())
-                        } placeholder: {
-                            userInitialsView
-                        }
-                    } else {
-                        userInitialsView
-                    }
-                }
+                        .stroke(PortColors.borderGlass, lineWidth: 1.5)
+                )
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(user.username)
