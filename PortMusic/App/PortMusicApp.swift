@@ -19,7 +19,7 @@ struct PortMusicApp: App {
                 } else if sessionManager.isAuthenticated,
                           let user = sessionManager.currentUser,
                           let serverURL = sessionManager.serverURL {
-                    LoggedInView(
+                    MainTabView(
                         user: user,
                         serverURL: serverURL,
                         onLogout: {
