@@ -15,13 +15,26 @@ public func resolveCoverURL(_ raw: String?, serverURL: String) -> URL? {
         .replacingOccurrences(of: "100x100bb", with: "600x600bb")
 
     if cleaned.hasPrefix("http://") || cleaned.hasPrefix("https://") {
-        return URL(string: cleaned)
+        if let direct = URL(string: cleaned) {
+            return direct
+        }
+        if let encoded = cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let direct = URL(string: encoded) {
+            return direct
+        }
+        return nil
     }
 
     let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
     let cleanBase = base.hasPrefix("http://") || base.hasPrefix("https://") ? base : "http://\(base)"
     let path = cleaned.hasPrefix("/") ? cleaned : "/\(cleaned)"
-    return URL(string: "\(cleanBase)\(path)")
+    let full = "\(cleanBase)\(path)"
+    if let direct = URL(string: full) {
+        return direct
+    }
+    if let encoded = full.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let direct = URL(string: encoded) {
+        return direct
+    }
+    return nil
 }
 
 public struct PortCoverImage: View {

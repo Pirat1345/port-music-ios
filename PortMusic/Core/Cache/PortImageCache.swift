@@ -75,13 +75,25 @@ public final class PortImageCache {
         return result
     }
 
-    // MARK: - Background Prefetching
+    // MARK: - High-Speed Concurrent Prefetching
     public func prefetch(urls: [URL]) {
+        guard !urls.isEmpty else { return }
         Task.detached(priority: .background) { [weak self] in
             guard let self = self else { return }
-            for url in urls {
+            // Run concurrent downloads in batches of 10
+            let batchSize = 10
+            var index = 0
+            while index < urls.count {
                 if Task.isCancelled { break }
-                _ = await self.loadImage(for: url)
+                let chunk = Array(urls[index..<min(index + batchSize, urls.count)])
+                await withTaskGroup(of: Void.self) { group in
+                    for url in chunk {
+                        group.addTask {
+                            _ = await self.loadImage(for: url)
+                        }
+                    }
+                }
+                index += batchSize
             }
         }
     }

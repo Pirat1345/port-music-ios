@@ -43,10 +43,9 @@ public struct PortCachedAsyncImage<Content: View, Placeholder: View>: View {
                 return
             }
 
-            self.uiImage = nil
             if let loaded = await PortImageCache.shared.loadImage(for: url) {
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(.easeInOut(duration: 0.15)) {
                     self.uiImage = loaded
                 }
             }

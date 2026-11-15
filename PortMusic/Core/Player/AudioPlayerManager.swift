@@ -25,6 +25,7 @@ public final class AudioPlayerManager: ObservableObject {
     public private(set) var currentServerURL: String? = nil
     private var lastPreviousTapTime: Date? = nil
     private var isNavigatingBackward: Bool = false
+    private let recentTracksStorageKey = "port_music_recent_tracks"
 
     // MARK: - Internal Player Properties
     private var avPlayer: AVPlayer? = nil
@@ -37,6 +38,21 @@ public final class AudioPlayerManager: ObservableObject {
     private init() {
         setupAudioSession()
         setupRemoteCommandCenter()
+        loadPersistedRecentTracks()
+    }
+
+    // MARK: - Local Recent Tracks Persistence
+    private func loadPersistedRecentTracks() {
+        guard let data = UserDefaults.standard.data(forKey: recentTracksStorageKey),
+              let list = try? JSONDecoder().decode([Track].self, from: data) else {
+            return
+        }
+        self.recentTracks = list
+    }
+
+    private func persistRecentTracks() {
+        guard let data = try? JSONEncoder().encode(self.recentTracks) else { return }
+        UserDefaults.standard.set(data, forKey: recentTracksStorageKey)
     }
 
     // MARK: - Audio Session Configuration
@@ -79,13 +95,24 @@ public final class AudioPlayerManager: ObservableObject {
         }
 
         // Queue aktualisieren
-        if !contextQueue.isEmpty {
+        if contextQueue.count > 1 {
             self.queue = contextQueue
             if let idx = contextQueue.firstIndex(where: { $0.id == track.id }) {
                 self.queueIndex = idx
             } else {
                 self.queue.insert(track, at: 0)
                 self.queueIndex = 0
+            }
+        } else if contextQueue.count == 1 {
+            // When a single track is passed, DO NOT wipe existing queue
+            if self.queue.isEmpty {
+                self.queue = [track]
+                self.queueIndex = 0
+            } else if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
+                self.queueIndex = idx
+            } else {
+                self.queue.insert(track, at: self.queueIndex + 1)
+                self.queueIndex += 1
             }
         } else {
             if !self.queue.contains(where: { $0.id == track.id }) {
@@ -106,8 +133,15 @@ public final class AudioPlayerManager: ObservableObject {
             self.recentTracks.remove(at: existingIdx)
         }
         self.recentTracks.insert(track, at: 0)
-        if self.recentTracks.count > 40 {
+        if self.recentTracks.count > 50 {
             self.recentTracks.removeLast()
+        }
+        persistRecentTracks()
+
+        // Background Playback Reporting to server
+        let token = SessionManager.shared.currentToken
+        Task {
+            await MusicService.shared.reportPlayback(track: track, serverURL: serverURL, token: token)
         }
 
         guard let streamURL = MusicService.shared.streamURL(for: track, serverURL: serverURL) else {
@@ -157,9 +191,10 @@ public final class AudioPlayerManager: ObservableObject {
                 recentTracks.append(t)
             }
         }
-        if recentTracks.count > 40 {
-            recentTracks = Array(recentTracks.prefix(40))
+        if recentTracks.count > 50 {
+            recentTracks = Array(recentTracks.prefix(50))
         }
+        persistRecentTracks()
     }
 
     public func togglePlayPause() {

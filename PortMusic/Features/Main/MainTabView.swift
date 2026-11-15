@@ -10,7 +10,7 @@ public enum MainTabItem: Int, CaseIterable {
         switch self {
         case .home: return "Home"
         case .search: return "Suche"
-        case .library: return "Mediathek"
+        case .library: return "Bibliothek"
         case .profile: return "Profil"
         }
     }

@@ -63,7 +63,7 @@ public struct LibraryView: View {
     // MARK: - Header
     private var libraryHeaderSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Mediathek")
+            Text("Bibliothek")
                 .font(.system(size: 30, weight: .bold))
                 .foregroundColor(PortColors.textPrimary)
 
@@ -359,7 +359,7 @@ public struct LibraryView: View {
             let uniqueAlbums = extractUniqueAlbums()
 
             if uniqueAlbums.isEmpty && !isLoading {
-                emptyPlaceholder(icon: "square.stack", message: "Noch keine Alben in der Mediathek")
+                emptyPlaceholder(icon: "square.stack", message: "Noch keine Alben in der Bibliothek")
             } else {
                 LazyVGrid(
                     columns: [
@@ -489,7 +489,7 @@ public struct LibraryView: View {
 
         async let favFetch = MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
         async let playFetch = MusicService.shared.fetchPlaylists(serverURL: serverURL, token: token)
-        async let histFetch = MusicService.shared.fetchHistory(serverURL: serverURL, token: token)
+        async let histFetch = MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
 
         let (favs, pls, hists) = await (favFetch, playFetch, histFetch)
 
@@ -497,6 +497,9 @@ public struct LibraryView: View {
             self.favorites = favs
             self.playlists = pls
             self.historyTracks = hists
+            if !hists.isEmpty {
+                player.mergeServerHistory(hists)
+            }
             self.isLoading = false
         }
     }

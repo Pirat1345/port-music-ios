@@ -5,6 +5,14 @@ public struct SearchBrowseCategory: Identifiable {
     public let name: String
     public let gradient: [Color]
     public let iconName: String
+    public let artworkUrl: String?
+
+    public init(name: String, gradient: [Color], iconName: String, artworkUrl: String? = nil) {
+        self.name = name
+        self.gradient = gradient
+        self.iconName = iconName
+        self.artworkUrl = artworkUrl
+    }
 }
 
 public struct SearchView: View {
@@ -25,16 +33,16 @@ public struct SearchView: View {
     @State private var recentSearches: [String] = []
 
     private let browseCategories: [SearchBrowseCategory] = [
-        SearchBrowseCategory(name: "Pop", gradient: [Color(hex: "#8b5cf6"), Color(hex: "#ec4899")], iconName: "music.mic"),
-        SearchBrowseCategory(name: "Hip-Hop", gradient: [Color(hex: "#f97316"), Color(hex: "#ef4444")], iconName: "headphones"),
-        SearchBrowseCategory(name: "Rock", gradient: [Color(hex: "#dc2626"), Color(hex: "#7f1d1d")], iconName: "guitars.fill"),
-        SearchBrowseCategory(name: "Dance & Electro", gradient: [Color(hex: "#06b6d4"), Color(hex: "#3b82f6")], iconName: "bolt.fill"),
-        SearchBrowseCategory(name: "R&B & Soul", gradient: [Color(hex: "#6366f1"), Color(hex: "#a855f7")], iconName: "heart.fill"),
-        SearchBrowseCategory(name: "Indie & Alt", gradient: [Color(hex: "#10b981"), Color(hex: "#059669")], iconName: "leaf.fill"),
-        SearchBrowseCategory(name: "Charts & Hits", gradient: [Color(hex: "#eab308"), Color(hex: "#ca8a04")], iconName: "chart.bar.fill"),
-        SearchBrowseCategory(name: "Chill & Relax", gradient: [Color(hex: "#64748b"), Color(hex: "#334155")], iconName: "moon.fill"),
-        SearchBrowseCategory(name: "Workout", gradient: [Color(hex: "#ef4444"), Color(hex: "#f43f5e")], iconName: "flame.fill"),
-        SearchBrowseCategory(name: "Party", gradient: [Color(hex: "#d946ef"), Color(hex: "#8b5cf6")], iconName: "sparkles")
+        SearchBrowseCategory(name: "Hits", gradient: [Color(hex: "#2c2a38"), Color(hex: "#1e1d24")], iconName: "chart.bar.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/2e/18/a3/2e18a394-f9b2-1079-8d42-ccfa6d51d20d/88823a4b-bcc9-40c9-be1e-5671776d8837.png/600x600sr.jpg"),
+        SearchBrowseCategory(name: "Deutschrap", gradient: [Color(hex: "#1e293b"), Color(hex: "#0f172a")], iconName: "headphones", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/3f/39/61/3f3961dd-2eea-eb27-a7f2-4b799218f227/313a61ae-8a20-4faf-9a5f-ede8bc713069.png/600x600sr.jpg"),
+        SearchBrowseCategory(name: "Pop", gradient: [Color(hex: "#3b1e38"), Color(hex: "#221124")], iconName: "music.mic", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/16/e0/d7/16e0d799-dd77-b8e1-cce3-f27f7664ead6/80e1dd92-de5f-424f-8e76-2144694ad6f3.png/600x600sr.jpg"),
+        SearchBrowseCategory(name: "Rock", gradient: [Color(hex: "#381e1e"), Color(hex: "#200e0e")], iconName: "guitars.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/b6/13/a6/b613a6a2-0c03-cdb5-eef6-3f104e50ce86/aa8d0f82-c0d4-4a07-aae8-16f1db32c703.png/600x600sr.jpg"),
+        SearchBrowseCategory(name: "Dance & Electro", gradient: [Color(hex: "#102c38"), Color(hex: "#09171f")], iconName: "bolt.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features221/v4/62/61/c4/6261c465-fe72-eb32-5687-b7c015064b39/77b7bb43-5e28-4c40-afbc-97904ab8636a.png/600x600sr.jpg"),
+        SearchBrowseCategory(name: "Chillen", gradient: [Color(hex: "#1c2e2c"), Color(hex: "#0e1817")], iconName: "moon.fill", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features221/v4/0f/17/d5/0f17d5a3-6774-1ae1-4530-2b694d8fb6bf/d7944211-2928-4ccc-b382-f0564bcf00b2.png/600x600sr.jpg"),
+        SearchBrowseCategory(name: "Deutschpop", gradient: [Color(hex: "#381c2a"), Color(hex: "#1f0f18")], iconName: "sparkles", artworkUrl: "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/48/a5/67/48a5677e-f0d2-cf36-2479-03c240f98fe8/9cee0055-90a3-4814-a7e7-1a46041a2d78.png/600x600sr.jpg"),
+        SearchBrowseCategory(name: "R&B & Soul", gradient: [Color(hex: "#281e3a"), Color(hex: "#160f22")], iconName: "heart.fill", artworkUrl: nil),
+        SearchBrowseCategory(name: "Indie & Alt", gradient: [Color(hex: "#173022"), Color(hex: "#0a1710")], iconName: "leaf.fill", artworkUrl: nil),
+        SearchBrowseCategory(name: "Fitness & Workout", gradient: [Color(hex: "#381a1a"), Color(hex: "#1f0c0c")], iconName: "flame.fill", artworkUrl: nil)
     ]
 
     public init(serverURL: String) {
@@ -266,22 +274,40 @@ public struct SearchView: View {
                                 )
                                 .opacity(0.85)
 
+                                if let art = cat.artworkUrl, let url = URL(string: art) {
+                                    HStack {
+                                        Spacer()
+                                        PortCachedAsyncImage(url: url) { img in
+                                            img
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 64, height: 64)
+                                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                                .rotationEffect(.degrees(14))
+                                                .offset(x: 10, y: 10)
+                                                .shadow(color: Color.black.opacity(0.4), radius: 5, x: -2, y: 2)
+                                        } placeholder: {
+                                            EmptyView()
+                                        }
+                                    }
+                                } else {
+                                    HStack {
+                                        Spacer()
+                                        VStack {
+                                            Image(systemName: cat.iconName)
+                                                .font(.system(size: 32, weight: .bold))
+                                                .foregroundColor(Color.white.opacity(0.25))
+                                                .padding(12)
+                                            Spacer()
+                                        }
+                                    }
+                                }
+
                                 LinearGradient(
                                     gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.65)]),
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
-
-                                HStack {
-                                    Spacer()
-                                    VStack {
-                                        Image(systemName: cat.iconName)
-                                            .font(.system(size: 32, weight: .bold))
-                                            .foregroundColor(Color.white.opacity(0.25))
-                                            .padding(12)
-                                        Spacer()
-                                    }
-                                }
 
                                 Text(cat.name)
                                     .font(.system(size: 16, weight: .bold))

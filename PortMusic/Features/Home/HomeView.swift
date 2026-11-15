@@ -55,8 +55,9 @@ public struct HomeView: View {
                         }
 
                         // ── SHELF 2: ZULETZT GEHÖRT (Chronologischer Verlauf) ──
-                        if !deduplicated.recentTracks.isEmpty {
-                            shelfRecentlyPlayed(tracks: deduplicated.recentTracks, allDiscovery: data)
+                        let displayRecent = !deduplicated.recentTracks.isEmpty ? deduplicated.recentTracks : player.recentTracks
+                        if !displayRecent.isEmpty {
+                            shelfRecentlyPlayed(tracks: displayRecent, allDiscovery: data)
                         }
 
                         // ── SHELF 3: FRISCH ERSCHIENEN (Release Radar) ──
@@ -521,13 +522,19 @@ public struct HomeView: View {
             }
         }
 
-        // 2. Zuletzt gehört
+        // 2. Zuletzt gehört (Exakt wie Web PWA Index.tsx L1350: darf NIEMALS durch Top-Picks geleert werden!)
         var dedupRecent: [Track] = []
+        var recentSeen = Set<String>()
+        var recentSigs = Set<String>()
         for t in recentHistory {
-            if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
-                register(id: t.id, title: t.title, artist: t.artist)
-                dedupRecent.append(t)
+            let sig = getSignature(title: t.title, artist: t.artist)
+            if recentSeen.contains(t.id) || (!sig.isEmpty && recentSigs.contains(sig)) {
+                continue
             }
+            recentSeen.insert(t.id)
+            if !sig.isEmpty { recentSigs.insert(sig) }
+            register(id: t.id, title: t.title, artist: t.artist)
+            dedupRecent.append(t)
         }
 
         // 3. Frisch erschienen (Release Radar aus newMusic)
@@ -695,9 +702,9 @@ public struct HomeView: View {
 
         let token = SessionManager.shared.currentToken
 
-        // Discovery & Verlauf parallel abrufen
+        // Discovery & Verlauf (Multi-Device Stats + DB History) parallel abrufen
         async let discoveryFetch = MusicService.shared.fetchHomeDiscovery(serverURL: serverURL, token: token)
-        async let historyFetch = MusicService.shared.fetchHistory(serverURL: serverURL, token: token)
+        async let historyFetch = MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
 
         let (discoveryRes, historyRes) = await (discoveryFetch, historyFetch)
 
