@@ -10,7 +10,7 @@ public struct PortShelfHeader: View {
 
     public init(
         iconName: String,
-        iconColor: Color = PortColors.accentOrange,
+        iconColor: Color = .white,
         title: String,
         subtitle: String? = nil,
         seeAllTitle: String? = nil,

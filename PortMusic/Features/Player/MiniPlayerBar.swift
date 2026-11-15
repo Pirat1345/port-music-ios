@@ -30,28 +30,20 @@ public struct MiniPlayerBar: View {
                     .frame(height: 2)
 
                     HStack(spacing: 12) {
-                        // Cover Artwork
+                        // Cover Artwork mit Hochleistungs-Cache
                         ZStack {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(PortColors.surfaceGlassStrong)
                                 .frame(width: 44, height: 44)
 
-                            if let cover = track.coverUrl, let url = URL(string: cover) {
-                                AsyncImage(url: url) { phase in
-                                    switch phase {
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 44, height: 44)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    default:
-                                        Image(systemName: "music.note")
-                                            .font(.system(size: 18))
-                                            .foregroundColor(.white.opacity(0.6))
-                                    }
-                                }
-                            } else {
+                            let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                            PortCachedAsyncImage(url: resolved) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            } placeholder: {
                                 Image(systemName: "music.note")
                                     .font(.system(size: 18))
                                     .foregroundColor(.white.opacity(0.6))
@@ -74,8 +66,20 @@ public struct MiniPlayerBar: View {
 
                         Spacer(minLength: 8)
 
-                        // Steuerung: Play/Pause & Weiter
-                        HStack(spacing: 16) {
+                        // Steuerung: Zurueck, Play/Pause & Weiter
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                                player.previous(serverURL: serverURL)
+                            }) {
+                                Image(systemName: "backward.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .frame(width: 28, height: 28)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.impactOccurred()
@@ -102,7 +106,7 @@ public struct MiniPlayerBar: View {
                                 player.next(serverURL: serverURL)
                             }) {
                                 Image(systemName: "forward.fill")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(.white.opacity(0.85))
                                     .frame(width: 28, height: 28)
                             }

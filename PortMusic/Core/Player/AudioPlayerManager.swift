@@ -17,14 +17,19 @@ public final class AudioPlayerManager: ObservableObject {
     @Published public private(set) var queue: [Track] = []
     @Published public private(set) var queueIndex: Int = 0
     @Published public private(set) var recentTracks: [Track] = []
+    @Published public private(set) var pastTracks: [Track] = []
 
     @Published public var isShuffle: Bool = false
     @Published public var isRepeat: Bool = false
+
+    public private(set) var currentServerURL: String? = nil
+    private var lastPreviousTapTime: Date? = nil
 
     // MARK: - Internal Player Properties
     private var avPlayer: AVPlayer? = nil
     private var timeObserverToken: Any? = nil
     private var itemStatusObserver: NSKeyValueObservation? = nil
+    private var itemDurationObserver: NSKeyValueObservation? = nil
     private var itemBufferObserver: NSKeyValueObservation? = nil
     private var nowPlayingArtwork: UIImage? = nil
 
@@ -44,9 +49,35 @@ public final class AudioPlayerManager: ObservableObject {
         }
     }
 
+    // MARK: - Duration String Parser Helper
+    private func parseDurationSeconds(from track: Track) -> Double {
+        if track.durationSeconds > 0 {
+            return track.durationSeconds
+        }
+        let parts = track.duration.split(separator: ":").compactMap { Double($0) }
+        if parts.count == 2 {
+            return parts[0] * 60.0 + parts[1]
+        } else if parts.count == 3 {
+            return parts[0] * 3600.0 + parts[1] * 60.0 + parts[2]
+        }
+        return 210.0 // Standard fallback (~3:30)
+    }
+
     // MARK: - Playback Control API
     public func play(track: Track, from contextQueue: [Track] = [], serverURL: String) {
-        // Queue aktualisieren gemaess Invariante 3 (kein isolierter 4-Song-Loop)
+        self.currentServerURL = serverURL
+
+        // Track-Historie fuer Rueckwaerts-Springen fuehren
+        if let current = self.currentTrack, current.id != track.id {
+            if !self.pastTracks.contains(where: { $0.id == current.id }) {
+                self.pastTracks.append(current)
+                if self.pastTracks.count > 50 {
+                    self.pastTracks.removeFirst()
+                }
+            }
+        }
+
+        // Queue aktualisieren
         if !contextQueue.isEmpty {
             self.queue = contextQueue
             if let idx = contextQueue.firstIndex(where: { $0.id == track.id }) {
@@ -66,15 +97,15 @@ public final class AudioPlayerManager: ObservableObject {
 
         self.currentTrack = track
         self.currentTime = 0.0
-        self.duration = max(track.durationSeconds, 1.0)
+        self.duration = parseDurationSeconds(from: track)
         self.isBuffering = true
 
-        // Zuletzt gehört aktualisieren
+        // Zuletzt gehoert aktualisieren
         if let existingIdx = self.recentTracks.firstIndex(where: { $0.id == track.id }) {
             self.recentTracks.remove(at: existingIdx)
         }
         self.recentTracks.insert(track, at: 0)
-        if self.recentTracks.count > 30 {
+        if self.recentTracks.count > 40 {
             self.recentTracks.removeLast()
         }
 
@@ -94,9 +125,8 @@ public final class AudioPlayerManager: ObservableObject {
             let newPlayer = AVPlayer(playerItem: playerItem)
             newPlayer.automaticallyWaitsToMinimizeStalling = true
             self.avPlayer = newPlayer
+            setupTimeObserver()
         }
-
-        setupTimeObserver()
 
         avPlayer?.play()
         self.isPlaying = true
@@ -104,15 +134,18 @@ public final class AudioPlayerManager: ObservableObject {
         updateNowPlayingInfo()
         loadArtwork(from: track.coverUrl)
 
-        NotificationCenter.default.removeObserver(
-            self,
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: nil
-        )
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(playerItemDidReachEnd),
             name: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem
+        )
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemFailedToPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(playerItemDidFailToEnd),
+            name: .AVPlayerItemFailedToPlayToEndTime,
             object: playerItem
         )
     }
@@ -150,8 +183,9 @@ public final class AudioPlayerManager: ObservableObject {
         updateNowPlayingInfo()
     }
 
-    public func next(serverURL: String) {
+    public func next(serverURL: String? = nil) {
         guard !queue.isEmpty else { return }
+        let activeURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
 
         var nextIndex = queueIndex + 1
         if isShuffle && queue.count > 1 {
@@ -163,43 +197,90 @@ public final class AudioPlayerManager: ObservableObject {
         }
 
         if nextIndex < queue.count {
+            self.queueIndex = nextIndex
             let nextTrack = queue[nextIndex]
-            play(track: nextTrack, from: queue, serverURL: serverURL)
+            play(track: nextTrack, from: queue, serverURL: activeURL)
         } else if isRepeat {
             let firstTrack = queue[0]
-            play(track: firstTrack, from: queue, serverURL: serverURL)
+            self.queueIndex = 0
+            play(track: firstTrack, from: queue, serverURL: activeURL)
         } else {
-            // Autoplay: Ende erreicht
-            pause()
-            seek(to: 0)
+            extendAutoplayQueueAndPlayNext(serverURL: activeURL)
         }
     }
 
-    public func previous(serverURL: String) {
-        guard !queue.isEmpty else { return }
+    private func extendAutoplayQueueAndPlayNext(serverURL: String) {
+        Task { @MainActor in
+            let token = SessionManager.shared.currentToken
+            if let discovery = await MusicService.shared.fetchHomeDiscovery(serverURL: serverURL, token: token) {
+                var freshTracks: [Track] = []
+                if let trending = discovery.trendingEverywhere {
+                    freshTracks.append(contentsOf: trending.map { $0.toTrack() })
+                }
+                if let hits = discovery.todaysTopHits {
+                    freshTracks.append(contentsOf: hits.map { $0.toTrack() })
+                }
 
-        // Wenn schon mehr als 3 Sekunden abgespielt wurden, an den Anfang springen
-        if currentTime > 3.0 {
+                let existingIds = Set(self.queue.map { $0.id })
+                let newUnique = freshTracks.filter { !existingIds.contains($0.id) }
+
+                if !newUnique.isEmpty {
+                    self.queue.append(contentsOf: newUnique)
+                    let nextTrack = self.queue[self.queueIndex + 1]
+                    self.queueIndex += 1
+                    self.play(track: nextTrack, from: self.queue, serverURL: serverURL)
+                    return
+                }
+            }
+
+            if !self.queue.isEmpty {
+                self.queueIndex = 0
+                self.play(track: self.queue[0], from: self.queue, serverURL: serverURL)
+            }
+        }
+    }
+
+    public func previous(serverURL: String? = nil) {
+        let activeURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
+        let now = Date()
+        let isQuickConsecutiveTap = (lastPreviousTapTime != nil && now.timeIntervalSince(lastPreviousTapTime!) < 2.0)
+        lastPreviousTapTime = now
+
+        if currentTime > 3.0 && !isQuickConsecutiveTap {
             seek(to: 0)
             return
         }
 
         let prevIndex = queueIndex - 1
         if prevIndex >= 0 && prevIndex < queue.count {
+            self.queueIndex = prevIndex
             let prevTrack = queue[prevIndex]
-            play(track: prevTrack, from: queue, serverURL: serverURL)
-        } else {
-            seek(to: 0)
+            play(track: prevTrack, from: queue, serverURL: activeURL)
+            return
         }
+
+        if !pastTracks.isEmpty {
+            let prevTrack = pastTracks.removeLast()
+            self.queue.insert(prevTrack, at: 0)
+            self.queueIndex = 0
+            play(track: prevTrack, from: queue, serverURL: activeURL)
+            return
+        }
+
+        seek(to: 0)
     }
 
     public func seek(to targetSeconds: Double) {
-        let clamped = max(0.0, min(targetSeconds, duration))
+        let maxDur = duration > 1.0 ? duration : 3600.0
+        let clamped = max(0.0, min(targetSeconds, maxDur))
         self.currentTime = clamped
 
         let time = CMTime(seconds: clamped, preferredTimescale: 600)
-        avPlayer?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            self?.updateNowPlayingInfo()
+        let tolerance = CMTime(seconds: 0.25, preferredTimescale: 600)
+        avPlayer?.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateNowPlayingInfo()
+            }
         }
     }
 
@@ -213,19 +294,36 @@ public final class AudioPlayerManager: ObservableObject {
 
     // MARK: - Player Observers
     private func observePlayerItem(_ item: AVPlayerItem) {
-        itemStatusObserver = item.observe(\.status, options: [.new]) { [weak self] observedItem, _ in
+        itemStatusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] observedItem, _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                if observedItem.status == .readyToPlay {
+                switch observedItem.status {
+                case .readyToPlay:
                     self.isBuffering = false
                     let dur = observedItem.duration.seconds
-                    if !dur.isNaN && dur > 0 {
+                    if !dur.isNaN && dur > 1.0 {
                         self.duration = dur
                     }
                     self.updateNowPlayingInfo()
-                } else if observedItem.status == .failed {
+                case .failed:
                     self.isBuffering = false
                     print("AudioPlayerManager: Item failed to play: \(String(describing: observedItem.error))")
+                    self.next()
+                case .unknown:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        itemDurationObserver = item.observe(\.duration, options: [.initial, .new]) { [weak self] observedItem, _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let dur = observedItem.duration.seconds
+                if !dur.isNaN && dur > 1.0 {
+                    self.duration = dur
+                    self.updateNowPlayingInfo()
                 }
             }
         }
@@ -259,15 +357,21 @@ public final class AudioPlayerManager: ObservableObject {
     private func cleanupCurrentItem() {
         itemStatusObserver?.invalidate()
         itemStatusObserver = nil
+        itemDurationObserver?.invalidate()
+        itemDurationObserver = nil
         itemBufferObserver?.invalidate()
         itemBufferObserver = nil
     }
 
     @objc private func playerItemDidReachEnd() {
         Task { @MainActor in
-            if let serverURL = SessionManager.shared.serverURL {
-                self.next(serverURL: serverURL)
-            }
+            self.next()
+        }
+    }
+
+    @objc private func playerItemDidFailToEnd() {
+        Task { @MainActor in
+            self.next()
         }
     }
 
@@ -302,9 +406,7 @@ public final class AudioPlayerManager: ObservableObject {
         center.nextTrackCommand.isEnabled = true
         center.nextTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor [weak self] in
-                if let serverURL = SessionManager.shared.serverURL {
-                    self?.next(serverURL: serverURL)
-                }
+                self?.next()
             }
             return .success
         }
@@ -312,9 +414,7 @@ public final class AudioPlayerManager: ObservableObject {
         center.previousTrackCommand.isEnabled = true
         center.previousTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor [weak self] in
-                if let serverURL = SessionManager.shared.serverURL {
-                    self?.previous(serverURL: serverURL)
-                }
+                self?.previous()
             }
             return .success
         }
@@ -358,22 +458,18 @@ public final class AudioPlayerManager: ObservableObject {
 
     private func loadArtwork(from urlString: String?) {
         nowPlayingArtwork = nil
-        guard let urlString = urlString, let url = URL(string: urlString) else {
+        let resolvedURL = resolveCoverURL(urlString, serverURL: currentServerURL ?? SessionManager.shared.serverURL ?? "")
+        guard let url = resolvedURL else {
             updateNowPlayingInfo()
             return
         }
 
         Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let image = UIImage(data: data) {
-                    await MainActor.run {
-                        self.nowPlayingArtwork = image
-                        self.updateNowPlayingInfo()
-                    }
+            if let image = await PortImageCache.shared.loadImage(for: url) {
+                await MainActor.run {
+                    self.nowPlayingArtwork = image
+                    self.updateNowPlayingInfo()
                 }
-            } catch {
-                print("AudioPlayerManager: Artwork download error: \(error)")
             }
         }
     }

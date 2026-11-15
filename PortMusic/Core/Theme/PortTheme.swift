@@ -1,7 +1,7 @@
 import SwiftUI
 
 public enum PortColors {
-    public static let background = Color(red: 0.025, green: 0.028, blue: 0.035)
+    public static let background = Color.black
     public static let surface = Color(red: 0.08, green: 0.085, blue: 0.10)
     public static let surfaceGlass = Color.white.opacity(0.08)
     public static let surfaceGlassStrong = Color.white.opacity(0.14)
@@ -13,7 +13,8 @@ public enum PortColors {
     public static let textSecondary = Color.white
     public static let textMuted = Color.white.opacity(0.85)
 
-    public static let accentOrange = Color(red: 0.98, green: 0.36, blue: 0.00)
+    public static let accentWhite = Color.white
+    public static let accentOrange = Color.white // Aligned to pure white standard
     public static let successGreen = Color(red: 0.13, green: 0.77, blue: 0.45)
     public static let errorRed = Color(red: 0.94, green: 0.27, blue: 0.27)
 

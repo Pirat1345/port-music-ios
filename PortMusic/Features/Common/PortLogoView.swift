@@ -18,7 +18,7 @@ public struct PortLogoView: View {
                 Image(systemName: "music.note")
                     .resizable()
                     .scaledToFit()
-                    .foregroundColor(PortColors.accentOrange)
+                    .foregroundColor(.white)
                     .padding(size * 0.2)
             }
         }

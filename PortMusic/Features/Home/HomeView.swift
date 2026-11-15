@@ -96,12 +96,12 @@ public struct HomeView: View {
 
                         // ── SHELF 10: TOP-PLAYLISTS ──
                         if !deduplicated.topPlaylists.isEmpty {
-                            shelfTopPlaylists(playlists: deduplicated.topPlaylists)
+                            shelfTopPlaylists(playlists: deduplicated.topPlaylists, allDiscovery: data)
                         }
 
                         // ── SHELF 11: ANGESAGTE KÜNSTLER (Runde Avatare) ──
                         if !deduplicated.trendingArtists.isEmpty {
-                            shelfTrendingArtists(artists: deduplicated.trendingArtists)
+                            shelfTrendingArtists(artists: deduplicated.trendingArtists, allDiscovery: data)
                         }
                     }
 
@@ -137,7 +137,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "sparkles",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Top-Picks für dich",
                 subtitle: "Favoriten, Neuheiten und Empfehlungen"
             )
@@ -165,7 +165,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "clock",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Zuletzt gehört",
                 seeAllTitle: "Alle anzeigen",
                 onSeeAll: {}
@@ -194,7 +194,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "bolt.fill",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Frisch erschienen",
                 subtitle: "Neue Veröffentlichungen & frische Entdeckungen"
             )
@@ -222,7 +222,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "flame.fill",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Für dich empfohlen"
             )
             .padding(.horizontal, 20)
@@ -249,7 +249,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "chart.line.uptrend.xyaxis",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Trending überall",
                 seeAllTitle: "Alle anzeigen",
                 onSeeAll: {}
@@ -278,7 +278,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "square.stack.fill",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Neue Alben & EPs",
                 subtitle: "Brandneue Veröffentlichungen der Woche"
             )
@@ -299,7 +299,7 @@ public struct HomeView: View {
                             album: album.title,
                             coverUrl: album.cover
                         )
-                        player.play(track: albumTrack, serverURL: serverURL)
+                        playTrackWithFullQueue(albumTrack, discovery: allDiscovery)
                     }
                 }
             }
@@ -311,7 +311,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "sparkles",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Frische Song-Drops",
                 subtitle: "Tagesaktuelle Hits & Drops, handverlesen"
             )
@@ -346,7 +346,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "chart.line.uptrend.xyaxis",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Top Hits heute",
                 subtitle: "Die meistgespielten Titel"
             )
@@ -377,7 +377,7 @@ public struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "bolt.fill",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Top 100: Global",
                 subtitle: "Live-Chart — täglich aktualisiert"
             )
@@ -404,11 +404,11 @@ public struct HomeView: View {
     }
 
     // MARK: - Shelf 10: Top-Playlists
-    private func shelfTopPlaylists(playlists: [DiscoveryPlaylist]) -> some View {
+    private func shelfTopPlaylists(playlists: [DiscoveryPlaylist], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "music.note.list",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Top-Playlists",
                 subtitle: "Die beliebtesten Playlists der Community"
             )
@@ -430,7 +430,7 @@ public struct HomeView: View {
                             album: "Playlist",
                             coverUrl: playlist.cover
                         )
-                        player.play(track: playlistTrack, serverURL: serverURL)
+                        playTrackWithFullQueue(playlistTrack, discovery: allDiscovery)
                     }
                 }
             }
@@ -438,11 +438,11 @@ public struct HomeView: View {
     }
 
     // MARK: - Shelf 11: Angesagte Künstler
-    private func shelfTrendingArtists(artists: [DiscoveryArtist]) -> some View {
+    private func shelfTrendingArtists(artists: [DiscoveryArtist], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "dot.radiowaves.left.and.right",
-                iconColor: PortColors.accentOrange,
+                iconColor: .white,
                 title: "Angesagte Künstler"
             )
             .padding(.horizontal, 20)
@@ -456,7 +456,7 @@ public struct HomeView: View {
                             artist: artist.name,
                             coverUrl: artist.picture
                         )
-                        player.play(track: artistTrack, serverURL: serverURL)
+                        playTrackWithFullQueue(artistTrack, discovery: allDiscovery)
                     }
                 }
             }
@@ -615,12 +615,12 @@ public struct HomeView: View {
 
     // MARK: - Queue Seeding Helper
     private func playTrackWithFullQueue(_ targetTrack: Track, discovery: DiscoveryHomeResponse) {
-        var queue: [Track] = [targetTrack]
+        var queue: [Track] = []
 
         if let picks = discovery.topPicks {
             for p in picks {
                 let t = p.toTrack()
-                if t.id != targetTrack.id && !queue.contains(where: { $0.id == t.id }) {
+                if !queue.contains(where: { $0.id == t.id }) {
                     queue.append(t)
                 }
             }
@@ -628,7 +628,7 @@ public struct HomeView: View {
         if let trending = discovery.trendingEverywhere {
             for tr in trending {
                 let t = tr.toTrack()
-                if t.id != targetTrack.id && !queue.contains(where: { $0.id == t.id }) {
+                if !queue.contains(where: { $0.id == t.id }) {
                     queue.append(t)
                 }
             }
@@ -636,10 +636,14 @@ public struct HomeView: View {
         if let topHits = discovery.todaysTopHits {
             for ch in topHits {
                 let t = ch.toTrack()
-                if t.id != targetTrack.id && !queue.contains(where: { $0.id == t.id }) {
+                if !queue.contains(where: { $0.id == t.id }) {
                     queue.append(t)
                 }
             }
+        }
+
+        if !queue.contains(where: { $0.id == targetTrack.id }) {
+            queue.insert(targetTrack, at: 0)
         }
 
         player.play(track: targetTrack, from: queue, serverURL: serverURL)
@@ -704,9 +708,25 @@ public struct HomeView: View {
         if let response = discoveryRes {
             self.discovery = response
             self.isLoading = false
+            prefetchHomeCovers(from: response)
         } else {
             self.errorMessage = "Keine Verbindung zum Discovery-Dienst auf \(serverURL)."
             self.isLoading = false
         }
+    }
+
+    private func prefetchHomeCovers(from res: DiscoveryHomeResponse) {
+        var rawUrls: [String?] = []
+        res.topPicks?.forEach { rawUrls.append($0.cover) }
+        res.trendingEverywhere?.forEach { rawUrls.append($0.cover) }
+        res.todaysTopHits?.forEach { rawUrls.append($0.cover) }
+        res.newReleasesAlbums?.forEach { rawUrls.append($0.cover) }
+        res.freshSongDrops?.forEach { rawUrls.append($0.cover) }
+        res.globalTop100?.forEach { rawUrls.append($0.cover) }
+        res.topPlaylists?.forEach { rawUrls.append($0.cover) }
+        res.trendingArtists?.forEach { rawUrls.append($0.picture) }
+
+        let resolved = rawUrls.compactMap { resolveCoverURL($0, serverURL: serverURL) }
+        PortImageCache.shared.prefetch(urls: resolved)
     }
 }

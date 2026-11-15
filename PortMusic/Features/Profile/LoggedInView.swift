@@ -62,11 +62,15 @@ public struct LoggedInView: View {
                                 Text(role.uppercased())
                                     .font(.system(size: 10, weight: .bold))
                                     .tracking(1.4)
-                                    .foregroundColor(PortColors.accentOrange)
+                                    .foregroundColor(.white)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 4)
-                                    .background(PortColors.accentOrange.opacity(0.15))
+                                    .background(Color.white.opacity(0.12))
                                     .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                                    )
                                     .padding(.top, 4)
                             }
                         }

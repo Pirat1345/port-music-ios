@@ -59,9 +59,9 @@ public struct PortTrackCard: View {
                             Spacer()
                             ZStack {
                                 Circle()
-                                    .fill(PortColors.accentOrange)
+                                    .fill(Color.white)
                                     .frame(width: 38, height: 38)
-                                    .shadow(color: PortColors.accentOrange.opacity(0.40), radius: 6, y: 2)
+                                    .shadow(color: Color.black.opacity(0.40), radius: 6, y: 2)
 
                                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                                     .font(.system(size: 15, weight: .bold))

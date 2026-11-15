@@ -1,4 +1,5 @@
 import SwiftUI
+import MediaPlayer
 
 public struct FullscreenPlayerView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
@@ -8,6 +9,10 @@ public struct FullscreenPlayerView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubPosition: Double = 0.0
     @State private var showQueueSheet: Bool = false
+    @State private var isFavorite: Bool = false
+    @State private var showLyrics: Bool = false
+    @State private var dragOffset: CGFloat = 0.0
+    @State private var volume: Float = 0.7
 
     public init(serverURL: String, onClose: @escaping () -> Void) {
         self.serverURL = serverURL
@@ -23,69 +28,102 @@ public struct FullscreenPlayerView: View {
 
     public var body: some View {
         ZStack {
-            // Atmosphärischer weichgezeichneter Album-Hintergrund
+            // Reines Schwarz als Basis-Hintergrund gemaess Invariante
+            Color.black
+                .ignoresSafeArea()
+
+            // Weichgezeichneter Album-Hintergrund
             backgroundLayer
 
             VStack(spacing: 0) {
-                // Obere Leiste mit Schließen-Button & Titel
+                // Drag-Pill Griff oben
+                pullDownHandle
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+
+                // Obere Leiste mit Schliessen-Button & Album/Wiedergabe-Titel
                 headerBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 28) {
-                        Spacer(minLength: 8)
+                    VStack(spacing: 24) {
+                        Spacer(minLength: 4)
 
-                        // Großes Albumcover mit dezentem Leuchten
+                        // Grosses Albumcover mit Feder-Animation (Spring-Bounce) auf Play/Pause
                         artworkSection
 
-                        // Titel & Interpret
+                        // Titel, Interpret & Herz-Favoriten-Button
                         trackInfoSection
 
-                        // Interaktiver Scrubber (Timeline)
+                        // Interaktiver Scrubber (Timeline mit negativer Restzeit)
                         scrubberSection
 
-                        // Steuerungselemente (Shuffle, Vorheriger, Play/Pause, Nächster, Repeat)
+                        // Steuerungselemente (Shuffle, Vorheriger, Play/Pause, Naechster, Repeat)
                         playbackControlsSection
 
-                        // Zusatz-Aktionen: Warteschlange
+                        // Lautstaerke-Regler
+                        volumeSliderSection
+
+                        // Zusatz-Aktionen: Songtext, AirPlay, Warteschlange
                         bottomActionsSection
 
                         Spacer(minLength: 24)
                     }
                     .frame(maxWidth: 440)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
                 }
             }
+            .offset(y: max(0, dragOffset))
         }
         .preferredColorScheme(.dark)
+        .gesture(
+            DragGesture()
+                .onChanged { val in
+                    if val.translation.height > 0 {
+                        dragOffset = val.translation.height
+                    }
+                }
+                .onEnded { val in
+                    if val.translation.height > 120 {
+                        onClose()
+                    } else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
         .sheet(isPresented: $showQueueSheet) {
             QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
         }
     }
 
+    // MARK: - Drag Handle
+    private var pullDownHandle: some View {
+        Capsule()
+            .fill(Color.white.opacity(0.35))
+            .frame(width: 38, height: 5)
+    }
+
     // MARK: - Hintergrund
     private var backgroundLayer: some View {
         ZStack {
-            Color(red: 0.03, green: 0.03, blue: 0.04).ignoresSafeArea()
-
-            if let cover = player.currentTrack?.coverUrl, let url = URL(string: cover) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .blur(radius: 60)
-                            .opacity(0.35)
-                            .ignoresSafeArea()
-                    }
-                }
+            let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+            PortCachedAsyncImage(url: resolved) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .blur(radius: 65)
+                    .opacity(0.32)
+                    .ignoresSafeArea()
+            } placeholder: {
+                Color.black.ignoresSafeArea()
             }
 
             LinearGradient(
-                colors: [Color.black.opacity(0.4), Color.black.opacity(0.85)],
+                colors: [Color.black.opacity(0.35), Color.black.opacity(0.88)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -98,10 +136,10 @@ public struct FullscreenPlayerView: View {
         HStack {
             Button(action: onClose) {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 38, height: 38)
-                    .background(PortColors.surfaceGlass)
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.10))
                     .clipShape(Circle())
             }
 
@@ -111,7 +149,7 @@ public struct FullscreenPlayerView: View {
                 Text("AKTUELLE WIEDERGABE")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.4)
-                    .foregroundColor(Color.white.opacity(0.65))
+                    .foregroundColor(Color.white.opacity(0.60))
 
                 if let album = player.currentTrack?.album, !album.isEmpty {
                     Text(album)
@@ -125,69 +163,88 @@ public struct FullscreenPlayerView: View {
 
             Button(action: { showQueueSheet = true }) {
                 Image(systemName: "list.bullet")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 38, height: 38)
-                    .background(PortColors.surfaceGlass)
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.10))
                     .clipShape(Circle())
             }
         }
     }
 
-    // MARK: - Album Cover
+    // MARK: - Album Cover mit Feder-Animation (Spring Scale)
     private var artworkSection: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 22)
-                .fill(PortColors.surfaceGlassStrong)
-                .aspectRatio(1, contentMode: .fit)
-
-            if let cover = player.currentTrack?.coverUrl, let url = URL(string: cover) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .clipShape(RoundedRectangle(cornerRadius: 22))
-                    default:
-                        Image(systemName: "music.note")
-                            .font(.system(size: 48))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
+            let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+            PortCachedAsyncImage(url: resolved) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
+            } placeholder: {
+                ZStack {
+                    Color.white.opacity(0.08)
+                    Image(systemName: "music.note")
+                        .font(.system(size: 48))
+                        .foregroundColor(Color.white.opacity(0.35))
                 }
-            } else {
-                Image(systemName: "music.note")
-                    .font(.system(size: 48))
-                    .foregroundColor(.white.opacity(0.4))
+                .clipShape(RoundedRectangle(cornerRadius: 22))
             }
         }
+        .aspectRatio(1, contentMode: .fit)
         .frame(maxWidth: 320)
         .overlay(
             RoundedRectangle(cornerRadius: 22)
-                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.6), radius: 24, y: 12)
+        .shadow(
+            color: Color.black.opacity(player.isPlaying ? 0.70 : 0.40),
+            radius: player.isPlaying ? 28 : 14,
+            y: player.isPlaying ? 14 : 6
+        )
+        .scaleEffect(player.isPlaying ? 1.0 : 0.88)
+        .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
     }
 
-    // MARK: - Titel & Interpret
+    // MARK: - Titel, Interpret & Herz-Favorit
     private var trackInfoSection: some View {
-        VStack(spacing: 6) {
-            Text(player.currentTrack?.title ?? "Kein Titel")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundColor(PortColors.textPrimary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(player.currentTrack?.title ?? "Kein Titel")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundColor(PortColors.textPrimary)
+                    .lineLimit(1)
 
-            Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(Color.white.opacity(0.70))
-                .multilineTextAlignment(.center)
-                .lineLimit(1)
+                Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.70))
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                isFavorite.toggle()
+                if let track = player.currentTrack {
+                    Task {
+                        let token = SessionManager.shared.currentToken
+                        _ = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
+                    }
+                }
+            }) {
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(isFavorite ? Color(hex: "#fc3c44") : Color.white.opacity(0.70))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Scrubber
+    // MARK: - Scrubber mit negativer Restzeit
     private var scrubberSection: some View {
         VStack(spacing: 8) {
             GeometryReader { geo in
@@ -196,21 +253,18 @@ public struct FullscreenPlayerView: View {
                 let pct = min(1.0, max(0.0, activeProgress / maxDur))
 
                 ZStack(alignment: .leading) {
-                    // Track-Hintergrund
                     Capsule()
                         .fill(Color.white.opacity(0.18))
                         .frame(height: 5)
 
-                    // Aktiver Fortschritt
                     Capsule()
                         .fill(Color.white)
                         .frame(width: max(0, width * CGFloat(pct)), height: 5)
 
-                    // Scrubber Daumen
                     Circle()
                         .fill(Color.white)
                         .frame(width: isScrubbing ? 16 : 12, height: isScrubbing ? 16 : 12)
-                        .shadow(color: Color.black.opacity(0.3), radius: 3)
+                        .shadow(color: Color.black.opacity(0.4), radius: 3)
                         .offset(x: max(0, min(width * CGFloat(pct) - 6, width - 12)))
                 }
                 .frame(height: 24)
@@ -232,7 +286,7 @@ public struct FullscreenPlayerView: View {
             }
             .frame(height: 24)
 
-            // Zeitangaben (links vergangen, rechts Rest/Gesamt)
+            // Links vergangen, Rechts verbleibend (-0:00)
             HStack {
                 Text(formatSeconds(activeProgress))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
@@ -240,7 +294,8 @@ public struct FullscreenPlayerView: View {
 
                 Spacer()
 
-                Text(formatSeconds(player.duration))
+                let remaining = max(0, player.duration - activeProgress)
+                Text("-" + formatSeconds(remaining))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(Color.white.opacity(0.65))
             }
@@ -258,7 +313,7 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: "shuffle")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(player.isShuffle ? PortColors.successGreen : Color.white.opacity(0.55))
+                    .foregroundColor(player.isShuffle ? Color.white : Color.white.opacity(0.40))
                     .frame(width: 36, height: 36)
             }
 
@@ -276,7 +331,7 @@ public struct FullscreenPlayerView: View {
                     .frame(width: 44, height: 44)
             }
 
-            // Play / Pause Haupt-Button (Weiß, Monochrom)
+            // Play / Pause Haupt-Button (Rein weiss, monochrom)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .medium)
                 generator.impactOccurred()
@@ -286,7 +341,7 @@ public struct FullscreenPlayerView: View {
                     Circle()
                         .fill(Color.white)
                         .frame(width: 68, height: 68)
-                        .shadow(color: Color.white.opacity(0.25), radius: 12, y: 4)
+                        .shadow(color: Color.white.opacity(0.20), radius: 10, y: 3)
 
                     if player.isBuffering {
                         ProgressView()
@@ -301,7 +356,7 @@ public struct FullscreenPlayerView: View {
                 }
             }
 
-            // Nächster Song
+            // Naechster Song
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -323,21 +378,87 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: "repeat")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(player.isRepeat ? PortColors.successGreen : Color.white.opacity(0.55))
+                    .foregroundColor(player.isRepeat ? Color.white : Color.white.opacity(0.40))
                     .frame(width: 36, height: 36)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
     }
 
-    // MARK: - Bottom Actions
-    private var bottomActionsSection: some View {
-        HStack(spacing: 20) {
-            Text("Warteschlange: \(player.queue.count) Titel")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(Color.white.opacity(0.60))
+    // MARK: - Lautstaerke-Slider
+    private var volumeSliderSection: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "speaker.fill")
+                .font(.system(size: 12))
+                .foregroundColor(Color.white.opacity(0.50))
+
+            GeometryReader { geo in
+                let width = geo.size.width
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.18))
+                        .frame(height: 4)
+
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(0, width * CGFloat(volume)), height: 4)
+
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 14, height: 14)
+                        .shadow(color: Color.black.opacity(0.3), radius: 2)
+                        .offset(x: max(0, min(width * CGFloat(volume) - 7, width - 14)))
+                }
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { val in
+                            let ratio = Float(max(0.0, min(1.0, val.location.x / width)))
+                            volume = ratio
+                            MPVolumeView.setVolume(ratio)
+                        }
+                )
+            }
+            .frame(height: 20)
+
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.system(size: 12))
+                .foregroundColor(Color.white.opacity(0.50))
         }
-        .padding(.top, 8)
+        .padding(.horizontal, 8)
+        .padding(.top, 4)
+    }
+
+    // MARK: - Zusatz-Aktionen
+    private var bottomActionsSection: some View {
+        HStack(spacing: 40) {
+            // Lyrics Toggle
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                showLyrics.toggle()
+            }) {
+                Image(systemName: showLyrics ? "quote.bubble.fill" : "quote.bubble")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(showLyrics ? Color.white : Color.white.opacity(0.55))
+            }
+
+            // AirPlay Icon
+            Button(action: {}) {
+                Image(systemName: "airplayaudio")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.55))
+            }
+
+            // Queue Button
+            Button(action: { showQueueSheet = true }) {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.55))
+            }
+        }
+        .padding(.top, 6)
     }
 
     private func formatSeconds(_ seconds: Double) -> String {
@@ -345,6 +466,17 @@ public struct FullscreenPlayerView: View {
         let m = sec / 60
         let s = sec % 60
         return String(format: "%d:%02d", m, s)
+    }
+}
+
+// MARK: - Volume Helper
+extension MPVolumeView {
+    static func setVolume(_ volume: Float) {
+        let volumeView = MPVolumeView()
+        let slider = volumeView.subviews.first(where: { $0 is UISlider }) as? UISlider
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+            slider?.value = volume
+        }
     }
 }
 
@@ -356,13 +488,14 @@ public struct QueueSheetView: View {
 
     public var body: some View {
         ZStack {
-            FluentBackgroundView()
+            Color.black
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
                 HStack {
                     Text("Warteschlange")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundColor(PortColors.textPrimary)
 
                     Spacer()
@@ -370,7 +503,7 @@ public struct QueueSheetView: View {
                     Button(action: onClose) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 24))
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(Color.white.opacity(0.70))
                     }
                 }
                 .padding(20)
@@ -379,7 +512,7 @@ public struct QueueSheetView: View {
                     VStack(spacing: 12) {
                         Image(systemName: "music.note.list")
                             .font(.system(size: 40))
-                            .foregroundColor(Color.white.opacity(0.4))
+                            .foregroundColor(Color.white.opacity(0.35))
                         Text("Keine Titel in der Warteschlange")
                             .font(.system(size: 14))
                             .foregroundColor(PortColors.textSecondary)
@@ -387,7 +520,7 @@ public struct QueueSheetView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List {
-                        ForEach(Array(player.queue.enumerated()), id: \.element.id) { index, item in
+                        ForEach(Array(player.queue.enumerated()), id: \.offset) { index, item in
                             let isCurrent = (index == player.queueIndex)
                             Button(action: {
                                 player.play(track: item, from: player.queue, serverURL: serverURL)
@@ -395,13 +528,33 @@ public struct QueueSheetView: View {
                                 HStack(spacing: 12) {
                                     Text("\(index + 1)")
                                         .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                        .foregroundColor(isCurrent ? PortColors.successGreen : Color.white.opacity(0.5))
+                                        .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.40))
                                         .frame(width: 24)
+
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color.white.opacity(0.08))
+                                            .frame(width: 38, height: 38)
+
+                                        let resolved = resolveCoverURL(item.coverUrl, serverURL: serverURL)
+                                        PortCachedAsyncImage(url: resolved) { image in
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 38, height: 38)
+                                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        } placeholder: {
+                                            Image(systemName: "music.note")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(Color.white.opacity(0.40))
+                                        }
+                                    }
+                                    .frame(width: 38, height: 38)
 
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(item.title)
                                             .font(.system(size: 14, weight: isCurrent ? .bold : .medium))
-                                            .foregroundColor(isCurrent ? PortColors.successGreen : PortColors.textPrimary)
+                                            .foregroundColor(isCurrent ? Color.white : PortColors.textPrimary)
                                             .lineLimit(1)
 
                                         Text(item.artist)
@@ -415,12 +568,12 @@ public struct QueueSheetView: View {
                                     if isCurrent {
                                         Image(systemName: "waveform")
                                             .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(PortColors.successGreen)
+                                            .foregroundColor(Color.white)
                                     }
                                 }
                                 .padding(.vertical, 4)
                             }
-                            .listRowBackground(Color.white.opacity(isCurrent ? 0.08 : 0.03))
+                            .listRowBackground(Color.white.opacity(isCurrent ? 0.12 : 0.04))
                         }
                     }
                     .listStyle(PlainListStyle())

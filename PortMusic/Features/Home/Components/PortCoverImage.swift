@@ -40,29 +40,14 @@ public struct PortCoverImage: View {
     }
 
     public var body: some View {
-        ZStack {
-            Color(hex: "#161618")
-
-            if let resolved = resolveCoverURL(coverUrl, serverURL: serverURL) {
-                AsyncImage(url: resolved) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .failure:
-                        Image(systemName: placeholderIcon)
-                            .font(.system(size: 26))
-                            .foregroundColor(Color.white.opacity(0.25))
-                    case .empty:
-                        Color(hex: "#18181b")
-                    @unknown default:
-                        Image(systemName: placeholderIcon)
-                            .font(.system(size: 26))
-                            .foregroundColor(Color.white.opacity(0.25))
-                    }
-                }
-            } else {
+        let resolved = resolveCoverURL(coverUrl, serverURL: serverURL)
+        PortCachedAsyncImage(url: resolved) { image in
+            image
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } placeholder: {
+            ZStack {
+                Color(hex: "#161618")
                 Image(systemName: placeholderIcon)
                     .font(.system(size: 26))
                     .foregroundColor(Color.white.opacity(0.25))

@@ -49,17 +49,14 @@ public struct PortArtistCard: View {
                         .foregroundColor(Color.white.opacity(0.70))
 
                     if let resolved = resolveCoverURL(artist.picture, serverURL: serverURL) {
-                        AsyncImage(url: resolved) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 120, height: 120)
-                                    .clipShape(Circle())
-                            default:
-                                EmptyView()
-                            }
+                        PortCachedAsyncImage(url: resolved) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                        } placeholder: {
+                            EmptyView()
                         }
                     }
                 }

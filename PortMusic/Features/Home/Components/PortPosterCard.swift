@@ -32,34 +32,31 @@ public struct PortPosterCard: View {
                     Color(hex: "#1a1a1c")
 
                     if let resolved = resolveCoverURL(coverUrl, serverURL: serverURL) {
-                        AsyncImage(url: resolved) { phase in
-                            switch phase {
-                            case .success(let image):
-                                ZStack {
-                                    // Untere Reflexions-Weichzeichnung
+                        PortCachedAsyncImage(url: resolved) { image in
+                            ZStack {
+                                // Untere Reflexions-Weichzeichnung
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 155, height: 207)
+                                    .blur(radius: 16)
+                                    .scaleEffect(1.1)
+                                    .opacity(0.85)
+
+                                // Scharfes Cover-Bild oben
+                                VStack(spacing: 0) {
                                     image
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
-                                        .frame(width: 155, height: 207)
-                                        .blur(radius: 16)
-                                        .scaleEffect(1.1)
-                                        .opacity(0.85)
-
-                                    // Scharfes Cover-Bild oben
-                                    VStack(spacing: 0) {
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 155, height: 155)
-                                            .clipped()
-                                        Spacer(minLength: 0)
-                                    }
+                                        .frame(width: 155, height: 155)
+                                        .clipped()
+                                    Spacer(minLength: 0)
                                 }
-                            default:
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 32))
-                                    .foregroundColor(Color.white.opacity(0.20))
                             }
+                        } placeholder: {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 32))
+                                .foregroundColor(Color.white.opacity(0.20))
                         }
                     } else {
                         Image(systemName: "music.note")
@@ -106,9 +103,9 @@ public struct PortPosterCard: View {
                         Spacer()
                         ZStack {
                             Circle()
-                                .fill(PortColors.accentOrange)
+                                .fill(Color.white)
                                 .frame(width: 38, height: 38)
-                                .shadow(color: PortColors.accentOrange.opacity(0.45), radius: 6, y: 2)
+                                .shadow(color: Color.black.opacity(0.45), radius: 6, y: 2)
 
                             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                                 .font(.system(size: 15, weight: .bold))
