@@ -76,7 +76,7 @@ public struct HomeView: View {
 
                         // ── SHELF 6: NEUE ALBEN & EPS ──
                         if !deduplicated.topAlbums.isEmpty {
-                            shelfAlbums(albums: deduplicated.topAlbums)
+                            shelfAlbums(albums: deduplicated.topAlbums, allDiscovery: data)
                         }
 
                         // ── SHELF 7: FRISCHE SONG-DROPS ──
@@ -274,7 +274,7 @@ public struct HomeView: View {
     }
 
     // MARK: - Shelf 6: Neue Alben & EPs
-    private func shelfAlbums(albums: [DiscoveryAlbum]) -> some View {
+    private func shelfAlbums(albums: [DiscoveryAlbum], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "square.stack.fill",
@@ -720,11 +720,12 @@ public struct HomeView: View {
         res.topPicks?.forEach { rawUrls.append($0.cover) }
         res.trendingEverywhere?.forEach { rawUrls.append($0.cover) }
         res.todaysTopHits?.forEach { rawUrls.append($0.cover) }
-        res.newReleasesAlbums?.forEach { rawUrls.append($0.cover) }
-        res.freshSongDrops?.forEach { rawUrls.append($0.cover) }
-        res.globalTop100?.forEach { rawUrls.append($0.cover) }
+        res.top100Global?.forEach { rawUrls.append($0.cover) }
+        res.topAlbums?.forEach { rawUrls.append($0.cover) }
+        res.newMusic?.forEach { rawUrls.append($0.cover) }
         res.topPlaylists?.forEach { rawUrls.append($0.cover) }
         res.trendingArtists?.forEach { rawUrls.append($0.picture) }
+        res.trendingAlbums?.forEach { rawUrls.append($0.cover) }
 
         let resolved = rawUrls.compactMap { resolveCoverURL($0, serverURL: serverURL) }
         PortImageCache.shared.prefetch(urls: resolved)
