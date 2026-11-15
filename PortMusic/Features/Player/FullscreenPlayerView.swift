@@ -61,6 +61,7 @@ public struct FullscreenPlayerView: View {
             ZStack(alignment: .top) {
                 // 1. Weichgezeichneter Album-Hintergrund (Exakt an Container gebunden)
                 backgroundLayer(width: fullWidth, height: fullHeight)
+                    .compositingGroup()
 
                 // 2. Inhalt
                 VStack(spacing: 0) {
@@ -147,31 +148,47 @@ public struct FullscreenPlayerView: View {
         .clipped()
     }
 
+    // MARK: - Safe Area & Kopfleisten-Abstand
+    private var deviceSafeTop: CGFloat {
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first {
+            let top = window.safeAreaInsets.top
+            if top > 0 { return top }
+        }
+        let isPad = (UIDevice.current.userInterfaceIdiom == .pad)
+        return isPad ? 24 : 50
+    }
+
     // MARK: - Obere Kopfleiste (Drag-Griff zentriert zum Herunterziehen)
     private func topBarSection(safeTop: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            // Ausreichender Abstand nach oben, sodass die Leiste nicht an der Dynamic Island/Notch klebt
+        let effectiveSafeTop = max(safeTop, deviceSafeTop)
+        // Wesentlich mehr Abstand nach oben zur Dynamic Island / Notch
+        let topDistance = effectiveSafeTop + 24
+
+        return VStack(spacing: 0) {
             Color.clear
-                .frame(height: max(16, safeTop + 12))
+                .frame(height: topDistance)
 
             // Zentrierter Drag-Griff (Pill Handle)
             pullDownHandle
-                .padding(.vertical, 8)
+                .padding(.vertical, 14)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
                     onClose()
                 }
+
+            Spacer(minLength: 4)
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .gesture(
-            DragGesture(minimumDistance: 10)
+            DragGesture(minimumDistance: 5)
                 .onChanged { val in
-                    if val.translation.height > 0 {
-                        dragOffset = val.translation.height
-                    }
+                    dragOffset = max(0, val.translation.height)
                 }
                 .onEnded { val in
                     if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
@@ -179,7 +196,7 @@ public struct FullscreenPlayerView: View {
                         generator.impactOccurred()
                         onClose()
                     } else {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             dragOffset = 0
                         }
                     }
@@ -190,8 +207,9 @@ public struct FullscreenPlayerView: View {
     // MARK: - Drag Handle
     public var pullDownHandle: some View {
         Capsule()
-            .fill(Color.white.opacity(0.38))
-            .frame(width: 42, height: 5)
+            .fill(Color.white.opacity(0.55))
+            .frame(width: 46, height: 5)
+            .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1)
     }
 
     // MARK: - TABLET / IPAD 2-SPALTEN LAYOUT (Exakt wie im Web-App Screenshot)
@@ -307,26 +325,6 @@ public struct FullscreenPlayerView: View {
         )
         .scaleEffect(player.isPlaying ? 1.0 : 0.86)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 15)
-                .onChanged { val in
-                    if val.translation.height > 0 && abs(val.translation.height) > abs(val.translation.width) {
-                        dragOffset = val.translation.height
-                    }
-                }
-                .onEnded { val in
-                    if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
-                        onClose()
-                    } else {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            dragOffset = 0
-                        }
-                    }
-                }
-        )
     }
 
     // MARK: - Titel, Interpret & Stern-Favorit (☆ wie im Web-App Screenshot)
