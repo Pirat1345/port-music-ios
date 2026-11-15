@@ -37,6 +37,35 @@ public func resolveCoverURL(_ raw: String?, serverURL: String) -> URL? {
     return nil
 }
 
+public func resolveAvatarURL(_ raw: String?, serverURL: String) -> URL? {
+    guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+        return nil
+    }
+    if raw.hasPrefix("data:image") {
+        return nil
+    }
+    if raw.hasPrefix("http://") || raw.hasPrefix("https://") {
+        if let direct = URL(string: raw) {
+            return direct
+        }
+        if let encoded = raw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let direct = URL(string: encoded) {
+            return direct
+        }
+        return nil
+    }
+    let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+    let cleanBase = base.hasPrefix("http://") || base.hasPrefix("https://") ? base : "http://\(base)"
+    let path = raw.hasPrefix("/") ? raw : "/\(raw)"
+    let full = "\(cleanBase)\(path)"
+    if let direct = URL(string: full) {
+        return direct
+    }
+    if let encoded = full.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let direct = URL(string: encoded) {
+        return direct
+    }
+    return nil
+}
+
 public struct PortCoverImage: View {
     public let coverUrl: String?
     public let serverURL: String

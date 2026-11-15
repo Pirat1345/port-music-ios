@@ -257,7 +257,7 @@ public final class AuthService {
             let email = userObj["email"] as? String
             let role = userObj["role"] as? String
             let createdAt = userObj["createdAt"] as? String
-            let avatar = (userObj["avatar"] as? String) ?? (userObj["picture"] as? String)
+            let avatar = (userObj["avatar"] as? String) ?? (userObj["picture"] as? String) ?? (json["avatar"] as? String)
 
             return UserProfile(
                 id: userId,
@@ -269,7 +269,21 @@ public final class AuthService {
             )
         }
 
-        throw AuthError.serverError("Benutzerprofil konnte nicht gelesen werden.")
+        let userId = (json["userId"] as? String) ?? (json["id"] as? String) ?? UUID().uuidString
+        let username = (json["username"] as? String) ?? "Benutzer"
+        let email = json["email"] as? String
+        let role = json["role"] as? String
+        let createdAt = json["createdAt"] as? String
+        let avatar = (json["avatar"] as? String) ?? (json["picture"] as? String)
+
+        return UserProfile(
+            id: userId,
+            username: username,
+            email: email,
+            role: role,
+            createdAt: createdAt,
+            avatar: avatar
+        )
     }
 
     // MARK: - 2. Login (POST /api/login)

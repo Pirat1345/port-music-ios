@@ -3,6 +3,7 @@ import MediaPlayer
 
 public struct FullscreenPlayerView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var volumeManager = SystemVolumeManager.shared
     public let serverURL: String
     public let onClose: () -> Void
 
@@ -35,88 +36,104 @@ public struct FullscreenPlayerView: View {
     }
 
     public var body: some View {
-        ZStack {
-            // Reines Schwarz als Basis-Hintergrund gemaess Invariante
-            Color.black
-                .ignoresSafeArea()
+        GeometryReader { geo in
+            let safeTop = geo.safeAreaInsets.top
+            let isTablet = UIDevice.current.userInterfaceIdiom == .pad
 
-            // Weichgezeichneter Album-Hintergrund
-            backgroundLayer
+            ZStack {
+                // Reines Schwarz als Basis-Hintergrund gemaess Invariante
+                Color.black
+                    .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Drag-Pill Griff oben
-                pullDownHandle
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
+                // Weichgezeichneter Album-Hintergrund
+                backgroundLayer
 
-                // Obere Leiste mit Schliessen-Button & Album/Wiedergabe-Titel
-                headerBar
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
+                VStack(spacing: 0) {
+                    // Safe Top Clearance (stellt sicher, dass Griff und Header nicht in Notch/Statusbar rutschen)
+                    Color.clear
+                        .frame(height: max(14, safeTop))
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-                        Spacer(minLength: 4)
+                    // Drag-Pill Griff oben
+                    pullDownHandle
+                        .padding(.top, 4)
+                        .padding(.bottom, 6)
 
-                        // Artwork oder synchronisierter Songtext (Feature #18)
-                        if showLyrics {
-                            lyricsSection
-                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                        } else {
-                            // Grosses Albumcover mit Feder-Animation (Spring-Bounce) auf Play/Pause
-                            artworkSection
+                    // Obere Leiste mit Schliessen-Button
+                    headerBar
+                        .padding(.horizontal, isTablet ? 32 : 24)
+                        .padding(.vertical, 6)
+
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: isTablet ? 26 : 22) {
+                            Spacer(minLength: 4)
+
+                            // Artwork oder synchronisierter Songtext (Feature #18)
+                            if showLyrics {
+                                lyricsSection
+                                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            } else {
+                                // Grosses Albumcover mit Feder-Animation (Spring-Bounce) auf Play/Pause
+                                artworkSection
+                            }
+
+                            // Titel, Interpret & Herz-Favoriten-Button
+                            trackInfoSection
+
+                            // Interaktiver Scrubber (Timeline mit negativer Restzeit)
+                            scrubberSection
+
+                            // Steuerungselemente (Shuffle, Vorheriger, Play/Pause, Naechster, Repeat)
+                            playbackControlsSection
+
+                            // Lautstaerke-Regler
+                            volumeSliderSection
+
+                            // Zusatz-Aktionen: Songtext, AirPlay, Warteschlange
+                            bottomActionsSection
+
+                            // Song-Details & Empfehlungen (Feature #20)
+                            songDetailsAndRecommendationsSection
+
+                            Spacer(minLength: 28)
                         }
-
-                        // Titel, Interpret & Herz-Favoriten-Button
-                        trackInfoSection
-
-                        // Interaktiver Scrubber (Timeline mit negativer Restzeit)
-                        scrubberSection
-
-                        // Steuerungselemente (Shuffle, Vorheriger, Play/Pause, Naechster, Repeat)
-                        playbackControlsSection
-
-                        // Lautstaerke-Regler
-                        volumeSliderSection
-
-                        // Zusatz-Aktionen: Songtext, AirPlay, Warteschlange
-                        bottomActionsSection
-
-                        // Song-Details & Empfehlungen (Feature #20)
-                        songDetailsAndRecommendationsSection
-
-                        Spacer(minLength: 24)
+                        .frame(maxWidth: isTablet ? 480 : 440)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.horizontal, isTablet ? 36 : 28)
                     }
-                    .frame(maxWidth: 440)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.horizontal, 28)
+                }
+                .offset(y: max(0, dragOffset))
+            }
+            .preferredColorScheme(.dark)
+            .onAppear {
+                volumeManager.syncVolume()
+                self.volume = volumeManager.volume
+                if let track = player.currentTrack {
+                    self.isFavorite = FavoritesManager.shared.isFavorite(trackId: track.id)
                 }
             }
-            .offset(y: max(0, dragOffset))
-        }
-        .preferredColorScheme(.dark)
-        .gesture(
-            DragGesture()
-                .onChanged { val in
-                    if val.translation.height > 0 {
-                        dragOffset = val.translation.height
-                    }
-                }
-                .onEnded { val in
-                    if val.translation.height > 120 {
-                        onClose()
-                    } else {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            dragOffset = 0
+            .gesture(
+                DragGesture()
+                    .onChanged { val in
+                        if val.translation.height > 0 {
+                            dragOffset = val.translation.height
                         }
                     }
-                }
-        )
-        .sheet(isPresented: $showQueueSheet) {
-            QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
-        }
-        .task(id: player.currentTrack?.id) {
-            await loadTrackExtras()
+                    .onEnded { val in
+                        if val.translation.height > 120 {
+                            onClose()
+                        } else {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                dragOffset = 0
+                            }
+                        }
+                    }
+            )
+            .sheet(isPresented: $showQueueSheet) {
+                QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
+            }
+            .task(id: player.currentTrack?.id) {
+                await loadTrackExtras()
+            }
         }
     }
 
@@ -151,29 +168,24 @@ public struct FullscreenPlayerView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header (Clean dismiss button)
     private var headerBar: some View {
         HStack {
             Button(action: onClose) {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.10))
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundColor(Color.white.opacity(0.80))
+                    .frame(width: 38, height: 38)
+                    .background(Color.white.opacity(0.08))
                     .clipShape(Circle())
             }
 
             Spacer()
 
-            VStack(spacing: 2) {
-                Text("AKTUELLE WIEDERGABE")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.50))
-                    .tracking(1.0)
-
-                Text(player.currentTrack?.album ?? "Port Music")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
+            if let album = player.currentTrack?.album, !album.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(album)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.70))
                     .lineLimit(1)
             }
 
@@ -181,7 +193,7 @@ public struct FullscreenPlayerView: View {
 
             // Platzhalter fuer Symmetrie
             Color.clear
-                .frame(width: 36, height: 36)
+                .frame(width: 38, height: 38)
         }
     }
 
@@ -205,7 +217,7 @@ public struct FullscreenPlayerView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: 320)
+        .frame(maxWidth: UIDevice.current.userInterfaceIdiom == .pad ? 360 : 320)
         .overlay(
             RoundedRectangle(cornerRadius: 22)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
@@ -215,7 +227,7 @@ public struct FullscreenPlayerView: View {
             radius: player.isPlaying ? 28 : 14,
             y: player.isPlaying ? 14 : 6
         )
-        .scaleEffect(player.isPlaying ? 1.0 : 0.88)
+        .scaleEffect(player.isPlaying ? 1.0 : 0.86)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
     }
 
@@ -325,18 +337,24 @@ public struct FullscreenPlayerView: View {
             Spacer()
 
             Button(action: {
+                guard let track = player.currentTrack else { return }
                 let generator = UIImpactFeedbackGenerator(style: .medium)
                 generator.impactOccurred()
                 isFavorite.toggle()
-                if let track = player.currentTrack {
-                    Task {
-                        let token = SessionManager.shared.currentToken
-                        await MusicService.shared.toggleFavorite(trackId: track.id, serverURL: serverURL, token: token)
+                FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
+                Task {
+                    let token = SessionManager.shared.currentToken
+                    let ok = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
+                    if !ok {
+                        await MainActor.run {
+                            isFavorite.toggle()
+                            FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
+                        }
                     }
                 }
             }) {
                 Image(systemName: isFavorite ? "heart.fill" : "heart")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundColor(isFavorite ? Color(hex: "#fc3c44") : Color.white.opacity(0.70))
                     .frame(width: 44, height: 44)
             }
@@ -495,6 +513,9 @@ public struct FullscreenPlayerView: View {
 
             GeometryReader { geo in
                 let width = geo.size.width
+                let currentVolume = volumeManager.volume
+                let pct = CGFloat(max(0.0, min(1.0, currentVolume)))
+
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.white.opacity(0.18))
@@ -502,13 +523,13 @@ public struct FullscreenPlayerView: View {
 
                     Capsule()
                         .fill(Color.white)
-                        .frame(width: max(0, width * CGFloat(volume)), height: 4)
+                        .frame(width: max(0, width * pct), height: 4)
 
                     Circle()
                         .fill(Color.white)
                         .frame(width: 14, height: 14)
                         .shadow(color: Color.black.opacity(0.3), radius: 2)
-                        .offset(x: max(0, min(width * CGFloat(volume) - 7, width - 14)))
+                        .offset(x: max(0, min(width * pct - 7, width - 14)))
                 }
                 .frame(height: 20)
                 .contentShape(Rectangle())
@@ -516,7 +537,8 @@ public struct FullscreenPlayerView: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { val in
                             let ratio = Float(max(0.0, min(1.0, val.location.x / width)))
-                            volume = ratio
+                            self.volume = ratio
+                            volumeManager.setVolume(ratio)
                             MPVolumeView.setVolume(ratio)
                         }
                 )
@@ -681,8 +703,20 @@ public struct FullscreenPlayerView: View {
 
     private func loadTrackExtras() async {
         guard let track = player.currentTrack else { return }
-        isLoadingLyrics = true
+
+        // Sync Favorite Status with Server & Local Cache
+        let localFav = FavoritesManager.shared.isFavorite(trackId: track.id)
+        await MainActor.run {
+            self.isFavorite = localFav
+        }
         let token = SessionManager.shared.currentToken
+        let serverFav = await MusicService.shared.checkIsFavorite(trackId: track.id, serverURL: serverURL, token: token)
+        await MainActor.run {
+            self.isFavorite = serverFav
+            FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: serverFav)
+        }
+
+        isLoadingLyrics = true
         if let rawLrc = await MusicService.shared.fetchLyrics(trackId: track.id, title: track.title, artist: track.artist, serverURL: serverURL, token: token) {
             lyricsLines = parseLRC(rawLrc)
         } else {

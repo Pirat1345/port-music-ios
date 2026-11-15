@@ -92,6 +92,7 @@ public struct MainTabView: View {
         .preferredColorScheme(.dark)
         .task {
             await player.syncLastPlayedFromServerIfNeeded(serverURL: serverURL, token: SessionManager.shared.currentToken)
+            await SessionManager.shared.refreshUserProfile()
         }
         .fullScreenCover(isPresented: $showFullscreenPlayer) {
             FullscreenPlayerView(serverURL: serverURL) {
@@ -100,7 +101,7 @@ public struct MainTabView: View {
         }
     }
 
-    // MARK: - Custom Octave TabBar (Clean Minimalist Dark - No Glow)
+    // MARK: - Custom Octave TabBar (Clean Minimalist Dark - No Glow, No Separator Line)
     private var glassTabBar: some View {
         HStack(spacing: 0) {
             ForEach(MainTabItem.allCases, id: \.self) { tab in
@@ -114,9 +115,7 @@ public struct MainTabView: View {
                     }
                 }) {
                     VStack(spacing: 4) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
+                        tabIconView(tab: tab, isSelected: isSelected)
                             .frame(height: 24)
 
                         Text(tab.title)
@@ -137,12 +136,58 @@ public struct MainTabView: View {
                 .background(.ultraThinMaterial)
                 .ignoresSafeArea(edges: .bottom)
         )
-        .overlay(
-            Rectangle()
-                .fill(Color.white.opacity(0.12))
-                .frame(height: 1),
-            alignment: .top
-        )
+    }
+
+    @ViewBuilder
+    private func tabIconView(tab: MainTabItem, isSelected: Bool) -> some View {
+        if tab == .profile {
+            let curUser = SessionManager.shared.currentUser ?? user
+            let rawAvatar = curUser.avatar
+            if let avatar = rawAvatar, !avatar.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if avatar.hasPrefix("data:image"),
+                   let base64Part = avatar.components(separatedBy: ",").last,
+                   let data = Data(base64Encoded: base64Part),
+                   let uiImg = UIImage(data: data) {
+                    Image(uiImage: uiImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 24, height: 24)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
+                        )
+                } else if let url = resolveAvatarURL(avatar, serverURL: serverURL) {
+                    PortCachedAsyncImage(url: url) { img in
+                        img
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 24, height: 24)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle().stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
+                            )
+                    } placeholder: {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
+                    }
+                } else {
+                    fallbackProfileIcon(isSelected: isSelected)
+                }
+            } else {
+                fallbackProfileIcon(isSelected: isSelected)
+            }
+        } else {
+            Image(systemName: tab.icon)
+                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
+        }
+    }
+
+    private func fallbackProfileIcon(isSelected: Bool) -> some View {
+        Image(systemName: "person.crop.circle.fill")
+            .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
     }
 
     // MARK: - Navigation Destinations

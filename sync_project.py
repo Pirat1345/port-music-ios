@@ -118,7 +118,12 @@ def main():
     group_defs.append(make_group(gid_network, "Network", [get_fid("Core/Network/AuthService.swift"), get_fid("Core/Network/MusicService.swift"), get_fid("Core/Network/ServerPingService.swift")], "Network"))
 
     gid_player = next_gid("Player")
-    group_defs.append(make_group(gid_player, "Player", [get_fid("Core/Player/AudioPlayerManager.swift")], "Player"))
+    player_files = [
+        "Core/Player/AudioPlayerManager.swift",
+        "Core/Player/FavoritesManager.swift",
+        "Core/Player/SystemVolumeManager.swift"
+    ]
+    group_defs.append(make_group(gid_player, "Player", [get_fid(f) for f in player_files], "Player"))
 
     gid_security = next_gid("Security")
     group_defs.append(make_group(gid_security, "Security", [get_fid("Core/Security/KeychainHelper.swift")], "Security"))

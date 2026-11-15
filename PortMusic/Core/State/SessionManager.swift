@@ -96,6 +96,16 @@ public final class SessionManager: ObservableObject {
         self.serverURL = trimmed.isEmpty ? nil : trimmed
     }
 
+    public func refreshUserProfile() async {
+        guard let storedURL = serverURL ?? UserDefaults.standard.string(forKey: serverURLStorageKey),
+              let token = currentToken, !token.isEmpty else { return }
+        do {
+            let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token)
+            self.currentUser = profile
+            cacheUserProfile(profile)
+        } catch {}
+    }
+
     // MARK: - Lokaler Profil-Cache
 
     private func cacheUserProfile(_ profile: UserProfile) {

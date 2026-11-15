@@ -34,14 +34,14 @@ public struct PlayerBarView: View {
                     .fill(Color.white.opacity(0.12))
                     .frame(height: 1)
 
-                // Main Info & Transport Controls Row
-                HStack(spacing: 12) {
+                // Main Info & Transport Controls Row (Thicker and larger layout)
+                HStack(spacing: 14) {
                     // Left area: Cover + Titles (Click opens Fullscreen Player)
                     Button(action: onOpenFullscreen) {
-                        HStack(spacing: 12) {
+                        HStack(spacing: 14) {
                             // Cover Artwork (44x44, rounded-md)
                             ZStack {
-                                RoundedRectangle(cornerRadius: 6)
+                                RoundedRectangle(cornerRadius: 8)
                                     .fill(PortColors.surfaceGlassStrong)
                                     .frame(width: 44, height: 44)
 
@@ -51,10 +51,10 @@ public struct PlayerBarView: View {
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
                                         .frame(width: 44, height: 44)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
                                 } placeholder: {
                                     Image(systemName: "music.note")
-                                        .font(.system(size: 16))
+                                        .font(.system(size: 18))
                                         .foregroundColor(Color.white.opacity(0.5))
                                 }
                             }
@@ -66,13 +66,13 @@ public struct PlayerBarView: View {
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(displayTitle)
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(PortColors.textPrimary)
                                     .lineLimit(1)
 
                                 Text(displayArtist)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(Color.white.opacity(0.60))
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color.white.opacity(0.65))
                                     .lineLimit(1)
                             }
                         }
@@ -82,7 +82,7 @@ public struct PlayerBarView: View {
                     Spacer(minLength: 8)
 
                     // Right area: Transport Controls (|◀, Solid White Play/Pause Circle, ▶|)
-                    HStack(spacing: 14) {
+                    HStack(spacing: 16) {
                         // Previous Track (|◀)
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .light)
@@ -90,9 +90,9 @@ public struct PlayerBarView: View {
                             player.previous(serverURL: serverURL)
                         }) {
                             Image(systemName: "backward.end.fill")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(Color.white.opacity(0.85))
-                                .frame(width: 32, height: 32)
+                                .frame(width: 34, height: 34)
                         }
                         .buttonStyle(PlainButtonStyle())
 
@@ -105,18 +105,18 @@ public struct PlayerBarView: View {
                             ZStack {
                                 Circle()
                                     .fill(Color.white)
-                                    .frame(width: 38, height: 38)
-                                    .shadow(color: Color.black.opacity(0.3), radius: 4, y: 1)
+                                    .frame(width: 42, height: 42)
+                                    .shadow(color: Color.black.opacity(0.35), radius: 5, y: 1)
 
                                 if player.isBuffering {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                                        .scaleEffect(0.85)
+                                        .scaleEffect(0.9)
                                 } else {
                                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.black)
-                                        .offset(x: player.isPlaying ? 0 : 1)
+                                        .offset(x: player.isPlaying ? 0 : 1.5)
                                 }
                             }
                         }
@@ -129,21 +129,21 @@ public struct PlayerBarView: View {
                             player.next(serverURL: serverURL)
                         }) {
                             Image(systemName: "forward.end.fill")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(Color.white.opacity(0.85))
-                                .frame(width: 32, height: 32)
+                                .frame(width: 34, height: 34)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
 
                 // Timeline Scrubber at the Bottom of PlayerBar
                 timelineScrubberSection
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 8)
             }
             .background(Color.black)
         }
