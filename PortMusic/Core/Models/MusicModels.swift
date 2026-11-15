@@ -109,16 +109,28 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
         self.duration = durStr
         self.durationSeconds = durSec
 
-        self.coverUrl = (try? container.decodeIfPresent(String.self, forKey: .coverUrl))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .coverUrlAlt))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .cover))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .artworkUrl))
+        var cov = try? container.decodeIfPresent(String.self, forKey: .coverUrl)
+        if cov == nil {
+            cov = try? container.decodeIfPresent(String.self, forKey: .coverUrlAlt)
+        }
+        if cov == nil {
+            cov = try? container.decodeIfPresent(String.self, forKey: .cover)
+        }
+        if cov == nil {
+            cov = try? container.decodeIfPresent(String.self, forKey: .artworkUrl)
+        }
+        self.coverUrl = cov
 
         self.isLive = false
-        self.isExplicit = (try? container.decodeIfPresent(Bool.self, forKey: .isExplicit))
-            ?? (try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt))
-            ?? (try? container.decodeIfPresent(Bool.self, forKey: .explicitContent))
-            ?? false
+
+        var exp = try? container.decodeIfPresent(Bool.self, forKey: .isExplicit)
+        if exp == nil {
+            exp = try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt)
+        }
+        if exp == nil {
+            exp = try? container.decodeIfPresent(Bool.self, forKey: .explicitContent)
+        }
+        self.isExplicit = exp ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -641,6 +653,20 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
             ?? (try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt))
         rank = try container.decodeIfPresent(Int.self, forKey: .rank)
         trackNumber = try container.decodeIfPresent(Int.self, forKey: .trackNumber)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(artist, forKey: .artist)
+        try container.encodeIfPresent(album, forKey: .album)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try container.encodeIfPresent(cover, forKey: .cover)
+        try container.encodeIfPresent(isExplicit, forKey: .isExplicit)
+        try container.encodeIfPresent(rank, forKey: .rank)
+        try container.encodeIfPresent(trackNumber, forKey: .trackNumber)
     }
 
     public func toTrack(fallbackCover: String? = nil, fallbackAlbum: String? = nil) -> Track {

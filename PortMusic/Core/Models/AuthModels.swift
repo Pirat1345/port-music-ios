@@ -35,19 +35,36 @@ public struct UserProfile: Codable, Identifiable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = (try? container.decode(String.self, forKey: .id))
-            ?? (try? container.decode(String.self, forKey: .userId))
-            ?? (try? container.decode(String.self, forKey: .user_id))
-            ?? UUID().uuidString
+        var decodedId = try? container.decode(String.self, forKey: .id)
+        if decodedId == nil {
+            decodedId = try? container.decode(String.self, forKey: .userId)
+        }
+        if decodedId == nil {
+            decodedId = try? container.decode(String.self, forKey: .user_id)
+        }
+        self.id = decodedId ?? UUID().uuidString
+
         self.username = (try? container.decode(String.self, forKey: .username)) ?? "Benutzer"
         self.email = try? container.decodeIfPresent(String.self, forKey: .email)
         self.role = try? container.decodeIfPresent(String.self, forKey: .role)
-        self.createdAt = (try? container.decodeIfPresent(String.self, forKey: .createdAt))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .created_at))
-        self.avatar = (try? container.decodeIfPresent(String.self, forKey: .avatar))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .picture))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .avatarUrl))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .avatar_url))
+
+        var created = try? container.decodeIfPresent(String.self, forKey: .createdAt)
+        if created == nil {
+            created = try? container.decodeIfPresent(String.self, forKey: .created_at)
+        }
+        self.createdAt = created
+
+        var av = try? container.decodeIfPresent(String.self, forKey: .avatar)
+        if av == nil {
+            av = try? container.decodeIfPresent(String.self, forKey: .picture)
+        }
+        if av == nil {
+            av = try? container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        }
+        if av == nil {
+            av = try? container.decodeIfPresent(String.self, forKey: .avatar_url)
+        }
+        self.avatar = av
     }
 
     public func encode(to encoder: Encoder) throws {
