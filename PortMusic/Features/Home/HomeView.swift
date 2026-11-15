@@ -697,8 +697,8 @@ public struct HomeView: View {
 
         let (discoveryRes, historyRes) = await (discoveryFetch, historyFetch)
 
-        if let historyList = historyRes, !historyList.isEmpty {
-            player.mergeServerHistory(historyList)
+        if !historyRes.isEmpty {
+            player.mergeServerHistory(historyRes)
         }
 
         if let response = discoveryRes {
