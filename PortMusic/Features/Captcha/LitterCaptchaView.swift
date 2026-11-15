@@ -117,7 +117,7 @@ public struct LitterCaptchaView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Partikel-Muster (Motion-Fokus)")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.55))
+                    .foregroundColor(.white)
                     .textCase(.uppercase)
                     .tracking(0.8)
 
@@ -135,7 +135,7 @@ public struct LitterCaptchaView: View {
             }) {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 18))
-                    .foregroundColor(showInfo ? .white : Color.white.opacity(0.50))
+                    .foregroundColor(.white)
             }
         }
         .padding(.horizontal, 16)
@@ -146,7 +146,7 @@ public struct LitterCaptchaView: View {
     private var infoBannerView: some View {
         Text("Bewege den Finger über das Partikelfeld. Die Formen heben sich durch das Rauschen ab, da sich ihr Muster nicht verändert. Ziehe alle Formen in den Zielbereich.")
             .font(.system(size: 12))
-            .foregroundColor(Color.white.opacity(0.80))
+            .foregroundColor(.white)
             .lineSpacing(3)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -263,11 +263,11 @@ public struct LitterCaptchaView: View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.down.to.line.compact")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundColor(isOverBin ? Color(hex: "#34c759") : Color.white.opacity(0.60))
+                .foregroundColor(isOverBin ? Color(hex: "#34c759") : .white)
 
             Text("Zielbereich (\(collectedCount)/\(clumps.count))")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundColor(isOverBin ? .white : Color.white.opacity(0.70))
+                .foregroundColor(isOverBin ? .white : .white)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -280,7 +280,7 @@ public struct LitterCaptchaView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
-                    isOverBin ? Color(hex: "#34c759") : Color.white.opacity(0.20),
+                    isOverBin ? Color(hex: "#34c759") : Color.white.opacity(0.30),
                     style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
                 )
         )
@@ -301,10 +301,10 @@ public struct LitterCaptchaView: View {
                     Text("Neu laden")
                         .font(.system(size: 12, weight: .semibold))
                 }
-                .foregroundColor(Color.white.opacity(0.70))
+                .foregroundColor(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Color.white.opacity(0.08))
+                .background(Color.white.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
@@ -323,10 +323,10 @@ public struct LitterCaptchaView: View {
                             .font(.system(size: 14, weight: .bold))
                     }
                 }
-                .foregroundColor(isDone ? .black : Color.white.opacity(0.35))
+                .foregroundColor(isDone ? .black : Color.white.opacity(0.60))
                 .padding(.horizontal, 24)
                 .padding(.vertical, 11)
-                .background(isDone ? Color.white : Color.white.opacity(0.10))
+                .background(isDone ? Color.white : Color.white.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .disabled(!isDone || isVerified)

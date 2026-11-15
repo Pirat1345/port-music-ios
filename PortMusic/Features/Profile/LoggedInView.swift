@@ -79,11 +79,11 @@ public struct LoggedInView: View {
                                 Text("VERBUNDENER SERVER")
                                     .font(.system(size: 10, weight: .semibold))
                                     .tracking(1.2)
-                                    .foregroundColor(PortColors.textMuted)
+                                    .foregroundColor(.white)
 
                                 Text(serverURL)
                                     .font(.system(size: 13, design: .monospaced))
-                                    .foregroundColor(PortColors.textSecondary)
+                                    .foregroundColor(.white)
                                     .lineLimit(1)
                             }
                             Spacer()

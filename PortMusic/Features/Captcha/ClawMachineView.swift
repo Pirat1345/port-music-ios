@@ -480,7 +480,7 @@ public struct ClawMachineView: View {
                 // Hint footer
                 Text("Joystick oder Wischen zum Bewegen · Button zum Greifen & Abwerfen")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.40))
+                    .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .padding(.top, 4)
             }
@@ -525,7 +525,7 @@ public struct ClawMachineView: View {
                 HStack(spacing: 6) {
                     Text("Greife mit dem Greifarm:")
                         .font(.system(size: 13))
-                        .foregroundColor(Color.white.opacity(0.70))
+                        .foregroundColor(.white)
 
                     HStack(spacing: 4) {
                         toyImage(named: targetId, width: 22)
@@ -535,7 +535,7 @@ public struct ClawMachineView: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.10))
+                    .background(Color.white.opacity(0.12))
                     .clipShape(Capsule())
                 }
             }
@@ -567,21 +567,21 @@ public struct ClawMachineView: View {
         HStack(spacing: 5) {
             Text("\(num)")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundColor(active ? .black : Color.white.opacity(0.5))
+                .foregroundColor(active ? .black : .white)
                 .frame(width: 16, height: 16)
-                .background(active ? Color.white : Color.white.opacity(0.12))
+                .background(active ? Color.white : Color.white.opacity(0.18))
                 .clipShape(Circle())
 
             Text(title)
                 .font(.system(size: 11, weight: active ? .bold : .medium))
-                .foregroundColor(active ? .white : Color.white.opacity(0.45))
+                .foregroundColor(active ? .white : Color.white.opacity(0.85))
         }
     }
 
     private var stepArrow: some View {
         Image(systemName: "chevron.right")
             .font(.system(size: 9, weight: .bold))
-            .foregroundColor(Color.white.opacity(0.25))
+            .foregroundColor(Color.white.opacity(0.70))
             .padding(.horizontal, 2)
     }
 
@@ -907,10 +907,10 @@ public struct ClawMachineView: View {
                         .foregroundColor(.white)
                 } else {
                     Image(systemName: "tray.and.arrow.down.fill")
-                        .foregroundColor(Color.white.opacity(0.40))
+                        .foregroundColor(.white)
                     Text("Hier abwerfen")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.50))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
                 }
             }
             .offset(y: 14)

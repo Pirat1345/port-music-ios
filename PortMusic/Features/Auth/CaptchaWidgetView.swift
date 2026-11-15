@@ -46,7 +46,7 @@ public struct CaptchaWidgetView: View {
 
                 Text("Ich bin kein Roboter")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(isVerified ? PortColors.textPrimary : PortColors.textSecondary)
+                    .foregroundColor(.white)
 
                 Spacer()
 
@@ -54,12 +54,12 @@ public struct CaptchaWidgetView: View {
                 VStack(spacing: 2) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 14))
-                        .foregroundColor(PortColors.textMuted)
+                        .foregroundColor(.white)
 
                     Text("CAPTCHA")
                         .font(.system(size: 8, weight: .bold))
                         .tracking(1.2)
-                        .foregroundColor(PortColors.textMuted)
+                        .foregroundColor(Color.white.opacity(0.85))
                 }
             }
             .padding(.horizontal, 14)

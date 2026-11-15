@@ -138,7 +138,7 @@ public struct LoginView: View {
 
                     Image(systemName: "pencil")
                         .font(.system(size: 11))
-                        .foregroundColor(PortColors.textMuted)
+                        .foregroundColor(.white)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -186,15 +186,20 @@ public struct LoginView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("BENUTZERNAME ODER E-MAIL")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(PortColors.textMuted)
+                        .foregroundColor(.white)
                         .tracking(1.2)
 
                     HStack(spacing: 12) {
                         Image(systemName: "person.fill")
                             .font(.system(size: 15))
-                            .foregroundColor(PortColors.textSecondary)
+                            .foregroundColor(.white)
 
-                        TextField("Benutzername oder E-Mail", text: $usernameInput)
+                        TextField(
+                            "",
+                            text: $usernameInput,
+                            prompt: Text("Benutzername oder E-Mail")
+                                .foregroundColor(Color.white.opacity(0.60))
+                        )
                             .font(.system(size: 15))
                             .foregroundColor(PortColors.textPrimary)
                             .autocapitalization(.none)
@@ -214,22 +219,32 @@ public struct LoginView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("PASSWORT")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(PortColors.textMuted)
+                        .foregroundColor(.white)
                         .tracking(1.2)
 
                     HStack(spacing: 12) {
                         Image(systemName: "lock.fill")
                             .font(.system(size: 15))
-                            .foregroundColor(PortColors.textSecondary)
+                            .foregroundColor(.white)
 
                         if showPassword {
-                            TextField("Passwort", text: $passwordInput)
+                            TextField(
+                                "",
+                                text: $passwordInput,
+                                prompt: Text("Passwort")
+                                    .foregroundColor(Color.white.opacity(0.60))
+                            )
                                 .font(.system(size: 15))
                                 .foregroundColor(PortColors.textPrimary)
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                         } else {
-                            SecureField("Passwort", text: $passwordInput)
+                            SecureField(
+                                "",
+                                text: $passwordInput,
+                                prompt: Text("Passwort")
+                                    .foregroundColor(Color.white.opacity(0.60))
+                            )
                                 .font(.system(size: 15))
                                 .foregroundColor(PortColors.textPrimary)
                         }
@@ -237,7 +252,7 @@ public struct LoginView: View {
                         Button(action: { showPassword.toggle() }) {
                             Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
                                 .font(.system(size: 15))
-                                .foregroundColor(PortColors.textMuted)
+                                .foregroundColor(.white)
                         }
                     }
                     .padding(.horizontal, 16)

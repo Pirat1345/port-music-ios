@@ -164,7 +164,7 @@ public struct CaptchaChallengeContainerView: View {
 
                 Text(currentCaptchaType == "litter" ? "Partikel-Muster" : "Kuscheltier-Greifarm")
                     .font(.system(size: 12))
-                    .foregroundColor(PortColors.textMuted)
+                    .foregroundColor(.white)
             }
 
             Spacer()
@@ -179,7 +179,7 @@ public struct CaptchaChallengeContainerView: View {
                     Text("Neue Aufgabe")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(PortColors.textSecondary)
+                .foregroundColor(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(PortColors.surfaceGlass)
@@ -195,7 +195,7 @@ public struct CaptchaChallengeContainerView: View {
             Button(action: onCancel) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 26))
-                    .foregroundColor(PortColors.textMuted)
+                    .foregroundColor(.white)
             }
             .padding(.leading, 6)
         }

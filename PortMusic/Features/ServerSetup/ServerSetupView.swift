@@ -73,15 +73,20 @@ public struct ServerSetupView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("SERVER-ADRESSE")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(PortColors.textMuted)
+                .foregroundColor(.white)
                 .tracking(1.4)
 
             HStack(spacing: 12) {
                 Image(systemName: "server.rack")
                     .font(.system(size: 16))
-                    .foregroundColor(PortColors.textSecondary)
+                    .foregroundColor(.white)
 
-                TextField("z. B. 192.168.1.100:3000", text: $serverInput)
+                TextField(
+                    "",
+                    text: $serverInput,
+                    prompt: Text("z. B. 192.168.1.100:3000")
+                        .foregroundColor(Color.white.opacity(0.60))
+                )
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(PortColors.textPrimary)
                     .autocapitalization(.none)
@@ -96,7 +101,7 @@ public struct ServerSetupView: View {
                     Button(action: { serverInput = "" }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 15))
-                            .foregroundColor(PortColors.textMuted)
+                            .foregroundColor(.white)
                     }
                 }
             }
@@ -111,7 +116,7 @@ public struct ServerSetupView: View {
 
             Text("Unterstützt IP-Adressen (z. B. 192.168.1.50:3000) oder Domainnamen.")
                 .font(.system(size: 11))
-                .foregroundColor(PortColors.textMuted)
+                .foregroundColor(Color.white.opacity(0.85))
                 .padding(.horizontal, 4)
         }
         .padding(20)

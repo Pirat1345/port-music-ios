@@ -98,7 +98,12 @@ public struct TwoFactorView: View {
 
             // Eingabefeld für den 6-stelligen Code
             VStack(spacing: 14) {
-                TextField("000000", text: $codeInput)
+                TextField(
+                    "",
+                    text: $codeInput,
+                    prompt: Text("000000")
+                        .foregroundColor(Color.white.opacity(0.55))
+                )
                     .font(.system(size: 28, weight: .bold, design: .monospaced))
                     .multilineTextAlignment(.center)
                     .keyboardType(.numberPad)
