@@ -571,113 +571,112 @@ public struct FullscreenPlayerView: View {
                 .background(Color.white.opacity(0.12))
                 .padding(.top, 10)
 
-            // Credits & Song Details
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Titelinformationen")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(Color.white)
+            trackCreditsCard
 
-                if let album = player.currentTrack?.album, !album.isEmpty {
-                    HStack {
-                        Text("Album")
-                            .font(.system(size: 13))
-                            .foregroundColor(Color.white.opacity(0.50))
-                        Spacer()
-                        Text(album)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.white)
-                    }
-                }
-
-                if let artist = player.currentTrack?.artist, !artist.isEmpty {
-                    HStack {
-                        Text("Künstler")
-                            .font(.system(size: 13))
-                            .foregroundColor(Color.white.opacity(0.50))
-                        Spacer()
-                        Text(artist)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.white)
-                    }
-                }
-
-                if let dur = player.currentTrack?.duration {
-                    HStack {
-                        Text("Dauer")
-                            .font(.system(size: 13))
-                            .foregroundColor(Color.white.opacity(0.50))
-                        Spacer()
-                        Text(dur)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.white)
-                    }
-                }
-            }
-            .padding(14)
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-
-            // Empfehlungen ("Ähnliche Titel")
             if !recommendations.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Ähnliche Titel")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Color.white)
-
-                    VStack(spacing: 8) {
-                        ForEach(recommendations.prefix(6)) { rec in
-                            Button(action: {
-                                player.play(track: rec, from: recommendations)
-                            }) {
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(Color.white.opacity(0.08))
-                                            .frame(width: 40, height: 40)
-
-                                        let resolved = resolveCoverURL(rec.coverUrl, serverURL: serverURL)
-                                        PortCachedAsyncImage(url: resolved) { img in
-                                            img.resizable().aspectRatio(contentMode: .fill)
-                                                .frame(width: 40, height: 40)
-                                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        } placeholder: {
-                                            Image(systemName: "music.note")
-                                                .font(.system(size: 16))
-                                                .foregroundColor(Color.white.opacity(0.40))
-                                        }
-                                    }
-                                    .frame(width: 40, height: 40)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(rec.title)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundColor(.white)
-                                            .lineLimit(1)
-                                        Text(rec.artist)
-                                            .font(.system(size: 11))
-                                            .foregroundColor(Color(hex: "#a0a0a0"))
-                                            .lineLimit(1)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "play.circle.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(Color.white.opacity(0.60))
-                                }
-                                .padding(8)
-                                .background(Color.white.opacity(0.02))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                }
-                .padding(14)
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                recommendationsCard
             }
         }
+    }
+
+    private var trackCreditsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Titelinformationen")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Color.white)
+
+            if let album = player.currentTrack?.album, !album.isEmpty {
+                creditRow(label: "Album", value: album)
+            }
+
+            if let artist = player.currentTrack?.artist, !artist.isEmpty {
+                creditRow(label: "Künstler", value: artist)
+            }
+
+            if let dur = player.currentTrack?.duration {
+                creditRow(label: "Dauer", value: dur)
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func creditRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(Color.white.opacity(0.50))
+            Spacer()
+            Text(value)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color.white)
+        }
+    }
+
+    private var recommendationsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Ähnliche Titel")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Color.white)
+
+            VStack(spacing: 8) {
+                ForEach(recommendations.prefix(6)) { rec in
+                    recommendationRow(rec: rec)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    @ViewBuilder
+    private func recommendationRow(rec: Track) -> some View {
+        Button(action: {
+            player.play(track: rec, from: recommendations)
+        }) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 40, height: 40)
+
+                    let resolved = resolveCoverURL(rec.coverUrl, serverURL: serverURL)
+                    PortCachedAsyncImage(url: resolved) { img in
+                        img.resizable().aspectRatio(contentMode: .fill)
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } placeholder: {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color.white.opacity(0.40))
+                    }
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(rec.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Text(rec.artist)
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "#a0a0a0"))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color.white.opacity(0.60))
+            }
+            .padding(8)
+            .background(Color.white.opacity(0.02))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     private func loadTrackExtras() async {
@@ -742,71 +741,11 @@ public struct QueueSheetView: View {
                 .padding(20)
 
                 if player.queue.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 40))
-                            .foregroundColor(Color.white.opacity(0.35))
-                        Text("Keine Titel in der Warteschlange")
-                            .font(.system(size: 14))
-                            .foregroundColor(PortColors.textSecondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    emptyQueueView
                 } else {
                     List {
                         ForEach(Array(player.queue.enumerated()), id: \.offset) { index, item in
-                            let isCurrent = (index == player.queueIndex)
-                            Button(action: {
-                                player.play(track: item, from: player.queue)
-                            }) {
-                                HStack(spacing: 12) {
-                                    Text("\(index + 1)")
-                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                        .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.40))
-                                        .frame(width: 24)
-
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(Color.white.opacity(0.08))
-                                            .frame(width: 38, height: 38)
-
-                                        let resolved = resolveCoverURL(item.coverUrl, serverURL: serverURL)
-                                        PortCachedAsyncImage(url: resolved) { image in
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 38, height: 38)
-                                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        } placeholder: {
-                                            Image(systemName: "music.note")
-                                                .font(.system(size: 14))
-                                                .foregroundColor(Color.white.opacity(0.40))
-                                        }
-                                    }
-                                    .frame(width: 38, height: 38)
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(item.title)
-                                            .font(.system(size: 14, weight: isCurrent ? .bold : .medium))
-                                            .foregroundColor(isCurrent ? Color.white : PortColors.textPrimary)
-                                            .lineLimit(1)
-
-                                        Text(item.artist)
-                                            .font(.system(size: 12))
-                                            .foregroundColor(Color.white.opacity(0.65))
-                                            .lineLimit(1)
-                                    }
-
-                                    Spacer()
-
-                                    if isCurrent {
-                                        Image(systemName: "waveform")
-                                            .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(Color.white)
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                            .listRowBackground(Color.white.opacity(isCurrent ? 0.12 : 0.04))
+                            queueRow(index: index, item: item)
                         }
                     }
                     .listStyle(PlainListStyle())
@@ -814,5 +753,79 @@ public struct QueueSheetView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var emptyQueueView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "music.note.list")
+                .font(.system(size: 40))
+                .foregroundColor(Color.white.opacity(0.35))
+            Text("Keine Titel in der Warteschlange")
+                .font(.system(size: 14))
+                .foregroundColor(PortColors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func queueRow(index: Int, item: Track) -> some View {
+        let isCurrent = (index == player.queueIndex)
+        Button(action: {
+            player.play(track: item, from: player.queue)
+        }) {
+            HStack(spacing: 12) {
+                Text("\(index + 1)")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.40))
+                    .frame(width: 24)
+
+                queueCoverImage(url: item.coverUrl)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.system(size: 14, weight: isCurrent ? .bold : .medium))
+                        .foregroundColor(isCurrent ? Color.white : PortColors.textPrimary)
+                        .lineLimit(1)
+
+                    Text(item.artist)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                if isCurrent {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color.white)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .listRowBackground(Color.white.opacity(isCurrent ? 0.12 : 0.04))
+    }
+
+    @ViewBuilder
+    private func queueCoverImage(url: String?) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.08))
+                .frame(width: 38, height: 38)
+
+            let resolved = resolveCoverURL(url, serverURL: serverURL)
+            PortCachedAsyncImage(url: resolved) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 38, height: 38)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } placeholder: {
+                Image(systemName: "music.note")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color.white.opacity(0.40))
+            }
+        }
+        .frame(width: 38, height: 38)
     }
 }

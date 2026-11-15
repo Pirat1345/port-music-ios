@@ -81,8 +81,10 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     // MARK: - Playback Control API
-    public func play(track: Track, from contextQueue: [Track] = [], serverURL: String) {
-        self.currentServerURL = serverURL
+    public func play(track: Track, from contextQueue: [Track] = [], serverURL: String? = nil) {
+        if let sUrl = serverURL, !sUrl.isEmpty {
+            self.currentServerURL = sUrl
+        }
 
         // Track-Historie fuer Rueckwaerts-Springen fuehren (nur bei Vorwaerts-Wiedergabe)
         if !isNavigatingBackward, let current = self.currentTrack, current.id != track.id {

@@ -506,6 +506,31 @@ public final class MusicService {
     }
 
     // MARK: - Toggle Favorite (/api/favorites)
+    @discardableResult
+    public func toggleFavorite(trackId: String, serverURL: String, token: String?) async -> Bool {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/favorites") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        let body: [String: Any] = ["trackId": trackId]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: request)
+            if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                return true
+            }
+        } catch {}
+        return false
+    }
+
+    @discardableResult
     public func toggleFavorite(track: Track, serverURL: String, token: String?) async -> Bool {
         let base = cleanURL(serverURL)
         guard let url = URL(string: "\(base)/api/favorites") else { return false }

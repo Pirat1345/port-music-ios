@@ -33,10 +33,12 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
         self.isLive = isLive
         self.isExplicit = isExplicit
     }
+
+    public var cover: String? { coverUrl }
 }
 
 // MARK: - Discovery API Models
-public struct DiscoveryTrack: Codable, Identifiable {
+public struct DiscoveryTrack: Codable, Identifiable, Equatable {
     public let id: String
     public let title: String
     public let artist: String
@@ -283,6 +285,16 @@ public struct DiscoveryArtistAlbumItem: Codable, Identifiable, Equatable {
         year = try container.decodeIfPresent(Int.self, forKey: .year)
         nbTracks = try container.decodeIfPresent(Int.self, forKey: .nbTracks)
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(artist, forKey: .artist)
+        try container.encodeIfPresent(cover, forKey: .cover)
+        try container.encodeIfPresent(year, forKey: .year)
+        try container.encodeIfPresent(nbTracks, forKey: .nbTracks)
+    }
 }
 
 public struct DiscoveryRelatedArtistItem: Codable, Identifiable, Equatable {
@@ -312,6 +324,14 @@ public struct DiscoveryRelatedArtistItem: Codable, Identifiable, Equatable {
             picture = try container.decodeIfPresent(String.self, forKey: .cover)
         }
         nbFan = try container.decodeIfPresent(Int.self, forKey: .nbFan)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(picture, forKey: .picture)
+        try container.encodeIfPresent(nbFan, forKey: .nbFan)
     }
 }
 
@@ -373,6 +393,19 @@ public struct DiscoveryArtistDetailData: Codable, Identifiable {
         } else {
             related = []
         }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(picture, forKey: .picture)
+        try container.encodeIfPresent(nbFan, forKey: .nbFan)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encode(topTracks, forKey: .topTracks)
+        try container.encode(albums, forKey: .albums)
+        try container.encode(singles, forKey: .singles)
+        try container.encode(related, forKey: .related)
     }
 }
 
@@ -443,6 +476,19 @@ public struct DiscoveryAlbumDetailData: Codable, Identifiable {
         }
         tracks = (try? container.decodeIfPresent([DiscoveryArtistTrackItem].self, forKey: .tracks)) ?? []
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(artist, forKey: .artist)
+        try container.encodeIfPresent(cover, forKey: .cover)
+        try container.encodeIfPresent(year, forKey: .year)
+        try container.encodeIfPresent(trackCount, forKey: .trackCount)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try container.encode(tracks, forKey: .tracks)
+    }
 }
 
 public struct DiscoveryAlbumResponse: Codable {
@@ -505,6 +551,23 @@ public struct DiscoveryPlaylistDetailData: Codable, Identifiable, Equatable {
         user = try container.decodeIfPresent(String.self, forKey: .user)
         nbTracks = try container.decodeIfPresent(Int.self, forKey: .nbTracks)
         tracks = (try? container.decodeIfPresent([DiscoveryTrack].self, forKey: .tracks)) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(cover, forKey: .cover)
+        try container.encodeIfPresent(heroArtwork, forKey: .heroArtwork)
+        try container.encodeIfPresent(motionVideo, forKey: .motionVideo)
+        try container.encodeIfPresent(user, forKey: .user)
+        try container.encodeIfPresent(nbTracks, forKey: .nbTracks)
+        try container.encode(tracks, forKey: .tracks)
+    }
+
+    public static func == (lhs: DiscoveryPlaylistDetailData, rhs: DiscoveryPlaylistDetailData) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
