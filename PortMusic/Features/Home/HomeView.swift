@@ -80,7 +80,7 @@ public struct HomeView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color.white.opacity(0.65))
 
-                Text(user.displayName ?? user.username)
+                Text(user.username)
                     .font(.system(size: 26, weight: .bold))
                     .foregroundColor(PortColors.textPrimary)
             }

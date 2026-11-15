@@ -10,6 +10,10 @@ public final class SessionManager: ObservableObject {
     @Published public var serverURL: String? = nil
     @Published public var isRestoringSession: Bool = true
 
+    public var currentToken: String? {
+        KeychainHelper.shared.getToken()
+    }
+
     private let serverURLStorageKey = "portmusic_server_url"
     private let userStorageKey = "portmusic_auth_user"
 

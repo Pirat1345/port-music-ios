@@ -60,7 +60,7 @@ public final class MusicService {
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
-            let decoded = try JSONDecoder().decode(DiscoveryHomeResponse.self, data: data)
+            let decoded = try JSONDecoder().decode(DiscoveryHomeResponse.self, from: data)
             return decoded
         } catch {
             print("MusicService.fetchHomeDiscovery error: \(error)")
@@ -91,10 +91,10 @@ public final class MusicService {
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return []
             }
-            if let decoded = try? JSONDecoder().decode(DiscoverySearchResponse.self, data: data) {
+            if let decoded = try? JSONDecoder().decode(DiscoverySearchResponse.self, from: data) {
                 return decoded.tracks?.map { $0.toTrack() } ?? []
             }
-            if let trackList = try? JSONDecoder().decode([DiscoveryTrack].self, data: data) {
+            if let trackList = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
                 return trackList.map { $0.toTrack() }
             }
             return []
