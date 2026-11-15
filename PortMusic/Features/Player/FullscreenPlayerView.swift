@@ -115,23 +115,43 @@ public struct FullscreenPlayerView: View {
     // MARK: - Weichgezeichneter Album-Hintergrund (Ambient Glow)
     public func backgroundLayer(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
-            let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
-            PortCachedAsyncImage(url: resolved) { image in
-                image
+            // 1. Blickdichte, solide schwarze Basis
+            // Verhindert jegliche unerwünschte Transparenz zur darunterliegenden Seite:
+            // Ist kein Cover vorhanden, bleibt es absolut blickdicht schwarz.
+            Color(hex: "#0c0c0e")
+                .frame(width: width, height: height)
+
+            // 2. Weichgezeichnetes Cover mit Ambient Glow
+            if let artwork = player.nowPlayingArtwork {
+                Image(uiImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: width, height: height)
-                    .blur(radius: 64)
-                    .opacity(0.40)
+                    .blur(radius: 54)
+                    .opacity(0.48)
                     .clipped()
-            } placeholder: {
-                Color(hex: "#121214")
-                    .frame(width: width, height: height)
+            } else {
+                let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+                PortCachedAsyncImage(url: resolved) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: width, height: height)
+                        .blur(radius: 54)
+                        .opacity(0.48)
+                        .clipped()
+                } placeholder: {
+                    Color.clear
+                }
             }
 
-            // Subtiler dunkler Verlauf für optimalen Lesekontrast
+            // 3. Dunkler Kontrast-Verlauf für optimale Lesbarkeit
             LinearGradient(
-                colors: [Color.black.opacity(0.45), Color.black.opacity(0.78)],
+                colors: [
+                    Color.black.opacity(0.35),
+                    Color.black.opacity(0.65),
+                    Color.black.opacity(0.85)
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -264,20 +284,27 @@ public struct FullscreenPlayerView: View {
     // MARK: - Album Cover mit Feder-Animation (Spring Scale)
     private func artworkSection(maxSize: CGFloat) -> some View {
         ZStack {
-            let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
-            PortCachedAsyncImage(url: resolved) { image in
-                image
+            if let artwork = player.nowPlayingArtwork {
+                Image(uiImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
-            } placeholder: {
-                ZStack {
-                    Color.white.opacity(0.08)
-                    Image(systemName: "music.note")
-                        .font(.system(size: 48))
-                        .foregroundColor(Color.white.opacity(0.35))
+            } else {
+                let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+                PortCachedAsyncImage(url: resolved) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                } placeholder: {
+                    ZStack {
+                        Color.white.opacity(0.08)
+                        Image(systemName: "music.note")
+                            .font(.system(size: 48))
+                            .foregroundColor(Color.white.opacity(0.35))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 18))
             }
         }
         .aspectRatio(1, contentMode: .fit)

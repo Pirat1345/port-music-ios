@@ -33,7 +33,7 @@ public final class AudioPlayerManager: ObservableObject {
     private var itemStatusObserver: NSKeyValueObservation? = nil
     private var itemDurationObserver: NSKeyValueObservation? = nil
     private var itemBufferObserver: NSKeyValueObservation? = nil
-    private var nowPlayingArtwork: UIImage? = nil
+    @Published public private(set) var nowPlayingArtwork: UIImage? = nil
     private var periodicPersistCounter: Int = 0
 
     public func setVolume(_ volume: Float) {
