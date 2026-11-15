@@ -114,6 +114,8 @@ public struct LoggedInView: View {
 
                     Spacer()
                 }
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
                 .padding(.bottom, 40)

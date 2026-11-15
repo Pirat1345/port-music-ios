@@ -92,6 +92,8 @@ public struct LoginView: View {
 
                     Spacer()
                 }
+                .frame(maxWidth: 440)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 .padding(.bottom, 40)

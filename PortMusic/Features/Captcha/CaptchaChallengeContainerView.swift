@@ -147,6 +147,8 @@ public struct CaptchaChallengeContainerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .preferredColorScheme(.dark)
         .onAppear {
