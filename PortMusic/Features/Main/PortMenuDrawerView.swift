@@ -15,6 +15,7 @@ public struct PortMenuDrawerView: View {
     public let onLogout: () -> Void
 
     @AppStorage("portmusic_offline_mode") private var isOffline: Bool = false
+    @ObservedObject private var favorites = FavoritesManager.shared
     @State private var dragOffset: CGFloat = 0
     @State private var showNewsSheet: Bool = false
     @State private var showStatsSheet: Bool = false
@@ -421,7 +422,7 @@ public struct PortMenuDrawerView: View {
 
                         VStack(spacing: 12) {
                             statsTile(title: "Wiedergabe", value: "Aktiv", icon: "play.circle.fill")
-                            statsTile(title: "Favoriten", value: "\(FavoritesManager.shared.favoriteTrackIds.count) Titel", icon: "heart.fill")
+                            statsTile(title: "Favoriten", value: "\(favorites.favoritedTrackIds.count) Titel", icon: "heart.fill")
                             statsTile(title: "Server", value: "Verbunden", icon: "network")
                         }
                         .padding(.horizontal, 20)
