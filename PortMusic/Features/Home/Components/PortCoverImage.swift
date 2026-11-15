@@ -1,5 +1,4 @@
 import SwiftUI
-import WebKit
 
 public func resolveCoverURL(_ raw: String?, serverURL: String) -> URL? {
     guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
@@ -70,77 +69,82 @@ public func resolveAvatarURL(_ raw: String?, serverURL: String) -> URL? {
 // MARK: - Avatar Cache (In-Memory + UserDefaults)
 public final class AvatarDataCache {
     public static let shared = AvatarDataCache()
-    private let memoryCache = NSCache<NSString, NSString>()
     private let defaults = UserDefaults.standard
     private let prefix = "port-musik-avatar-cache-v1:"
 
     private init() {}
 
-    public func getCachedSvg(for key: String) -> String? {
-        if let mem = memoryCache.object(forKey: key as NSString) {
-            return mem as String
-        }
-        if let stored = defaults.string(forKey: prefix + key) {
-            memoryCache.setObject(stored as NSString, forKey: key as NSString)
-            return stored
-        }
-        return nil
+    public func getCachedColors(for key: String) -> (String, String, String, Double)? {
+        let stored = defaults.string(forKey: prefix + key)
+        guard let s = stored else { return nil }
+        let parts = s.components(separatedBy: "|")
+        guard parts.count >= 4 else { return nil }
+        let rot = Double(parts[3]) ?? 65.0
+        return (parts[0], parts[1], parts[2], rot)
     }
 
-    public func saveSvg(_ svg: String, for key: String) {
-        memoryCache.setObject(svg as NSString, forKey: key as NSString)
-        defaults.set(svg, forKey: prefix + key)
+    public func saveColors(bg: String, accent: String, face: String, rot: Double, for key: String) {
+        let s = "\(bg)|\(accent)|\(face)|\(rot)"
+        defaults.set(s, forKey: prefix + key)
     }
 }
 
-// MARK: - Native SVG Vector Avatar Viewer (WKWebView)
-public struct SVGAvatarWebView: UIViewRepresentable {
-    public let svgString: String
+// MARK: - 100% Native Vector Boring Avatar (Zero WebKit - Crash Free & Ultra-Fast)
+public struct NativeBoringAvatarView: View {
+    public let bgColor: Color
+    public let accentColor: Color
+    public let faceColor: Color
+    public let rotation: Double
+    public let size: CGFloat
 
-    public init(svgString: String) {
-        self.svgString = svgString
+    public init(
+        bgColor: Color = Color(hex: "#ffb238"),
+        accentColor: Color = Color(hex: "#ff4b4b"),
+        faceColor: Color = Color.black,
+        rotation: Double = 65,
+        size: CGFloat = 24
+    ) {
+        self.bgColor = bgColor
+        self.accentColor = accentColor
+        self.faceColor = faceColor
+        self.rotation = rotation
+        self.size = size
     }
 
-    public func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.backgroundColor = .clear
-        webView.isUserInteractionEnabled = false
-        return webView
-    }
+    public var body: some View {
+        ZStack {
+            // 1. Hintergrund-Kreis
+            Circle()
+                .fill(bgColor)
 
-    public func updateUIView(_ uiView: WKWebView, context: Context) {
-        var cleanSvg = svgString
-            .replacingOccurrences(of: "%23", with: "#")
-            .replacingOccurrences(of: "%20", with: " ")
-            .replacingOccurrences(of: "%27", with: "'")
-            .replacingOccurrences(of: "%22", with: "\"")
+            // 2. Sekundäre rotierte Form (Akzent-Blob)
+            RoundedRectangle(cornerRadius: size * 0.32)
+                .fill(accentColor)
+                .frame(width: size * 0.90, height: size * 0.90)
+                .rotationEffect(.degrees(rotation))
+                .offset(x: size * 0.04, y: -size * 0.04)
 
-        if let decoded = cleanSvg.removingPercentEncoding, decoded.contains("<svg") {
-            cleanSvg = decoded
+            // 3. Gesichtszüge (Augen + Mund)
+            VStack(spacing: max(1.5, size * 0.09)) {
+                // Augen
+                HStack(spacing: max(3, size * 0.26)) {
+                    Capsule()
+                        .fill(faceColor)
+                        .frame(width: max(1.8, size * 0.07), height: max(2.5, size * 0.11))
+                    Capsule()
+                        .fill(faceColor)
+                        .frame(width: max(1.8, size * 0.07), height: max(2.5, size * 0.11))
+                }
+                .padding(.top, size * 0.06)
+
+                // Mund (Lächeln)
+                Capsule()
+                    .fill(faceColor)
+                    .frame(width: max(4, size * 0.26), height: max(1.5, size * 0.06))
+            }
         }
-
-        let html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        svg { width: 100%; height: 100%; border-radius: 50%; display: block; }
-        img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
-        </style>
-        </head>
-        <body>
-        \(cleanSvg)
-        </body>
-        </html>
-        """
-        uiView.loadHTMLString(html, baseURL: nil)
+        .frame(width: size, height: size)
+        .clipShape(Circle())
     }
 }
 
@@ -152,9 +156,8 @@ public struct PortUserAvatarView: View {
     public let size: CGFloat
     public let isSelected: Bool
 
-    @State private var loadedSvg: String?
-    @State private var loadedImage: UIImage?
-    @State private var hasFailed: Bool = false
+    @State private var vectorColors: (bg: Color, accent: Color, face: Color, rot: Double)?
+    @State private var rasterImage: UIImage?
 
     public init(
         rawAvatar: String?,
@@ -172,23 +175,27 @@ public struct PortUserAvatarView: View {
 
     public var body: some View {
         ZStack {
-            if let svg = loadedSvg {
-                SVGAvatarWebView(svgString: svg)
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-            } else if let img = loadedImage {
+            if let img = rasterImage {
                 Image(uiImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size, height: size)
                     .clipShape(Circle())
+            } else if let c = vectorColors {
+                NativeBoringAvatarView(
+                    bgColor: c.bg,
+                    accentColor: c.accent,
+                    faceColor: c.face,
+                    rotation: c.rot,
+                    size: size
+                )
             } else {
                 fallbackMonogram
             }
         }
         .frame(width: size, height: size)
         .task(id: rawAvatar) {
-            await resolveAndLoad()
+            await resolveAvatar()
         }
     }
 
@@ -196,7 +203,7 @@ public struct PortUserAvatarView: View {
         let initial = username.prefix(1).uppercased()
         return ZStack {
             Circle()
-                .fill(isSelected ? Color.white : Color.white.opacity(0.18))
+                .fill(isSelected ? Color.white : Color(hex: "#ff7d10"))
             Text(initial.isEmpty ? "U" : initial)
                 .font(.system(size: size * 0.44, weight: .bold))
                 .foregroundColor(isSelected ? .black : .white)
@@ -205,93 +212,96 @@ public struct PortUserAvatarView: View {
     }
 
     @MainActor
-    private func resolveAndLoad() async {
+    private func resolveAvatar() async {
         guard let raw = rawAvatar?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
-            hasFailed = true
             return
         }
 
-        // 1. Raw inline SVG
-        if raw.contains("<svg") {
-            let svgStr = extractSVG(from: raw)
-            loadedSvg = svgStr
-            return
-        }
-
-        // 2. data:image/svg+xml
-        if raw.hasPrefix("data:image/svg+xml") {
-            if let commaIndex = raw.firstIndex(of: ",") {
-                let payload = String(raw[raw.index(after: commaIndex)...])
-                let decoded = payload.removingPercentEncoding ?? payload
-                if decoded.contains("<svg") {
-                    loadedSvg = decoded
-                    return
-                }
+        // 1. data:image/png or jpeg (base64)
+        if raw.hasPrefix("data:image"), !raw.contains("svg") {
+            if let base64Part = raw.components(separatedBy: ",").last,
+               let data = Data(base64Encoded: base64Part),
+               let img = UIImage(data: data) {
+                rasterImage = img
+                return
             }
         }
 
-        // 3. data:image/png or jpeg (base64)
-        if raw.hasPrefix("data:image"),
-           let base64Part = raw.components(separatedBy: ",").last,
-           let data = Data(base64Encoded: base64Part),
-           let img = UIImage(data: data) {
-            loadedImage = img
+        // 2. Inline SVG string (or data:image/svg+xml)
+        if raw.contains("<svg") || raw.contains("svg+xml") {
+            let clean = raw.removingPercentEncoding ?? raw
+            let parsed = parseSvgColors(clean)
+            vectorColors = (Color(hex: parsed.0), Color(hex: parsed.1), Color(hex: parsed.2), parsed.3)
             return
         }
 
-        // 4. Remote URL or server path (e.g. /api/files/avatars/...)
-        guard let url = resolveAvatarURL(raw, serverURL: serverURL) else {
-            hasFailed = true
-            return
-        }
-
+        // 3. Remote URL (e.g. /api/files/avatars/... or http...)
+        guard let url = resolveAvatarURL(raw, serverURL: serverURL) else { return }
         let urlKey = url.absoluteString
 
         // Check local cache first
-        if let cachedSvg = AvatarDataCache.shared.getCachedSvg(for: urlKey) {
-            loadedSvg = cachedSvg
+        if let cached = AvatarDataCache.shared.getCachedColors(for: urlKey) {
+            vectorColors = (Color(hex: cached.0), Color(hex: cached.1), Color(hex: cached.2), cached.3)
             return
         }
 
         // Fetch from network
         do {
             var req = URLRequest(url: url)
-            req.timeoutInterval = 10.0
+            req.timeoutInterval = 8.0
             if let token = SessionManager.shared.currentToken, !token.isEmpty {
                 req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                hasFailed = true
                 return
             }
 
-            // Check if SVG content
-            if let str = String(data: data, encoding: .utf8), (str.contains("<svg") || str.contains("<?xml")) {
-                let clean = extractSVG(from: str)
-                AvatarDataCache.shared.saveSvg(clean, for: urlKey)
-                loadedSvg = clean
-                return
-            }
-
-            // Fallback to raster image
+            // Check if raster image
             if let img = UIImage(data: data) {
-                loadedImage = img
+                rasterImage = img
                 return
             }
 
-            hasFailed = true
-        } catch {
-            hasFailed = true
-        }
+            // Check if SVG text
+            if let str = String(data: data, encoding: .utf8), str.contains("<svg") {
+                let parsed = parseSvgColors(str)
+                AvatarDataCache.shared.saveColors(bg: parsed.0, accent: parsed.1, face: parsed.2, rot: parsed.3, for: urlKey)
+                vectorColors = (Color(hex: parsed.0), Color(hex: parsed.1), Color(hex: parsed.2), parsed.3)
+                return
+            }
+        } catch {}
     }
 
-    private func extractSVG(from raw: String) -> String {
-        if let start = raw.range(of: "<svg", options: .caseInsensitive),
-           let end = raw.range(of: "</svg>", options: [.caseInsensitive, .backwards]) {
-            return String(raw[start.lowerBound...end.upperBound])
+    private func parseSvgColors(_ svg: String) -> (String, String, String, Double) {
+        let clean = svg.replacingOccurrences(of: "%23", with: "#")
+        let pattern = "#[0-9a-fA-F]{6}"
+        var colors: [String] = []
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+            let ns = clean as NSString
+            let matches = regex.matches(in: clean, range: NSRange(location: 0, length: ns.length))
+            for m in matches {
+                let c = ns.substring(with: m.range).lowercased()
+                if c != "#ffffff" && !colors.contains(c) {
+                    colors.append(c)
+                }
+            }
         }
-        return raw
+
+        let bg = colors.count > 0 ? colors[0] : "#ffb238"
+        let accent = colors.count > 1 ? colors[1] : "#ff4b4b"
+        let face = colors.contains("#000000") ? "#000000" : (colors.count > 2 ? colors[2] : "#000000")
+
+        var rot = 65.0
+        if let rotRange = clean.range(of: "rotate(") {
+            let after = clean[rotRange.upperBound...]
+            let numStr = after.prefix(while: { $0.isNumber || $0 == "-" })
+            if let parsed = Double(numStr) {
+                rot = parsed
+            }
+        }
+
+        return (bg, accent, face, rot)
     }
 }
 

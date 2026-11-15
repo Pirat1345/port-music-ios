@@ -1,5 +1,4 @@
 import SwiftUI
-import WebKit
 
 public enum MainTabItem: Int, CaseIterable {
     case home = 0
