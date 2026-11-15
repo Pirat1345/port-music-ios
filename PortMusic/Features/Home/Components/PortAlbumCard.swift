@@ -58,9 +58,9 @@ public struct PortAlbumCard: View {
                             Spacer()
                             ZStack {
                                 Circle()
-                                    .fill(Color.white)
+                                    .fill(PortColors.accentOrange)
                                     .frame(width: 38, height: 38)
-                                    .shadow(color: Color.black.opacity(0.40), radius: 6, y: 2)
+                                    .shadow(color: PortColors.accentOrange.opacity(0.40), radius: 6, y: 2)
 
                                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                                     .font(.system(size: 15, weight: .bold))

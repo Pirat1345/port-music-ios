@@ -21,9 +21,6 @@ public struct FullscreenPlayerView: View {
     @State private var isLoadingLyrics: Bool = false
     @State private var lyricsSizeScale: CGFloat = 1.0
 
-    // Feature #20: Recommendations State
-    @State private var recommendations: [Track] = []
-
     public enum SidePanelMode: Equatable {
         case lyrics
         case queue
@@ -52,26 +49,33 @@ public struct FullscreenPlayerView: View {
         GeometryReader { geo in
             let safeTop = geo.safeAreaInsets.top
             let isTablet = (UIDevice.current.userInterfaceIdiom == .pad) || (geo.size.width >= 700)
+            let totalHeight = geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom
 
-            // Verschiebbarer Container: Weichgezeichneter Hintergrund & Inhalt wandern GEMEINSAM nach unten.
-            // Oben entsteht dadurch Transparenz, sodass die echte darunterliegende Seite sichtbar wird!
+            // ── GESAMTER MODAL-CONTAINER (Hintergrund + Inhalt wandern gemeinsam) ──
+            // Exakt auf geo.size.width x totalHeight begrenzt und geclippt.
+            // Beim Ziehen (dragOffset > 0) wandert der Container nach unten.
+            // Der freigezogene Bereich oben zeigt direkt die darunterliegende echte Seite (Startseite, Suche, etc.)!
             ZStack(alignment: .top) {
-                // Weichgezeichneter Album-Hintergrund
-                backgroundLayer
+                // 1. Weichgezeichneter Album-Hintergrund (Exakt an Container gebunden)
+                backgroundLayer(width: geo.size.width, height: totalHeight)
 
+                // 2. Inhalt
                 VStack(spacing: 0) {
-                    // Obere Kopfleiste mit Schließen-Button (xmark) und Drag-Griff
+                    // Kopfleiste mit Schließen-Button (xmark) und Drag-Griff
                     topBarSection(safeTop: safeTop)
 
                     if isTablet {
-                        // Tablet / iPad Split 2-Spalten-Layout (entsprechend dem Screenshot & Web-App)
+                        // Tablet / iPad Split 2-Spalten-Layout (Exakt wie im Web-App Screenshot)
                         tabletSplitLayout(geo: geo)
                     } else {
-                        // Smartphone Portrait-Layout (perfekt zentriert, kein Rechts-Versatz, mit Lyrics zum Runterscrollen)
+                        // Smartphone Portrait-Layout (Perfekt zentriert, kein Rechts-Versatz, Lyrics zum Runterscrollen)
                         phoneScrollLayout(geo: geo)
                     }
                 }
+                .frame(width: geo.size.width)
             }
+            .frame(width: geo.size.width, height: totalHeight)
+            .clipped()
             .offset(y: max(0, dragOffset))
             .gesture(
                 DragGesture(minimumDistance: 10)
@@ -108,32 +112,35 @@ public struct FullscreenPlayerView: View {
     }
 
     // MARK: - Weichgezeichneter Album-Hintergrund (Ambient Glow)
-    public var backgroundLayer: some View {
+    public func backgroundLayer(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
             let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
             PortCachedAsyncImage(url: resolved) { image in
                 image
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
                     .blur(radius: 64)
-                    .opacity(0.42)
-                    .scaleEffect(1.25)
-                    .ignoresSafeArea()
+                    .opacity(0.45)
+                    .clipped()
             } placeholder: {
-                Color(hex: "#121214").ignoresSafeArea()
+                Color(hex: "#121214")
+                    .frame(width: width, height: height)
             }
 
-            // Subtiler dunkler Gradient für perfekten Kontrast
+            // Subtiler dunkler Verlauf für optimalen Lesekontrast
             LinearGradient(
-                colors: [Color.black.opacity(0.35), Color.black.opacity(0.68)],
+                colors: [Color.black.opacity(0.35), Color.black.opacity(0.70)],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .ignoresSafeArea()
+            .frame(width: width, height: height)
         }
+        .frame(width: width, height: height)
+        .clipped()
     }
 
-    // MARK: - Obere Kopfleiste (Schließen-Button & Drag-Griff)
+    // MARK: - Obere Kopfleiste (Schließen-Button oben links & Drag-Griff)
     private func topBarSection(safeTop: CGFloat) -> some View {
         VStack(spacing: 2) {
             Color.clear
@@ -164,7 +171,6 @@ public struct FullscreenPlayerView: View {
 
                 Spacer()
 
-                // Unsichtbarer Platzhalter für symmetrische Zentrierung
                 Color.clear
                     .frame(width: 44, height: 44)
             }
@@ -179,7 +185,7 @@ public struct FullscreenPlayerView: View {
             .frame(width: 38, height: 5)
     }
 
-    // MARK: - TABLET / IPAD 2-SPALTEN LAYOUT (Matches Screenshot media_1794768801325_390874e2.jpg)
+    // MARK: - TABLET / IPAD 2-SPALTEN LAYOUT (Exakt wie im Web-App Screenshot)
     private func tabletSplitLayout(geo: GeometryProxy) -> some View {
         HStack(alignment: .center, spacing: min(56, geo.size.width * 0.06)) {
             // LINKE SPALTE: Cover-Artwork & Bedienelemente
@@ -189,13 +195,13 @@ public struct FullscreenPlayerView: View {
                 // Großes Albumcover mit Feder-Animation
                 artworkSection(maxSize: min(geo.size.height * 0.44, 460))
 
-                // Titel, Interpret & Stern-Favorit
+                // Titel, Interpret & Stern-Favorit (☆)
                 trackInfoSection
 
-                // Scrubber mit negativer Restzeit
+                // Scrubber mit negativer Restzeit (-M:SS)
                 scrubberSection
 
-                // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause ohne Kreis, Vor, Lyrics, Queue)
+                // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
                 playbackControlsSection
 
                 // Lautstärke-Regler mit Lautsprecher-Icon
@@ -217,45 +223,41 @@ public struct FullscreenPlayerView: View {
         }
         .padding(.horizontal, min(48, geo.size.width * 0.05))
         .padding(.bottom, 24)
+        .frame(width: geo.size.width)
     }
 
-    // MARK: - PHONE PORTRAIT LAYOUT (Perfekt zentriert, Lyrics zum Scrollen)
+    // MARK: - PHONE PORTRAIT LAYOUT (Perfekt zentriert, kein Rechts-Versatz, Lyrics zum Runterscrollen)
     private func phoneScrollLayout(geo: GeometryProxy) -> some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 20) {
-                Spacer(minLength: 4)
+                Spacer(minLength: 8)
 
                 // Albumcover zentriert
-                artworkSection(maxSize: min(geo.size.width - 56, 330))
+                artworkSection(maxSize: min(geo.size.width - 64, 320))
 
-                // Titel, Interpret & Stern-Favorit
+                // Titel, Interpret & Stern-Favorit (☆)
                 trackInfoSection
 
                 // Scrubber mit negativer Restzeit
                 scrubberSection
 
-                // Bedienelemente
+                // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
                 playbackControlsSection
 
-                // Lautstärke-Regler
+                // Lautstärke-Regler mit Lautsprecher-Icon
                 volumeSliderSection
 
-                // Synchronisierter Songtext auf dem Handy direkt darunter zum Runterscrollen
+                // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
                 phoneLyricsSection
                     .padding(.top, 14)
 
-                // Ähnliche Titel
-                if !recommendations.isEmpty {
-                    songDetailsAndRecommendationsSection
-                        .padding(.top, 10)
-                }
-
-                Spacer(minLength: 32)
+                Spacer(minLength: 40)
             }
             .frame(maxWidth: min(geo.size.width - 40, 420))
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 20)
         }
+        .frame(width: geo.size.width)
     }
 
     // MARK: - Album Cover mit Feder-Animation (Spring Scale)
@@ -292,7 +294,7 @@ public struct FullscreenPlayerView: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
     }
 
-    // MARK: - Titel, Interpret & Stern-Favorit (Matches Screenshot)
+    // MARK: - Titel, Interpret & Stern-Favorit (☆ wie im Web-App Screenshot)
     public var trackInfoSection: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
@@ -309,7 +311,7 @@ public struct FullscreenPlayerView: View {
 
             Spacer()
 
-            // Stern-Favoriten-Button (wie im Web-App Screenshot)
+            // Stern-Favoriten-Button (☆ im Screenshot)
             Button(action: {
                 guard let track = player.currentTrack else { return }
                 let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -337,7 +339,7 @@ public struct FullscreenPlayerView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Scrubber mit negativer Restzeit
+    // MARK: - Scrubber mit negativer Restzeit (-M:SS)
     public var scrubberSection: some View {
         VStack(spacing: 8) {
             GeometryReader { geo in
@@ -398,7 +400,7 @@ public struct FullscreenPlayerView: View {
         }
     }
 
-    // MARK: - Playback Controls (Matches Screenshot media_1794768801325_390874e2.jpg)
+    // MARK: - Playback Controls (Exakt wie im Screenshot media_1794768801325_390874e2.jpg)
     public var playbackControlsSection: some View {
         HStack(spacing: 0) {
             // 1. Shuffle
@@ -440,7 +442,7 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 4. Play / Pause Haupt-Button (Reines solid weißes Symbol ohne weißen Kreis, genau wie im Screenshot!)
+            // 4. Play / Pause Haupt-Button (Reines solid weißes Symbol ohne weißen Kreis!)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .medium)
                 generator.impactOccurred()
@@ -473,7 +475,7 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 6. Lyrics Toggle (quote.bubble / mic)
+            // 6. Lyrics Toggle (quote.bubble)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -493,7 +495,7 @@ public struct FullscreenPlayerView: View {
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
-                if UIDevice.current.userInterfaceIdiom == .pad {
+                if (UIDevice.current.userInterfaceIdiom == .pad) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         sidePanelMode = (sidePanelMode == .queue) ? .lyrics : .queue
                     }
@@ -549,7 +551,7 @@ public struct FullscreenPlayerView: View {
         }
     }
 
-    // MARK: - Tablet Rechte Spalte: Synchronisierte Karaoke Lyrics
+    // MARK: - Tablet Rechte Spalte: Synchronisierte Karaoke Lyrics (Exakt wie im Screenshot)
     private var tabletLyricsColumn: some View {
         VStack(alignment: .leading, spacing: 14) {
             if isLoadingLyrics {
@@ -745,67 +747,6 @@ public struct FullscreenPlayerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    // MARK: - Ähnliche Titel & Empfehlungen
-    public var songDetailsAndRecommendationsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Ähnliche Titel")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundColor(Color.white)
-
-            VStack(spacing: 8) {
-                ForEach(recommendations.prefix(6)) { rec in
-                    Button(action: {
-                        player.play(track: rec, from: recommendations)
-                    }) {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.white.opacity(0.08))
-                                    .frame(width: 40, height: 40)
-
-                                let resolved = resolveCoverURL(rec.coverUrl, serverURL: serverURL)
-                                PortCachedAsyncImage(url: resolved) { img in
-                                    img.resizable().aspectRatio(contentMode: .fill)
-                                        .frame(width: 40, height: 40)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                } placeholder: {
-                                    Image(systemName: "music.note")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(Color.white.opacity(0.40))
-                                }
-                            }
-                            .frame(width: 40, height: 40)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(rec.title)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                Text(rec.artist)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "#a0a0a0"))
-                                    .lineLimit(1)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "play.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(Color.white.opacity(0.60))
-                        }
-                        .padding(8)
-                        .background(Color.white.opacity(0.02))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
     private func loadTrackExtras() async {
         guard let track = player.currentTrack else { return }
 
@@ -828,8 +769,6 @@ public struct FullscreenPlayerView: View {
             lyricsLines = []
         }
         isLoadingLyrics = false
-
-        recommendations = await MusicService.shared.fetchRecommendations(trackId: track.id, artist: track.artist, title: track.title, serverURL: serverURL, token: token)
     }
 
     private func formatSeconds(_ seconds: Double) -> String {
