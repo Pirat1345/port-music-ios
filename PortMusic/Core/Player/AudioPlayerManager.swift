@@ -24,6 +24,7 @@ public final class AudioPlayerManager: ObservableObject {
 
     public private(set) var currentServerURL: String? = nil
     private var lastPreviousTapTime: Date? = nil
+    private var isNavigatingBackward: Bool = false
 
     // MARK: - Internal Player Properties
     private var avPlayer: AVPlayer? = nil
@@ -67,8 +68,8 @@ public final class AudioPlayerManager: ObservableObject {
     public func play(track: Track, from contextQueue: [Track] = [], serverURL: String) {
         self.currentServerURL = serverURL
 
-        // Track-Historie fuer Rueckwaerts-Springen fuehren
-        if let current = self.currentTrack, current.id != track.id {
+        // Track-Historie fuer Rueckwaerts-Springen fuehren (nur bei Vorwaerts-Wiedergabe)
+        if !isNavigatingBackward, let current = self.currentTrack, current.id != track.id {
             if !self.pastTracks.contains(where: { $0.id == current.id }) {
                 self.pastTracks.append(current)
                 if self.pastTracks.count > 50 {
@@ -255,7 +256,14 @@ public final class AudioPlayerManager: ObservableObject {
         if prevIndex >= 0 && prevIndex < queue.count {
             self.queueIndex = prevIndex
             let prevTrack = queue[prevIndex]
+            self.isNavigatingBackward = true
             play(track: prevTrack, from: queue, serverURL: activeURL)
+            self.isNavigatingBackward = false
+            return
+        }
+
+        if queue.count > 1 {
+            seek(to: 0)
             return
         }
 
@@ -263,7 +271,9 @@ public final class AudioPlayerManager: ObservableObject {
             let prevTrack = pastTracks.removeLast()
             self.queue.insert(prevTrack, at: 0)
             self.queueIndex = 0
+            self.isNavigatingBackward = true
             play(track: prevTrack, from: queue, serverURL: activeURL)
+            self.isNavigatingBackward = false
             return
         }
 
