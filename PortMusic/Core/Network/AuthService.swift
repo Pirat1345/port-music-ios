@@ -252,12 +252,12 @@ public final class AuthService {
         }
 
         if let userObj = json["user"] as? [String: Any] {
-            let userId = (userObj["userId"] as? String) ?? (userObj["id"] as? String) ?? UUID().uuidString
-            let username = (userObj["username"] as? String) ?? "Benutzer"
+            let userId = (userObj["userId"] as? String) ?? (userObj["user_id"] as? String) ?? (userObj["id"] as? String) ?? UUID().uuidString
+            let username = (userObj["username"] as? String) ?? (userObj["displayName"] as? String) ?? (userObj["display_name"] as? String) ?? "Benutzer"
             let email = userObj["email"] as? String
             let role = userObj["role"] as? String
             let createdAt = userObj["createdAt"] as? String
-            let avatar = (userObj["avatar"] as? String) ?? (userObj["picture"] as? String) ?? (json["avatar"] as? String)
+            let avatar = (userObj["avatar"] as? String) ?? (userObj["picture"] as? String) ?? (userObj["avatarUrl"] as? String) ?? (userObj["avatar_url"] as? String) ?? (json["avatar"] as? String) ?? (json["avatar_url"] as? String)
 
             return UserProfile(
                 id: userId,
@@ -269,12 +269,12 @@ public final class AuthService {
             )
         }
 
-        let userId = (json["userId"] as? String) ?? (json["id"] as? String) ?? UUID().uuidString
-        let username = (json["username"] as? String) ?? "Benutzer"
+        let userId = (json["userId"] as? String) ?? (json["user_id"] as? String) ?? (json["id"] as? String) ?? UUID().uuidString
+        let username = (json["username"] as? String) ?? (json["displayName"] as? String) ?? (json["display_name"] as? String) ?? "Benutzer"
         let email = json["email"] as? String
         let role = json["role"] as? String
         let createdAt = json["createdAt"] as? String
-        let avatar = (json["avatar"] as? String) ?? (json["picture"] as? String)
+        let avatar = (json["avatar"] as? String) ?? (json["picture"] as? String) ?? (json["avatarUrl"] as? String) ?? (json["avatar_url"] as? String)
 
         return UserProfile(
             id: userId,

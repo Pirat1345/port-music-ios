@@ -31,7 +31,9 @@ public struct MainTabView: View {
     public let onLogout: () -> Void
 
     @State private var selectedTab: MainTabItem = .home
+    @State private var previousTab: MainTabItem = .home
     @State private var showFullscreenPlayer: Bool = false
+    @State private var showMenuDrawer: Bool = false
     @State private var searchPath: [AppRoute] = []
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var session = SessionManager.shared
@@ -104,6 +106,26 @@ public struct MainTabView: View {
                 .transition(.move(edge: .bottom))
                 .zIndex(999)
             }
+
+            // ── Menü Drawer (Slide-In Sheet von links - exakt wie auf der Webseite) ──
+            if showMenuDrawer {
+                PortMenuDrawerView(
+                    user: session.currentUser ?? user,
+                    serverURL: serverURL,
+                    isPresented: $showMenuDrawer,
+                    onOpenProfile: {
+                        selectedTab = .profile
+                        showMenuDrawer = false
+                    },
+                    onOpenSettings: {
+                        selectedTab = .profile
+                        showMenuDrawer = false
+                    },
+                    onLogout: onLogout
+                )
+                .transition(.opacity)
+                .zIndex(998)
+            }
         }
         .preferredColorScheme(.dark)
         .task {
@@ -122,8 +144,19 @@ public struct MainTabView: View {
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    if tab == .profile {
+                        if selectedTab != .profile {
+                            previousTab = selectedTab
+                        }
                         selectedTab = tab
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            showMenuDrawer = true
+                        }
+                    } else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = tab
+                            showMenuDrawer = false
+                        }
                     }
                 }) {
                     VStack(spacing: 4) {
