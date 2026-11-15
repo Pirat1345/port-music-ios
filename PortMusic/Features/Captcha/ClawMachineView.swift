@@ -415,26 +415,26 @@ public struct ClawMachineView: View {
     @State private var pile: [PileSlot] = []
     @State private var softBodies: [SoftBodyState] = []
 
-    // Confetti particles
-    private struct ConfettiParticle: Identifiable {
+    // Floating Sparkle Orbs on Win (Dynamic continuous particles)
+    private struct SparkleOrb: Identifiable {
         let id: Int
-        let dx: CGFloat
-        let dy: CGFloat
-        let dr: Double
+        let startX: CGFloat
+        let vx: CGFloat
+        let speedY: CGFloat
+        let size: CGFloat
         let color: Color
-        let delay: Double
     }
 
-    private let confettiSet: [ConfettiParticle] = [
-        ConfettiParticle(id: 0, dx: -44, dy: -54, dr: -150, color: Color(hex: "#34c759"), delay: 0.0),
-        ConfettiParticle(id: 1, dx: -30, dy: -66, dr: 120, color: Color(hex: "#ffd60a"), delay: 0.05),
-        ConfettiParticle(id: 2, dx: -14, dy: -76, dr: -80, color: Color(hex: "#5cd679"), delay: 0.02),
-        ConfettiParticle(id: 3, dx: 2, dy: -80, dr: 60, color: Color(hex: "#5a93c9"), delay: 0.07),
-        ConfettiParticle(id: 4, dx: 16, dy: -74, dr: -130, color: Color(hex: "#ffb340"), delay: 0.03),
-        ConfettiParticle(id: 5, dx: 30, dy: -64, dr: 100, color: Color(hex: "#a8e6b8"), delay: 0.06),
-        ConfettiParticle(id: 6, dx: 44, dy: -52, dr: -110, color: Color(hex: "#34c759"), delay: 0.01),
-        ConfettiParticle(id: 7, dx: -54, dy: -36, dr: 90, color: Color(hex: "#e58ab0"), delay: 0.09),
-        ConfettiParticle(id: 8, dx: 54, dy: -34, dr: -70, color: Color(hex: "#5a93c9"), delay: 0.08)
+    private let victorySparkles: [SparkleOrb] = [
+        SparkleOrb(id: 0, startX: -50, vx: -14, speedY: 48, size: 6, color: Color(hex: "#34c759")),
+        SparkleOrb(id: 1, startX: -30, vx: -8,  speedY: 62, size: 5, color: Color(hex: "#a8e6b8")),
+        SparkleOrb(id: 2, startX: -12, vx: -3,  speedY: 54, size: 7, color: Color(hex: "#64d2ff")),
+        SparkleOrb(id: 3, startX: 8,   vx: 4,   speedY: 58, size: 6, color: Color(hex: "#ffd60a")),
+        SparkleOrb(id: 4, startX: 28,  vx: 9,   speedY: 50, size: 5, color: Color(hex: "#34c759")),
+        SparkleOrb(id: 5, startX: 48,  vx: 16,  speedY: 46, size: 6, color: Color(hex: "#a8e6b8")),
+        SparkleOrb(id: 6, startX: 0,   vx: 0,   speedY: 68, size: 8, color: Color(hex: "#30d158")),
+        SparkleOrb(id: 7, startX: -20, vx: 5,   speedY: 44, size: 5, color: Color(hex: "#ffd60a")),
+        SparkleOrb(id: 8, startX: 20,  vx: -5,  speedY: 44, size: 5, color: Color(hex: "#64d2ff"))
     ]
 
     // Timer loop
@@ -896,17 +896,44 @@ public struct ClawMachineView: View {
                 )
                 .padding(2)
 
-            // Centered Status Display (Icon + Label)
-            HStack(spacing: 8) {
-                if trayMode == .win {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color(hex: "#34c759"))
+            // Status Display (Icon + Label or Victory Seal)
+            if trayMode == .win {
+                VStack(spacing: 3) {
+                    ZStack {
+                        // Expanding Radiant Aura Pulse
+                        Circle()
+                            .stroke(Color(hex: "#34c759").opacity(max(0.0, 0.75 - stageTime * 0.55)), lineWidth: 2)
+                            .scaleEffect(1.0 + CGFloat(stageTime) * 1.6)
 
-                    Text("Toller Fang!")
+                        // Glowing Emerald Success Seal
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    RadialGradient(
+                                        colors: [Color(hex: "#34c759"), Color(hex: "#1b6930")],
+                                        center: .center,
+                                        startRadius: 2,
+                                        endRadius: 18
+                                    )
+                                )
+                                .frame(width: 32, height: 32)
+                                .shadow(color: Color(hex: "#34c759").opacity(0.85), radius: 10)
+
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .scaleEffect(min(1.0, stageTime * 3.4))
+                    }
+
+                    Text("Verifiziert!")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(Color(hex: "#34c759"))
-                } else if trayMode == .no {
+                        .shadow(color: Color(hex: "#34c759").opacity(0.5), radius: 4)
+                        .scaleEffect(min(1.0, stageTime * 3.0))
+                }
+            } else if trayMode == .no {
+                HStack(spacing: 8) {
                     Image(systemName: "arrow.uturn.backward.circle.fill")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(Color(hex: "#ff9500"))
@@ -914,7 +941,9 @@ public struct ClawMachineView: View {
                     Text("Falsches Spielzeug")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Color(hex: "#ff9500"))
-                } else if overTray {
+                }
+            } else if overTray {
+                HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
@@ -922,7 +951,9 @@ public struct ClawMachineView: View {
                     Text("Jetzt abwerfen!")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.white)
-                } else {
+                }
+            } else {
+                HStack(spacing: 8) {
                     Image(systemName: "tray.and.arrow.down.fill")
                         .font(.system(size: 14))
                         .foregroundColor(.white)
@@ -933,14 +964,22 @@ public struct ClawMachineView: View {
                 }
             }
 
-            // Confetti Burst on Win
+            // Floating Rising Sparkle Orbs on Win (Dynamic continuous particles)
             if trayMode == .win {
-                ForEach(confettiSet) { p in
+                ForEach(victorySparkles) { p in
+                    let yOffset = -CGFloat(stageTime) * p.speedY
+                    let xOffset = p.startX + CGFloat(stageTime) * p.vx
+                    let progress = min(1.0, stageTime / 1.1)
+                    let opacity = max(0.0, 1.0 - progress * 1.1)
+                    let scale = max(0.2, 1.0 - progress * 0.4)
+
                     Circle()
                         .fill(p.color)
-                        .frame(width: 7, height: 7)
-                        .offset(x: p.dx, y: p.dy)
-                        .transition(.scale.combined(with: .opacity))
+                        .frame(width: p.size, height: p.size)
+                        .scaleEffect(scale)
+                        .opacity(opacity)
+                        .offset(x: xOffset, y: yOffset)
+                        .blur(radius: 0.4)
                 }
             }
         }
@@ -1086,12 +1125,11 @@ public struct ClawMachineView: View {
             stepDropSequence(dt: dt)
         } else if phase == .celebrate {
             stageTime += dt
-            if stage == .beat && stageTime >= 0.28 {
+            if stage == .beat && stageTime >= 0.75 {
                 stage = .shine
                 isVerified = true
-                triggerHapticNotification(type: .success)
                 onVerify(targetId)
-            } else if stage == .shine && stageTime >= 0.98 {
+            } else if stage == .shine && stageTime >= 1.60 {
                 phase = .done
             }
         } else if phase == .deny {
@@ -1276,13 +1314,21 @@ public struct ClawMachineView: View {
             let toyW = pile[carriedIndex].w
             let sunk = carryPos.y + toyW / 2 - MOUTH_Y
 
-            if sunk >= toyW + 4.0 {
+            // As it drops into the chute aperture, swallow smoothly shrinks and fades the toy into the tray
+            if sunk > 0 {
+                swallow = min(1.0, sunk / (toyW * 0.85))
+            }
+
+            if sunk >= toyW * 0.88 {
                 carriedIndex = -1
                 overTray = false
                 trayMode = .win
                 stage = .beat
                 stageTime = 0.0
+                swallow = 0.0
+                stretch = 0.0
                 phase = .celebrate
+                triggerHapticNotification(type: .success)
             }
         }
 

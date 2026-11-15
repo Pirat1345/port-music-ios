@@ -291,8 +291,8 @@ public struct CaptchaChallengeContainerView: View {
             await MainActor.run {
                 isVerifying = false
                 if res.success, let vToken = res.token {
-                    // Success!
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    // Success: Zeit lassen, damit die elegante Erfolgs-Animation im Greifarm sichtbar ausklingt
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.70) {
                         onSuccess(vToken)
                     }
                 } else {

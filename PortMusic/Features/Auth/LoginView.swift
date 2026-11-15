@@ -53,50 +53,55 @@ public struct LoginView: View {
             // Fluent Animated Seiden-Hintergrund
             FluentBackgroundView()
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Dezenter Server-Indikator oben
-                    serverHeaderBadge
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        // Dezenter Server-Indikator oben
+                        serverHeaderBadge
+                            .padding(.top, 16)
+                            .padding(.bottom, 8)
 
-                    if is2FAMode {
-                        TwoFactorView(
-                            serverURL: activeServerURL,
-                            pendingToken: pendingLoginToken,
-                            availableMethods: twoFactorMethods,
-                            maskedEmail: maskedEmail,
-                            onVerificationSuccess: { user, token in
-                                sessionManager.loginSuccess(
-                                    user: user,
-                                    token: token ?? "",
-                                    serverURL: activeServerURL
-                                )
-                                onLoginSuccess(user)
-                            },
-                            onCancel: {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                    is2FAMode = false
+                        Spacer(minLength: is2FAMode ? 24 : 12)
+
+                        if is2FAMode {
+                            TwoFactorView(
+                                serverURL: activeServerURL,
+                                pendingToken: pendingLoginToken,
+                                availableMethods: twoFactorMethods,
+                                maskedEmail: maskedEmail,
+                                onVerificationSuccess: { user, token in
+                                    sessionManager.loginSuccess(
+                                        user: user,
+                                        token: token ?? "",
+                                        serverURL: activeServerURL
+                                    )
+                                    onLoginSuccess(user)
+                                },
+                                onCancel: {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                        is2FAMode = false
+                                    }
                                 }
-                            }
-                        )
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                            removal: .opacity
-                        ))
-                    } else {
-                        loginFormContent
+                            )
                             .transition(.asymmetric(
                                 insertion: .opacity.combined(with: .scale(scale: 0.96)),
                                 removal: .opacity
                             ))
-                    }
+                        } else {
+                            loginFormContent
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                                    removal: .opacity
+                                ))
+                        }
 
-                    Spacer()
+                        Spacer(minLength: is2FAMode ? 32 : 24)
+                    }
+                    .frame(maxWidth: 440)
+                    .frame(minHeight: geometry.size.height)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 24)
                 }
-                .frame(maxWidth: 440)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-                .padding(.bottom, 40)
             }
         }
         .preferredColorScheme(.dark)
