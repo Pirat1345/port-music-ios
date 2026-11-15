@@ -1,0 +1,76 @@
+{
+  "tracks": [
+    {
+      "id": "dz_starboy_01",
+      "title": "Starboy",
+      "artist": "The Weeknd ft. Daft Punk",
+      "album": "Starboy",
+      "duration": "3:50",
+      "durationSeconds": 230,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/4b/32/34/4b323485-6453-cfbf-cf1c-34351980ee9f/16UMGIM56461.rgb.jpg/600x600bb.jpg",
+      "sourceUrl": "/api/stream/dz_starboy_01",
+      "storageType": "online",
+      "sourceType": "deezer",
+      "isExplicit": true
+    },
+    {
+      "id": "apple_blinding_02",
+      "title": "Blinding Lights",
+      "artist": "The Weeknd",
+      "album": "After Hours",
+      "duration": "3:20",
+      "durationSeconds": 200,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b5/0d/16/b50d165f-4050-84fe-fd9b-a010d807e597/20UMGIM09028.rgb.jpg/600x600bb.jpg",
+      "sourceUrl": "/api/stream/apple_blinding_02",
+      "storageType": "online",
+      "sourceType": "apple",
+      "isExplicit": false
+    },
+    {
+      "id": "yt_save_03",
+      "title": "Save Your Tears",
+      "artist": "The Weeknd",
+      "album": "After Hours",
+      "duration": "3:35",
+      "durationSeconds": 215,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b5/0d/16/b50d165f-4050-84fe-fd9b-a010d807e597/20UMGIM09028.rgb.jpg/600x600bb.jpg",
+      "sourceUrl": "/api/stream/yt_save_03",
+      "storageType": "online",
+      "sourceType": "youtube",
+      "isExplicit": false
+    }
+  ],
+  "albums": [
+    {
+      "id": "alb_starboy",
+      "title": "Starboy",
+      "artist": "The Weeknd",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/4b/32/34/4b323485-6453-cfbf-cf1c-34351980ee9f/16UMGIM56461.rgb.jpg/600x600bb.jpg",
+      "nbTracks": 18
+    },
+    {
+      "id": "alb_afterhours",
+      "title": "After Hours",
+      "artist": "The Weeknd",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b5/0d/16/b50d165f-4050-84fe-fd9b-a010d807e597/20UMGIM09028.rgb.jpg/600x600bb.jpg",
+      "nbTracks": 14
+    }
+  ],
+  "artists": [
+    {
+      "id": "art_the_weeknd",
+      "name": "The Weeknd",
+      "picture": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/74/45/3b/74453b5e-4ef8-82ba-9bd7-526bfde93db7/22UMGIM74567.rgb.jpg/600x600bb.jpg",
+      "nbFan": 98452000
+    }
+  ],
+  "playlists": [
+    {
+      "id": "pl_weeknd_essentials",
+      "title": "The Weeknd: The Hits",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/2e/18/a3/2e18a394-f9b2-1079-8d42-ccfa6d51d20d/88823a4b-bcc9-40c9-be1e-5671776d8837.png/600x600sr.jpg",
+      "nbTracks": 32,
+      "user": "Port Music"
+    }
+  ]
+}

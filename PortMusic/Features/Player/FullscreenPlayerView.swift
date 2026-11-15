@@ -14,6 +14,14 @@ public struct FullscreenPlayerView: View {
     @State private var dragOffset: CGFloat = 0.0
     @State private var volume: Float = 0.7
 
+    // Feature #18: Synced Lyrics State
+    @State private var lyricsLines: [LyricLine] = []
+    @State private var isLoadingLyrics: Bool = false
+    @State private var lyricsSizeScale: CGFloat = 1.0
+
+    // Feature #20: Recommendations State
+    @State private var recommendations: [Track] = []
+
     public init(serverURL: String, onClose: @escaping () -> Void) {
         self.serverURL = serverURL
         self.onClose = onClose
@@ -50,8 +58,14 @@ public struct FullscreenPlayerView: View {
                     VStack(spacing: 24) {
                         Spacer(minLength: 4)
 
-                        // Grosses Albumcover mit Feder-Animation (Spring-Bounce) auf Play/Pause
-                        artworkSection
+                        // Artwork oder synchronisierter Songtext (Feature #18)
+                        if showLyrics {
+                            lyricsSection
+                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        } else {
+                            // Grosses Albumcover mit Feder-Animation (Spring-Bounce) auf Play/Pause
+                            artworkSection
+                        }
 
                         // Titel, Interpret & Herz-Favoriten-Button
                         trackInfoSection
@@ -67,6 +81,9 @@ public struct FullscreenPlayerView: View {
 
                         // Zusatz-Aktionen: Songtext, AirPlay, Warteschlange
                         bottomActionsSection
+
+                        // Song-Details & Empfehlungen (Feature #20)
+                        songDetailsAndRecommendationsSection
 
                         Spacer(minLength: 24)
                     }
@@ -97,6 +114,9 @@ public struct FullscreenPlayerView: View {
         )
         .sheet(isPresented: $showQueueSheet) {
             QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
+        }
+        .task(id: player.currentTrack?.id) {
+            await loadTrackExtras()
         }
     }
 
@@ -148,27 +168,20 @@ public struct FullscreenPlayerView: View {
             VStack(spacing: 2) {
                 Text("AKTUELLE WIEDERGABE")
                     .font(.system(size: 10, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundColor(Color.white.opacity(0.60))
+                    .foregroundColor(Color.white.opacity(0.50))
+                    .tracking(1.0)
 
-                if let album = player.currentTrack?.album, !album.isEmpty {
-                    Text(album)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(PortColors.textPrimary)
-                        .lineLimit(1)
-                }
+                Text(player.currentTrack?.album ?? "Port Music")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
             }
 
             Spacer()
 
-            Button(action: { showQueueSheet = true }) {
-                Image(systemName: "list.bullet")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.10))
-                    .clipShape(Circle())
-            }
+            // Platzhalter fuer Symmetrie
+            Color.clear
+                .frame(width: 36, height: 36)
         }
     }
 
@@ -206,6 +219,94 @@ public struct FullscreenPlayerView: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
     }
 
+    // MARK: - Synced Karaoke Lyrics Section (Feature #18)
+    private var lyricsSection: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("Songtext")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(Color.white.opacity(0.60))
+
+                Spacer()
+
+                Button(action: {
+                    lyricsSizeScale = (lyricsSizeScale >= 1.25) ? 0.9 : (lyricsSizeScale + 0.15)
+                }) {
+                    Image(systemName: "textformat.size")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .padding(6)
+                        .background(Color.white.opacity(0.10))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, 8)
+
+            if isLoadingLyrics {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    Text("Lade Songtext...")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.white.opacity(0.50))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if lyricsLines.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 32))
+                        .foregroundColor(Color.white.opacity(0.30))
+                    Text("Kein synchronisierter Songtext verfügbar")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.white.opacity(0.50))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(alignment: .leading, spacing: 18) {
+                            ForEach(lyricsLines) { line in
+                                let isCurrent = currentLyricId == line.id
+                                Text(line.text)
+                                    .font(.system(size: (isCurrent ? 22 : 18) * lyricsSizeScale, weight: isCurrent ? .bold : .medium))
+                                    .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.35))
+                                    .id(line.id)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        player.seek(to: line.time)
+                                    }
+                                    .animation(.easeInOut(duration: 0.25), value: isCurrent)
+                            }
+                        }
+                        .padding(.vertical, 20)
+                    }
+                    .onChange(of: currentLyricId) { newId in
+                        if let id = newId {
+                            withAnimation(.easeInOut(duration: 0.35)) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: 320, minHeight: 320, maxHeight: 320)
+        .padding(14)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private var currentLyricId: String? {
+        guard !lyricsLines.isEmpty else { return nil }
+        let time = activeProgress
+        let matched = lyricsLines.last(where: { $0.time <= time + 0.15 })
+        return matched?.id ?? lyricsLines.first?.id
+    }
+
     // MARK: - Titel, Interpret & Herz-Favorit
     private var trackInfoSection: some View {
         HStack(alignment: .center, spacing: 14) {
@@ -230,7 +331,7 @@ public struct FullscreenPlayerView: View {
                 if let track = player.currentTrack {
                     Task {
                         let token = SessionManager.shared.currentToken
-                        _ = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
+                        await MusicService.shared.toggleFavorite(trackId: track.id, serverURL: serverURL, token: token)
                     }
                 }
             }) {
@@ -437,7 +538,9 @@ public struct FullscreenPlayerView: View {
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
-                showLyrics.toggle()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    showLyrics.toggle()
+                }
             }) {
                 Image(systemName: showLyrics ? "quote.bubble.fill" : "quote.bubble")
                     .font(.system(size: 19, weight: .semibold))
@@ -459,6 +562,136 @@ public struct FullscreenPlayerView: View {
             }
         }
         .padding(.top, 6)
+    }
+
+    // MARK: - Song Details & Empfehlungen (Feature #20)
+    private var songDetailsAndRecommendationsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Divider()
+                .background(Color.white.opacity(0.12))
+                .padding(.top, 10)
+
+            // Credits & Song Details
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Titelinformationen")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(Color.white)
+
+                if let album = player.currentTrack?.album, !album.isEmpty {
+                    HStack {
+                        Text("Album")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.white.opacity(0.50))
+                        Spacer()
+                        Text(album)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color.white)
+                    }
+                }
+
+                if let artist = player.currentTrack?.artist, !artist.isEmpty {
+                    HStack {
+                        Text("Künstler")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.white.opacity(0.50))
+                        Spacer()
+                        Text(artist)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color.white)
+                    }
+                }
+
+                if let dur = player.currentTrack?.duration {
+                    HStack {
+                        Text("Dauer")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.white.opacity(0.50))
+                        Spacer()
+                        Text(dur)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color.white)
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            // Empfehlungen ("Ähnliche Titel")
+            if !recommendations.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Ähnliche Titel")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Color.white)
+
+                    VStack(spacing: 8) {
+                        ForEach(recommendations.prefix(6)) { rec in
+                            Button(action: {
+                                player.play(track: rec, from: recommendations)
+                            }) {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color.white.opacity(0.08))
+                                            .frame(width: 40, height: 40)
+
+                                        let resolved = resolveCoverURL(rec.coverUrl, serverURL: serverURL)
+                                        PortCachedAsyncImage(url: resolved) { img in
+                                            img.resizable().aspectRatio(contentMode: .fill)
+                                                .frame(width: 40, height: 40)
+                                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        } placeholder: {
+                                            Image(systemName: "music.note")
+                                                .font(.system(size: 16))
+                                                .foregroundColor(Color.white.opacity(0.40))
+                                        }
+                                    }
+                                    .frame(width: 40, height: 40)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(rec.title)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .lineLimit(1)
+                                        Text(rec.artist)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(Color(hex: "#a0a0a0"))
+                                            .lineLimit(1)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "play.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Color.white.opacity(0.60))
+                                }
+                                .padding(8)
+                                .background(Color.white.opacity(0.02))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+
+    private func loadTrackExtras() async {
+        guard let track = player.currentTrack else { return }
+        isLoadingLyrics = true
+        let token = SessionManager.shared.currentToken
+        if let rawLrc = await MusicService.shared.fetchLyrics(trackId: track.id, title: track.title, artist: track.artist, serverURL: serverURL, token: token) {
+            lyricsLines = parseLRC(rawLrc)
+        } else {
+            lyricsLines = []
+        }
+        isLoadingLyrics = false
+
+        recommendations = await MusicService.shared.fetchRecommendations(trackId: track.id, artist: track.artist, title: track.title, serverURL: serverURL, token: token)
     }
 
     private func formatSeconds(_ seconds: Double) -> String {
@@ -523,7 +756,7 @@ public struct QueueSheetView: View {
                         ForEach(Array(player.queue.enumerated()), id: \.offset) { index, item in
                             let isCurrent = (index == player.queueIndex)
                             Button(action: {
-                                player.play(track: item, from: player.queue, serverURL: serverURL)
+                                player.play(track: item, from: player.queue)
                             }) {
                                 HStack(spacing: 12) {
                                     Text("\(index + 1)")

@@ -17,8 +17,8 @@ struct PortMusicApp: App {
                     splashLoadingView
                         .transition(.opacity)
                 } else if sessionManager.isAuthenticated,
-                          let user = sessionManager.currentUser,
                           let serverURL = sessionManager.serverURL {
+                    let user = sessionManager.currentUser ?? sessionManager.loadCachedUserProfile() ?? UserProfile(id: "user", username: "User", email: nil, role: "user", avatar: nil)
                     MainTabView(
                         user: user,
                         serverURL: serverURL,
@@ -37,7 +37,7 @@ struct PortMusicApp: App {
                         serverURL: serverURL,
                         onLoginSuccess: { _ in
                             // Der SessionManager schaltet isAuthenticated auf true,
-                            // wodurch automatisch auf LoggedInView umgeschaltet wird.
+                            // wodurch automatisch auf MainTabView umgeschaltet wird.
                         },
                         onChangeServer: {
                             withAnimation(.spring(response: 0.50, dampingFraction: 0.85)) {

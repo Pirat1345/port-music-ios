@@ -1,0 +1,213 @@
+{
+  "topPicks": [
+    {
+      "id": "pick_01",
+      "tag": "Neuerscheinung",
+      "title": "Timeless",
+      "subtitle": "The Weeknd & Playboi Carti",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/39/33/1b/39331b26-4444-2394-bb96-b3330669d0d3/24UM1IM02482.rgb.jpg/600x600bb.jpg",
+      "kind": "track",
+      "targetUrl": "/track/dz_timeless_01"
+    },
+    {
+      "id": "pick_02",
+      "tag": "Top Album",
+      "title": "CHROMAKOPIA",
+      "subtitle": "Tyler, The Creator",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/05/29/ce/0529ce8c-2f47-8a6a-8b89-a292862d8542/886447881023.jpg/600x600bb.jpg",
+      "kind": "album",
+      "targetUrl": "/album/dz_chromakopia"
+    },
+    {
+      "id": "pick_03",
+      "tag": "Trending",
+      "title": "Birds of a Feather",
+      "subtitle": "Billie Eilish",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/80/7e/7e/807e7e59-ae6e-71c1-4c11-e12933d7b975/24UMGIM22361.rgb.jpg/600x600bb.jpg",
+      "kind": "track",
+      "targetUrl": "/track/apple_birds_01"
+    },
+    {
+      "id": "pick_04",
+      "tag": "Beliebt",
+      "title": "Taste",
+      "subtitle": "Sabrina Carpenter",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/5c/d5/4b/5cd54b2d-1fc6-1d12-1f48-a00e5e01b7a6/24UMGIM69458.rgb.jpg/600x600bb.jpg",
+      "kind": "track",
+      "targetUrl": "/track/yt_taste_01"
+    }
+  ],
+  "trendingEverywhere": [
+    {
+      "id": "dz_30101",
+      "title": "Die With A Smile",
+      "artist": "Lady Gaga & Bruno Mars",
+      "album": "Die With A Smile - Single",
+      "duration": "4:11",
+      "durationSeconds": 251,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b8/b6/2a/b8b62aa1-404d-e9c5-ee16-ec8787f76901/24UMGIM80766.rgb.jpg/600x600bb.jpg",
+      "sourceUrl": "/api/stream/dz_30101",
+      "storageType": "online",
+      "sourceType": "deezer",
+      "isExplicit": false
+    },
+    {
+      "id": "apple_40202",
+      "title": "Espresso",
+      "artist": "Sabrina Carpenter",
+      "album": "Short n' Sweet",
+      "duration": "2:55",
+      "durationSeconds": 175,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/5c/d5/4b/5cd54b2d-1fc6-1d12-1f48-a00e5e01b7a6/24UMGIM69458.rgb.jpg/600x600bb.jpg",
+      "sourceUrl": "/api/stream/apple_40202",
+      "storageType": "online",
+      "sourceType": "apple",
+      "isExplicit": false
+    },
+    {
+      "id": "yt_50303",
+      "title": "Good Luck, Babe!",
+      "artist": "Chappell Roan",
+      "album": "Good Luck, Babe! - Single",
+      "duration": "3:38",
+      "durationSeconds": 218,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/21/df/b4/21dfb47e-8971-d636-f6d8-21d1d8cf4b30/24UMGIM22362.rgb.jpg/600x600bb.jpg",
+      "sourceUrl": "/api/stream/yt_50303",
+      "storageType": "online",
+      "sourceType": "youtube",
+      "isExplicit": false
+    },
+    {
+      "id": "dz_60404",
+      "title": "Not Like Us",
+      "artist": "Kendrick Lamar",
+      "album": "Not Like Us - Single",
+      "duration": "4:34",
+      "durationSeconds": 274,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/3c/aa/9c/3caa9c01-7243-7f2a-7182-1405b5aa61fe/24UMGIM48116.rgb.jpg/600x600bb.jpg",
+      "sourceUrl": "/api/stream/dz_60404",
+      "storageType": "online",
+      "sourceType": "deezer",
+      "isExplicit": true
+    }
+  ],
+  "newMusic": [
+    {
+      "id": "album_nm_01",
+      "title": "Hurry Up Tomorrow",
+      "artist": "The Weeknd",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/39/33/1b/39331b26-4444-2394-bb96-b3330669d0d3/24UM1IM02482.rgb.jpg/600x600bb.jpg",
+      "nbTracks": 14
+    },
+    {
+      "id": "album_nm_02",
+      "title": "Short n' Sweet",
+      "artist": "Sabrina Carpenter",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/5c/d5/4b/5cd54b2d-1fc6-1d12-1f48-a00e5e01b7a6/24UMGIM69458.rgb.jpg/600x600bb.jpg",
+      "nbTracks": 12
+    }
+  ],
+  "todaysTopHits": [
+    {
+      "id": "tth_01",
+      "title": "Die With A Smile",
+      "artist": "Lady Gaga & Bruno Mars",
+      "album": "Die With A Smile",
+      "duration": "4:11",
+      "durationSeconds": 251,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b8/b6/2a/b8b62aa1-404d-e9c5-ee16-ec8787f76901/24UMGIM80766.rgb.jpg/600x600bb.jpg",
+      "rank": 1,
+      "isExplicit": false
+    },
+    {
+      "id": "tth_02",
+      "title": "Birds of a Feather",
+      "artist": "Billie Eilish",
+      "album": "HIT ME HARD AND SOFT",
+      "duration": "3:16",
+      "durationSeconds": 196,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/80/7e/7e/807e7e59-ae6e-71c1-4c11-e12933d7b975/24UMGIM22361.rgb.jpg/600x600bb.jpg",
+      "rank": 2,
+      "isExplicit": false
+    },
+    {
+      "id": "tth_03",
+      "title": "Taste",
+      "artist": "Sabrina Carpenter",
+      "album": "Short n' Sweet",
+      "duration": "2:37",
+      "durationSeconds": 157,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/5c/d5/4b/5cd54b2d-1fc6-1d12-1f48-a00e5e01b7a6/24UMGIM69458.rgb.jpg/600x600bb.jpg",
+      "rank": 3,
+      "isExplicit": true
+    }
+  ],
+  "top100Global": [
+    {
+      "id": "t100_01",
+      "title": "Beautiful Things",
+      "artist": "Benson Boone",
+      "album": "Fireworks & Rollerblades",
+      "duration": "3:00",
+      "durationSeconds": 180,
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/12/34/56/12345678.jpg/600x600bb.jpg",
+      "rank": 1,
+      "isExplicit": false
+    }
+  ],
+  "topAlbums": [
+    {
+      "id": "top_alb_01",
+      "title": "HIT ME HARD AND SOFT",
+      "artist": "Billie Eilish",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/80/7e/7e/807e7e59-ae6e-71c1-4c11-e12933d7b975/24UMGIM22361.rgb.jpg/600x600bb.jpg",
+      "nbTracks": 10
+    }
+  ],
+  "topPlaylists": [
+    {
+      "id": "top_pl_01",
+      "title": "Today's Top Hits",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/2e/18/a3/2e18a394-f9b2-1079-8d42-ccfa6d51d20d/88823a4b-bcc9-40c9-be1e-5671776d8837.png/600x600sr.jpg",
+      "nbTracks": 50,
+      "user": "Port Curators"
+    }
+  ],
+  "trendingArtists": [
+    {
+      "id": "art_weeknd",
+      "name": "The Weeknd",
+      "picture": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/74/45/3b/74453b5e-4ef8-82ba-9bd7-526bfde93db7/22UMGIM74567.rgb.jpg/600x600bb.jpg",
+      "nbFan": 98452000
+    },
+    {
+      "id": "art_billie",
+      "name": "Billie Eilish",
+      "picture": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/80/7e/7e/807e7e59-ae6e-71c1-4c11-e12933d7b975/24UMGIM22361.rgb.jpg/600x600bb.jpg",
+      "nbFan": 84120000
+    }
+  ],
+  "trendingAlbums": [
+    {
+      "id": "tr_alb_01",
+      "title": "After Hours",
+      "artist": "The Weeknd",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b5/0d/16/b50d165f-4050-84fe-fd9b-a010d807e597/20UMGIM09028.rgb.jpg/600x600bb.jpg",
+      "nbTracks": 14
+    }
+  ],
+  "moodsAndGenres": [
+    {
+      "id": "genre_pop",
+      "title": "Pop",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/16/e0/d7/16e0d799-dd77-b8e1-cce3-f27f7664ead6/80e1dd92-de5f-424f-8e76-2144694ad6f3.png/600x600sr.jpg",
+      "bgColor": "#3b1e38"
+    },
+    {
+      "id": "genre_rap",
+      "title": "Hip-Hop",
+      "cover": "https://is1-ssl.mzstatic.com/image/thumb/Features/v4/3f/39/61/3f3961dd-2eea-eb27-a7f2-4b799218f227/313a61ae-8a20-4faf-9a5f-ede8bc713069.png/600x600sr.jpg",
+      "bgColor": "#1e293b"
+    }
+  ]
+}

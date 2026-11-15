@@ -257,13 +257,15 @@ public final class AuthService {
             let email = userObj["email"] as? String
             let role = userObj["role"] as? String
             let createdAt = userObj["createdAt"] as? String
+            let avatar = (userObj["avatar"] as? String) ?? (userObj["picture"] as? String)
 
             return UserProfile(
                 id: userId,
                 username: username,
                 email: email,
                 role: role,
-                createdAt: createdAt
+                createdAt: createdAt,
+                avatar: avatar
             )
         }
 
@@ -336,6 +338,7 @@ public final class AuthService {
             let role = (userObj?["role"] as? String) ?? (json["role"] as? String) ?? "user"
             let email = (userObj?["email"] as? String) ?? (json["email"] as? String)
             let createdAt = (userObj?["createdAt"] as? String) ?? (json["createdAt"] as? String)
+            let avatar = (userObj?["avatar"] as? String) ?? (userObj?["picture"] as? String) ?? (json["avatar"] as? String) ?? (json["picture"] as? String)
             let token = json["token"] as? String
 
             let profile = UserProfile(
@@ -343,7 +346,8 @@ public final class AuthService {
                 username: uname,
                 email: email,
                 role: role,
-                createdAt: createdAt
+                createdAt: createdAt,
+                avatar: avatar
             )
             saveSession(user: profile, token: token)
             return .success(user: profile, token: token)

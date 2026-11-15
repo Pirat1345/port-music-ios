@@ -19,7 +19,7 @@ public enum MainTabItem: Int, CaseIterable {
         switch self {
         case .home: return "house.fill"
         case .search: return "magnifyingglass"
-        case .library: return "books.vertical.fill"
+        case .library: return "square.stack.fill"
         case .profile: return "person.crop.circle.fill"
         }
     }
@@ -45,32 +45,47 @@ public struct MainTabView: View {
             Color.black
                 .ignoresSafeArea()
 
-            // Aktiver Tab-Inhalt
+            // ── Aktiver Tab-Inhalt ──
             Group {
                 switch selectedTab {
                 case .home:
-                    HomeView(serverURL: serverURL, user: user)
+                    NavigationStack {
+                        HomeView(serverURL: serverURL, user: user)
+                            .navigationDestination(for: AppRoute.self) { route in
+                                destinationForRoute(route)
+                            }
+                    }
                 case .search:
-                    SearchView(serverURL: serverURL)
+                    NavigationStack {
+                        SearchView(serverURL: serverURL)
+                            .navigationDestination(for: AppRoute.self) { route in
+                                destinationForRoute(route)
+                            }
+                    }
                 case .library:
-                    LibraryView(serverURL: serverURL, user: user)
+                    NavigationStack {
+                        LibraryView(serverURL: serverURL, user: user)
+                            .navigationDestination(for: AppRoute.self) { route in
+                                destinationForRoute(route)
+                            }
+                    }
                 case .profile:
-                    LoggedInView(user: user, serverURL: serverURL, onLogout: onLogout)
+                    ProfileSettingsView(user: user, serverURL: serverURL, onLogout: onLogout)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Unterer Schwebender Bereich: MiniPlayer + Custom Glass TabBar
+            // ── Unterer Schwebender Bereich: MiniPlayer + Custom Octave Glass TabBar ──
             VStack(spacing: 0) {
-                // Schwebende MiniPlayer-Leiste (sofern Track aktiv)
+                // Schwebende Minibar-Leiste (wenn Track aktiv)
                 if player.currentTrack != nil {
-                    MiniPlayerBar(serverURL: serverURL) {
+                    PlayerBarView(serverURL: serverURL) {
                         showFullscreenPlayer = true
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                // Custom Glass TabBar
+                // Custom Octave Glass TabBar mit Glow & Safe-Area Unterstützung
                 glassTabBar
             }
         }
@@ -82,11 +97,12 @@ public struct MainTabView: View {
         }
     }
 
-    // MARK: - Custom Glass TabBar
+    // MARK: - Custom Octave Glass TabBar
     private var glassTabBar: some View {
         HStack(spacing: 0) {
             ForEach(MainTabItem.allCases, id: \.self) { tab in
                 let isSelected = (selectedTab == tab)
+
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
@@ -95,17 +111,28 @@ public struct MainTabView: View {
                     }
                 }) {
                     VStack(spacing: 4) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
-                            .frame(height: 24)
+                        ZStack {
+                            // Subtiler Active Glow hinter dem aktiven Icon
+                            if isSelected {
+                                Circle()
+                                    .fill(Color.white.opacity(0.14))
+                                    .frame(width: 38, height: 38)
+                                    .blur(radius: 4)
+                            }
+
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                                .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
+                                .shadow(color: isSelected ? Color.white.opacity(0.35) : Color.clear, radius: 4)
+                        }
+                        .frame(height: 26)
 
                         Text(tab.title)
-                            .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                            .font(.system(size: 10, weight: isSelected ? .bold : .regular))
                             .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 6)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -114,7 +141,7 @@ public struct MainTabView: View {
         .padding(.top, 8)
         .padding(.bottom, 12)
         .background(
-            Color.black.opacity(0.75)
+            Color.black.opacity(0.85)
                 .background(.ultraThinMaterial)
                 .ignoresSafeArea(edges: .bottom)
         )
@@ -124,5 +151,22 @@ public struct MainTabView: View {
                 .frame(height: 0.8),
             alignment: .top
         )
+    }
+
+    // MARK: - Navigation Destinations
+    @ViewBuilder
+    private func destinationForRoute(_ route: AppRoute) -> some View {
+        switch route {
+        case .artist(let name, let coverUrl):
+            ArtistDetailView(artistName: name, initialCover: coverUrl, serverURL: serverURL)
+        case .album(let id, let title, let artist, let coverUrl):
+            AlbumDetailView(albumId: id, initialTitle: title, initialArtist: artist, initialCover: coverUrl, serverURL: serverURL)
+        case .playlist(let id, let title, let coverUrl):
+            PlaylistDetailView(playlistId: id, initialTitle: title, initialCover: coverUrl, serverURL: serverURL)
+        case .likedSongs:
+            LikedSongsView(serverURL: serverURL)
+        case .libraryCategory(let category):
+            LibraryCategoryDetailView(category: category, serverURL: serverURL)
+        }
     }
 }

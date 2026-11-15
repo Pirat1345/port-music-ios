@@ -136,6 +136,80 @@ public final class MusicService {
         }
     }
 
+    // MARK: - Online Artist Discovery (/api/discovery/artist/:name)
+    public func fetchArtist(name: String, serverURL: String, token: String?) async -> DiscoveryArtistDetailData? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let base = cleanURL(serverURL)
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let encodedName = trimmed.addingPercentEncoding(withAllowedCharacters: allowed) ?? trimmed
+        guard let url = URL(string: "\(base)/api/discovery/artist/\(encodedName)") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return nil
+            }
+            if let envelope = try? JSONDecoder().decode(DiscoveryArtistResponse.self, from: data),
+               let artist = envelope.artist {
+                return artist
+            }
+            if let direct = try? JSONDecoder().decode(DiscoveryArtistDetailData.self, from: data) {
+                return direct
+            }
+            return nil
+        } catch {
+            print("MusicService.fetchArtist error: \(error)")
+            return nil
+        }
+    }
+
+    // MARK: - Online Album Discovery (/api/discovery/album/:id)
+    public func fetchAlbum(id: String, serverURL: String, token: String?) async -> DiscoveryAlbumDetailData? {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let base = cleanURL(serverURL)
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let encodedId = trimmed.addingPercentEncoding(withAllowedCharacters: allowed) ?? trimmed
+        guard let url = URL(string: "\(base)/api/discovery/album/\(encodedId)") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return nil
+            }
+            if let envelope = try? JSONDecoder().decode(DiscoveryAlbumResponse.self, from: data),
+               let album = envelope.album {
+                return album
+            }
+            if let direct = try? JSONDecoder().decode(DiscoveryAlbumDetailData.self, from: data) {
+                return direct
+            }
+            return nil
+        } catch {
+            print("MusicService.fetchAlbum error: \(error)")
+            return nil
+        }
+    }
+
     // MARK: - Device Identifier for Sync
     public var currentDeviceId: String {
         let key = "port_music_device_id_ios"
@@ -460,6 +534,186 @@ public final class MusicService {
             return false
         } catch {
             return false
+        }
+    }
+
+    // MARK: - Online Playlist Discovery (/api/discovery/playlist/:id)
+    public func fetchDiscoveryPlaylist(id: String, serverURL: String, token: String?) async -> DiscoveryPlaylistDetailData? {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let cleanId = trimmed
+            .replacingOccurrences(of: "discovery:", with: "")
+            .replacingOccurrences(of: "deezer:", with: "")
+            .replacingOccurrences(of: "yt:", with: "")
+
+        let base = cleanURL(serverURL)
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let encodedId = cleanId.addingPercentEncoding(withAllowedCharacters: allowed) ?? cleanId
+        guard let url = URL(string: "\(base)/api/discovery/playlist/\(encodedId)") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return nil
+            }
+            if let envelope = try? JSONDecoder().decode(DiscoveryPlaylistResponse.self, from: data),
+               let detail = envelope.toDetailData() {
+                return detail
+            }
+            if let direct = try? JSONDecoder().decode(DiscoveryPlaylistDetailData.self, from: data) {
+                return direct
+            }
+            return nil
+        } catch {
+            print("MusicService.fetchDiscoveryPlaylist error: \(error)")
+            return nil
+        }
+    }
+
+    // MARK: - Fetch User State Playlists & Tracks (/api/state)
+    public func fetchUserState(serverURL: String, token: String?) async -> (playlists: [DiscoveryPlaylistDetailData], favorites: [Track]) {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/state") else { return ([], []) }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return ([], [])
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return ([], [])
+            }
+
+            var resultPlaylists: [DiscoveryPlaylistDetailData] = []
+            if let pls = json["playlists"] as? [[String: Any]] {
+                for p in pls {
+                    let pid = (p["id"] as? String) ?? UUID().uuidString
+                    let name = (p["name"] as? String) ?? (p["title"] as? String) ?? "Playlist"
+                    let desc = p["description"] as? String
+                    let cover = (p["cover"] as? String) ?? (p["cover_url"] as? String)
+                    var trackItems: [DiscoveryTrack] = []
+                    if let rawTracks = p["tracks"] as? [[String: Any]] {
+                        for t in rawTracks {
+                            if let id = t["id"] as? String, let title = t["title"] as? String {
+                                let art = (t["artist"] as? String) ?? "Unbekannt"
+                                let alb = t["album"] as? String
+                                let cov = (t["cover"] as? String) ?? (t["cover_url"] as? String)
+                                let dur = (t["duration"] as? String) ?? "0:00"
+                                let durSec = (t["durationSeconds"] as? Int) ?? 0
+                                let isExp = (t["isExplicit"] as? Bool) ?? false
+                                trackItems.append(DiscoveryTrack(
+                                    id: id,
+                                    title: title,
+                                    artist: art,
+                                    album: alb,
+                                    duration: dur,
+                                    durationSeconds: durSec,
+                                    cover: cov,
+                                    sourceUrl: nil,
+                                    storageType: nil,
+                                    sourceType: nil,
+                                    isExplicit: isExp
+                                ))
+                            }
+                        }
+                    }
+                    resultPlaylists.append(DiscoveryPlaylistDetailData(
+                        id: pid,
+                        title: name,
+                        description: desc,
+                        cover: cover,
+                        heroArtwork: nil,
+                        motionVideo: nil,
+                        user: nil,
+                        nbTracks: trackItems.count,
+                        tracks: trackItems
+                    ))
+                }
+            }
+
+            var resultFavorites: [Track] = []
+            if let favs = json["favorites"] as? [[String: Any]] {
+                for f in favs {
+                    if let track = trackFromDictionary(f) {
+                        resultFavorites.append(track)
+                    }
+                }
+            }
+
+            return (resultPlaylists, resultFavorites)
+        } catch {
+            return ([], [])
+        }
+    }
+
+    // MARK: - Synchronized Lyrics Retrieval (Feature #18)
+    public func fetchLyrics(trackId: String, title: String, artist: String, serverURL: String, token: String? = nil) async -> String? {
+        guard !serverURL.isEmpty else { return nil }
+        var comps = URLComponents(string: "\(serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/lyrics")
+        comps?.queryItems = [
+            URLQueryItem(name: "trackId", value: trackId),
+            URLQueryItem(name: "title", value: title),
+            URLQueryItem(name: "artist", value: artist)
+        ]
+        guard let url = comps?.url else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let t = token, !t.isEmpty {
+            request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let lrc = json["lyrics"] as? String ?? json["lrc"] as? String {
+                    return lrc
+                }
+            }
+            return String(data: data, encoding: .utf8)
+        } catch {
+            return nil
+        }
+    }
+
+    // MARK: - Similar Songs / Recommendations (Feature #20)
+    public func fetchRecommendations(trackId: String, artist: String, title: String, serverURL: String, token: String? = nil) async -> [Track] {
+        guard !serverURL.isEmpty else { return [] }
+        var comps = URLComponents(string: "\(serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/discovery/recommendations")
+        comps?.queryItems = [
+            URLQueryItem(name: "exclude_ids", value: trackId),
+            URLQueryItem(name: "artists", value: artist),
+            URLQueryItem(name: "seed_tracks", value: title),
+            URLQueryItem(name: "limit", value: "10")
+        ]
+        guard let url = comps?.url else { return [] }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let t = token, !t.isEmpty {
+            request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            return parseTracksFromAnyJSON(data: data)
+        } catch {
+            return []
         }
     }
 }

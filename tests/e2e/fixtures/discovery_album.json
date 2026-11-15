@@ -1,0 +1,30 @@
+{
+  "id": "alb_starboy",
+  "title": "Starboy",
+  "artist": "The Weeknd",
+  "cover": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/4b/32/34/4b323485-6453-cfbf-cf1c-34351980ee9f/16UMGIM56461.rgb.jpg/600x600bb.jpg",
+  "year": 2016,
+  "trackCount": 18,
+  "duration": "68:28",
+  "durationSeconds": 4108,
+  "tracks": [
+    { "id": "dz_sb_01", "trackNumber": 1, "title": "Starboy", "artist": "The Weeknd ft. Daft Punk", "duration": "3:50", "durationSeconds": 230, "isExplicit": true },
+    { "id": "dz_sb_02", "trackNumber": 2, "title": "Party Monster", "artist": "The Weeknd", "duration": "4:09", "durationSeconds": 249, "isExplicit": true },
+    { "id": "dz_sb_03", "trackNumber": 3, "title": "False Alarm", "artist": "The Weeknd", "duration": "3:40", "durationSeconds": 220, "isExplicit": true },
+    { "id": "dz_sb_04", "trackNumber": 4, "title": "Reminder", "artist": "The Weeknd", "duration": "3:38", "durationSeconds": 218, "isExplicit": true },
+    { "id": "dz_sb_05", "trackNumber": 5, "title": "Rockin'", "artist": "The Weeknd", "duration": "3:52", "durationSeconds": 232, "isExplicit": false },
+    { "id": "dz_sb_06", "trackNumber": 6, "title": "Secrets", "artist": "The Weeknd", "duration": "4:25", "durationSeconds": 265, "isExplicit": false },
+    { "id": "dz_sb_07", "trackNumber": 7, "title": "True Colors", "artist": "The Weeknd", "duration": "3:26", "durationSeconds": 206, "isExplicit": true },
+    { "id": "dz_sb_08", "trackNumber": 8, "title": "Stargirl Interlude", "artist": "The Weeknd ft. Lana Del Rey", "duration": "1:51", "durationSeconds": 111, "isExplicit": false },
+    { "id": "dz_sb_09", "trackNumber": 9, "title": "Sidewalks", "artist": "The Weeknd ft. Kendrick Lamar", "duration": "3:51", "durationSeconds": 231, "isExplicit": true },
+    { "id": "dz_sb_10", "trackNumber": 10, "title": "Six Feet Under", "artist": "The Weeknd", "duration": "3:57", "durationSeconds": 237, "isExplicit": true },
+    { "id": "dz_sb_11", "trackNumber": 11, "title": "Love to Lay", "artist": "The Weeknd", "duration": "3:43", "durationSeconds": 223, "isExplicit": true },
+    { "id": "dz_sb_12", "trackNumber": 12, "title": "A Lonely Night", "artist": "The Weeknd", "duration": "3:40", "durationSeconds": 220, "isExplicit": true },
+    { "id": "dz_sb_13", "trackNumber": 13, "title": "Attention", "artist": "The Weeknd", "duration": "3:17", "durationSeconds": 197, "isExplicit": true },
+    { "id": "dz_sb_14", "trackNumber": 14, "title": "Ordinary Life", "artist": "The Weeknd", "duration": "3:41", "durationSeconds": 221, "isExplicit": true },
+    { "id": "dz_sb_15", "trackNumber": 15, "title": "Nothing Without You", "artist": "The Weeknd", "duration": "3:18", "durationSeconds": 198, "isExplicit": false },
+    { "id": "dz_sb_16", "trackNumber": 16, "title": "All I Know", "artist": "The Weeknd ft. Future", "duration": "5:21", "durationSeconds": 321, "isExplicit": true },
+    { "id": "dz_sb_17", "trackNumber": 17, "title": "Die For You", "artist": "The Weeknd", "duration": "4:20", "durationSeconds": 260, "isExplicit": false },
+    { "id": "dz_sb_18", "trackNumber": 18, "title": "I Feel It Coming", "artist": "The Weeknd ft. Daft Punk", "duration": "4:29", "durationSeconds": 269, "isExplicit": false }
+  ]
+}

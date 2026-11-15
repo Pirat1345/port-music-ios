@@ -287,21 +287,29 @@ public struct HomeView: View {
 
             PortShelfContainer {
                 ForEach(albums.prefix(24)) { album in
-                    PortAlbumCard(
+                    NavigationLink(value: AppRoute.album(
+                        id: album.id,
                         title: album.title,
-                        subtitle: album.artist,
-                        coverUrl: album.cover,
-                        serverURL: serverURL
-                    ) {
-                        let albumTrack = Track(
-                            id: "album_\(album.id)",
+                        artist: album.artist,
+                        coverUrl: album.cover
+                    )) {
+                        PortAlbumCard(
                             title: album.title,
-                            artist: album.artist,
-                            album: album.title,
-                            coverUrl: album.cover
-                        )
-                        playTrackWithFullQueue(albumTrack, discovery: allDiscovery)
+                            subtitle: album.artist,
+                            coverUrl: album.cover,
+                            serverURL: serverURL
+                        ) {
+                            let albumTrack = Track(
+                                id: "album_\(album.id)",
+                                title: album.title,
+                                artist: album.artist,
+                                album: album.title,
+                                coverUrl: album.cover
+                            )
+                            playTrackWithFullQueue(albumTrack, discovery: allDiscovery)
+                        }
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
@@ -450,15 +458,21 @@ public struct HomeView: View {
 
             PortShelfContainer {
                 ForEach(artists) { artist in
-                    PortArtistCard(artist: artist, serverURL: serverURL) {
-                        let artistTrack = Track(
-                            id: "artist_\(artist.id)",
-                            title: artist.name,
-                            artist: artist.name,
-                            coverUrl: artist.picture
-                        )
-                        playTrackWithFullQueue(artistTrack, discovery: allDiscovery)
+                    NavigationLink(value: AppRoute.artist(
+                        name: artist.name,
+                        coverUrl: artist.picture
+                    )) {
+                        PortArtistCard(artist: artist, serverURL: serverURL) {
+                            let artistTrack = Track(
+                                id: "artist_\(artist.id)",
+                                title: artist.name,
+                                artist: artist.name,
+                                coverUrl: artist.picture
+                            )
+                            playTrackWithFullQueue(artistTrack, discovery: allDiscovery)
+                        }
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
@@ -620,39 +634,70 @@ public struct HomeView: View {
         )
     }
 
-    // MARK: - Queue Seeding Helper
-    private func playTrackWithFullQueue(_ targetTrack: Track, discovery: DiscoveryHomeResponse) {
+    // MARK: - Queue Seeding Helper (Feature #7: Dynamic Discovery Queue Pre-seeding)
+    private func makeDiscoveryQueue(targetTrack: Track, discovery: DiscoveryHomeResponse) -> [Track] {
         var queue: [Track] = []
+        var seenIds = Set<String>()
 
+        seenIds.insert(targetTrack.id)
+        queue.append(targetTrack)
+
+        // 1. Top-Picks
         if let picks = discovery.topPicks {
             for p in picks {
                 let t = p.toTrack()
-                if !queue.contains(where: { $0.id == t.id }) {
+                if !seenIds.contains(t.id) {
+                    seenIds.insert(t.id)
                     queue.append(t)
                 }
             }
         }
+        // 2. Trending Überall
         if let trending = discovery.trendingEverywhere {
             for tr in trending {
                 let t = tr.toTrack()
-                if !queue.contains(where: { $0.id == t.id }) {
+                if !seenIds.contains(t.id) {
+                    seenIds.insert(t.id)
                     queue.append(t)
                 }
             }
         }
+        // 3. Top Hits Heute
         if let topHits = discovery.todaysTopHits {
             for ch in topHits {
                 let t = ch.toTrack()
-                if !queue.contains(where: { $0.id == t.id }) {
+                if !seenIds.contains(t.id) {
+                    seenIds.insert(t.id)
+                    queue.append(t)
+                }
+            }
+        }
+        // 4. Release Radar / New Music
+        if let newMusic = discovery.newMusic {
+            for nm in newMusic {
+                let t = Track(id: nm.id, title: nm.title, artist: nm.artist, album: nm.title, coverUrl: nm.cover)
+                if !seenIds.contains(t.id) {
+                    seenIds.insert(t.id)
+                    queue.append(t)
+                }
+            }
+        }
+        // 5. Top 100 Global
+        if let top100 = discovery.top100Global {
+            for ch in top100 {
+                let t = ch.toTrack()
+                if !seenIds.contains(t.id) {
+                    seenIds.insert(t.id)
                     queue.append(t)
                 }
             }
         }
 
-        if !queue.contains(where: { $0.id == targetTrack.id }) {
-            queue.insert(targetTrack, at: 0)
-        }
+        return queue
+    }
 
+    private func playTrackWithFullQueue(_ targetTrack: Track, discovery: DiscoveryHomeResponse) {
+        let queue = makeDiscoveryQueue(targetTrack: targetTrack, discovery: discovery)
         player.play(track: targetTrack, from: queue, serverURL: serverURL)
     }
 

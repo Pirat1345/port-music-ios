@@ -337,6 +337,38 @@ public final class AudioPlayerManager: ObservableObject {
         isRepeat.toggle()
     }
 
+    // MARK: - Queue Management
+    public func playNext(track: Track) {
+        if queue.isEmpty {
+            let activeURL = currentServerURL ?? SessionManager.shared.serverURL ?? ""
+            play(track: track, from: [track], serverURL: activeURL)
+            return
+        }
+        let insertIndex = min(queueIndex + 1, queue.count)
+        queue.insert(track, at: insertIndex)
+    }
+
+    public func addToQueue(track: Track) {
+        if queue.isEmpty {
+            let activeURL = currentServerURL ?? SessionManager.shared.serverURL ?? ""
+            play(track: track, from: [track], serverURL: activeURL)
+            return
+        }
+        queue.append(track)
+    }
+
+    public func playAll(tracks: [Track], shuffle: Bool = false, serverURL: String? = nil) {
+        guard !tracks.isEmpty else { return }
+        let activeURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
+        var targetQueue = tracks
+        self.isShuffle = shuffle
+        if shuffle && targetQueue.count > 1 {
+            targetQueue.shuffle()
+        }
+        let first = targetQueue[0]
+        play(track: first, from: targetQueue, serverURL: activeURL)
+    }
+
     // MARK: - Player Observers
     private func observePlayerItem(_ item: AVPlayerItem) {
         itemStatusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] observedItem, _ in

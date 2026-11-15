@@ -6,13 +6,22 @@ public struct UserProfile: Codable, Identifiable, Equatable {
     public let email: String?
     public let role: String?
     public let createdAt: String?
+    public let avatar: String?
 
-    public init(id: String, username: String, email: String? = nil, role: String? = nil, createdAt: String? = nil) {
+    public init(
+        id: String,
+        username: String,
+        email: String? = nil,
+        role: String? = nil,
+        createdAt: String? = nil,
+        avatar: String? = nil
+    ) {
         self.id = id
         self.username = username
         self.email = email
         self.role = role
         self.createdAt = createdAt
+        self.avatar = avatar
     }
 }
 

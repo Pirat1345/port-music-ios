@@ -370,15 +370,18 @@ public struct SearchView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 14) {
                                 ForEach(artists) { artist in
-                                    PortArtistCard(artist: artist, serverURL: serverURL) {
-                                        let artistTrack = Track(
-                                            id: "artist_\(artist.id)",
-                                            title: artist.name,
-                                            artist: artist.name,
-                                            coverUrl: artist.picture
-                                        )
-                                        player.play(track: artistTrack, from: [artistTrack], serverURL: serverURL)
+                                    NavigationLink(value: AppRoute.artist(name: artist.name, coverUrl: artist.picture)) {
+                                        PortArtistCard(artist: artist, serverURL: serverURL) {
+                                            let artistTrack = Track(
+                                                id: "artist_\(artist.id)",
+                                                title: artist.name,
+                                                artist: artist.name,
+                                                coverUrl: artist.picture
+                                            )
+                                            player.play(track: artistTrack, from: [artistTrack], serverURL: serverURL)
+                                        }
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }
                             .padding(.horizontal, 20)
@@ -397,21 +400,24 @@ public struct SearchView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 14) {
                                 ForEach(albums) { album in
-                                    PortAlbumCard(
-                                        title: album.title,
-                                        subtitle: album.artist,
-                                        coverUrl: album.cover,
-                                        serverURL: serverURL
-                                    ) {
-                                        let albumTrack = Track(
-                                            id: "album_\(album.id)",
+                                    NavigationLink(value: AppRoute.album(id: album.id, title: album.title, artist: album.artist, coverUrl: album.cover)) {
+                                        PortAlbumCard(
                                             title: album.title,
-                                            artist: album.artist,
-                                            album: album.title,
-                                            coverUrl: album.cover
-                                        )
-                                        player.play(track: albumTrack, from: [albumTrack], serverURL: serverURL)
+                                            subtitle: album.artist,
+                                            coverUrl: album.cover,
+                                            serverURL: serverURL
+                                        ) {
+                                            let albumTrack = Track(
+                                                id: "album_\(album.id)",
+                                                title: album.title,
+                                                artist: album.artist,
+                                                album: album.title,
+                                                coverUrl: album.cover
+                                            )
+                                            player.play(track: albumTrack, from: [albumTrack], serverURL: serverURL)
+                                        }
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }
                             .padding(.horizontal, 20)
@@ -462,36 +468,42 @@ public struct SearchView: View {
             } else if selectedFilter == "Künstler" {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     ForEach(artists) { artist in
-                        PortArtistCard(artist: artist, serverURL: serverURL) {
-                            let artistTrack = Track(
-                                id: "artist_\(artist.id)",
-                                title: artist.name,
-                                artist: artist.name,
-                                coverUrl: artist.picture
-                            )
-                            player.play(track: artistTrack, from: [artistTrack], serverURL: serverURL)
+                        NavigationLink(value: AppRoute.artist(name: artist.name, coverUrl: artist.picture)) {
+                            PortArtistCard(artist: artist, serverURL: serverURL) {
+                                let artistTrack = Track(
+                                    id: "artist_\(artist.id)",
+                                    title: artist.name,
+                                    artist: artist.name,
+                                    coverUrl: artist.picture
+                                )
+                                player.play(track: artistTrack, from: [artistTrack], serverURL: serverURL)
+                            }
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, 20)
             } else if selectedFilter == "Alben" {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     ForEach(albums) { album in
-                        PortAlbumCard(
-                            title: album.title,
-                            subtitle: album.artist,
-                            coverUrl: album.cover,
-                            serverURL: serverURL
-                        ) {
-                            let albumTrack = Track(
-                                id: "album_\(album.id)",
+                        NavigationLink(value: AppRoute.album(id: album.id, title: album.title, artist: album.artist, coverUrl: album.cover)) {
+                            PortAlbumCard(
                                 title: album.title,
-                                artist: album.artist,
-                                album: album.title,
-                                coverUrl: album.cover
-                            )
-                            player.play(track: albumTrack, from: [albumTrack], serverURL: serverURL)
+                                subtitle: album.artist,
+                                coverUrl: album.cover,
+                                serverURL: serverURL
+                            ) {
+                                let albumTrack = Track(
+                                    id: "album_\(album.id)",
+                                    title: album.title,
+                                    artist: album.artist,
+                                    album: album.title,
+                                    coverUrl: album.cover
+                                )
+                                player.play(track: albumTrack, from: [albumTrack], serverURL: serverURL)
+                            }
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, 20)
@@ -531,15 +543,7 @@ public struct SearchView: View {
                     .foregroundColor(PortColors.textPrimary)
                     .padding(.horizontal, 20)
 
-                Button(action: {
-                    let artistTrack = Track(
-                        id: "artist_\(topArtist.id)",
-                        title: topArtist.name,
-                        artist: topArtist.name,
-                        coverUrl: topArtist.picture
-                    )
-                    player.play(track: artistTrack, from: [artistTrack], serverURL: serverURL)
-                }) {
+                NavigationLink(value: AppRoute.artist(name: topArtist.name, coverUrl: topArtist.picture)) {
                     HStack(spacing: 16) {
                         let resolved = resolveCoverURL(topArtist.picture, serverURL: serverURL)
                         PortCachedAsyncImage(url: resolved) { image in

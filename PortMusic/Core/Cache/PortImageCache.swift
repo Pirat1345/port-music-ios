@@ -158,4 +158,34 @@ public final class PortImageCache {
         }
         return digest.map { String(format: "%02x", $0) }.joined()
     }
+
+    // MARK: - Cache Maintenance & Management
+    public func clearAllCache() {
+        memoryCache.removeAllObjects()
+        diskQueue.sync {
+            try? fileManager.removeItem(at: diskCacheURL)
+            try? fileManager.createDirectory(at: diskCacheURL, withIntermediateDirectories: true, attributes: nil)
+        }
+    }
+
+    public func calculateDiskCacheSize() -> Int64 {
+        guard let files = try? fileManager.contentsOfDirectory(at: diskCacheURL, includingPropertiesForKeys: [.fileSizeKey]) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for file in files {
+            if let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
+    }
+
+    public func formattedDiskCacheSize() -> String {
+        let bytes = calculateDiskCacheSize()
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useKB, .useBytes]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
 }

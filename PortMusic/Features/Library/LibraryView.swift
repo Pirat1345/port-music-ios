@@ -1,22 +1,29 @@
 import SwiftUI
 
+// MARK: - Library Hub & Category Rows (Feature #12)
 public struct LibraryView: View {
     public let serverURL: String
     public let user: UserProfile
 
     @ObservedObject private var player = AudioPlayerManager.shared
 
-    @State private var selectedTab: String = "Playlists"
-    private let tabOptions = ["Playlists", "Songs", "Alben", "Verlauf"]
-
     @State private var favorites: [Track] = []
     @State private var playlists: [DiscoveryPlaylist] = []
     @State private var historyTracks: [Track] = []
     @State private var isLoading: Bool = false
 
+    // Quick Tabs for Library Hub
+    @State private var selectedTab: String = "Playlists"
+    private let tabOptions = ["Playlists", "Songs", "Alben", "Verlauf"]
+
     public init(serverURL: String, user: UserProfile) {
         self.serverURL = serverURL
         self.user = user
+    }
+
+    private var isPlayingFavorites: Bool {
+        guard let current = player.currentTrack else { return false }
+        return player.isPlaying && favorites.contains(where: { $0.id == current.id })
     }
 
     public var body: some View {
@@ -26,21 +33,27 @@ public struct LibraryView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
-                    // Header
+                    // ── HEADER ──
                     libraryHeaderSection
                         .padding(.horizontal, 20)
                         .padding(.top, 16)
 
-                    // Hero-Bereich: Lieblingssongs & Playlists-Karussell
+                    // ── HERO SHELF: LIEBLINGSSONGS & PLAYLISTS CAROUSEL ──
                     heroShelfSection
 
-                    // Segmentierte Tabs
-                    segmentedTabBar
+                    // ── CATEGORY NAVIGATION ROWS ──
+                    categoryNavigationRows
                         .padding(.horizontal, 20)
 
-                    // Tab-Inhalt
-                    tabContentSection
-                        .padding(.horizontal, 20)
+                    // ── QUICK PREVIEW TABS SECTION ──
+                    VStack(alignment: .leading, spacing: 14) {
+                        segmentedTabBar
+                            .padding(.horizontal, 20)
+
+                        tabContentSection
+                            .padding(.horizontal, 20)
+                    }
+                    .padding(.top, 8)
 
                     // Ausreichend Abstand am unteren Rand fuer MiniPlayer & TabBar
                     Spacer(minLength: 120)
@@ -51,6 +64,8 @@ public struct LibraryView: View {
                 await loadLibraryData()
             }
         }
+        .navigationTitle("Bibliothek")
+        .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.dark)
         .tint(.white)
         .task {
@@ -64,8 +79,8 @@ public struct LibraryView: View {
     private var libraryHeaderSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Bibliothek")
-                .font(.system(size: 30, weight: .bold))
-                .foregroundColor(PortColors.textPrimary)
+                .font(.system(size: 32, weight: .bold))
+                .foregroundColor(.white)
 
             Text("Deine Musiksammlung, Favoriten und Playlists")
                 .font(.system(size: 13))
@@ -73,142 +88,213 @@ public struct LibraryView: View {
         }
     }
 
-    // MARK: - Hero Shelf Section
+    // MARK: - Hero Shelf Section (Horizontal Carousel)
     private var heroShelfSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
-                // Lieblingssongs Gradient Hero Card
-                likedSongsHeroCard
+                // Lieblingssongs Gradient Hero Card -> navigates to LikedSongsView
+                NavigationLink(value: AppRoute.likedSongs) {
+                    likedSongsHeroCard
+                }
+                .buttonStyle(PlainButtonStyle())
 
-                // Playlists Carousel Items
+                // Playlists Carousel Items -> navigate to PlaylistDetailView
                 ForEach(playlists) { pl in
-                    playlistHeroCard(playlist: pl)
+                    NavigationLink(value: AppRoute.playlist(id: pl.id, title: pl.title, coverUrl: pl.cover)) {
+                        playlistHeroCard(playlist: pl)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             .padding(.horizontal, 20)
         }
     }
 
-    // MARK: - Liked Songs Hero Card (1:1 wie Web PWA)
+    // MARK: - Liked Songs Hero Card (1:1 Web PWA Parity)
     private var likedSongsHeroCard: some View {
-        Button(action: {
-            if !favorites.isEmpty {
-                player.play(track: favorites[0], from: favorites, serverURL: serverURL)
-            }
-        }) {
-            ZStack(alignment: .bottomLeading) {
-                LinearGradient(
-                    gradient: Gradient(colors: [Color(hex: "#450af5"), Color(hex: "#8e8ee5")]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                gradient: Gradient(colors: [Color(hex: "#450af5"), Color(hex: "#8e8ee5")]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
-                // Subtiler Schattenverlauf unten
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.60)]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+            // Subtiler Schattenverlauf unten
+            LinearGradient(
+                gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.60)]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
 
-                // Grosses Herz-Symbol im Hintergrund
-                VStack {
-                    HStack {
-                        Spacer()
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 52))
-                            .foregroundColor(Color.white.opacity(0.22))
-                            .padding(14)
-                    }
+            // Grosses Herz-Symbol im Hintergrund
+            VStack {
+                HStack {
                     Spacer()
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 52))
+                        .foregroundColor(Color.white.opacity(0.22))
+                        .padding(14)
+                }
+                Spacer()
+            }
+
+            // Text & Play-Button
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Lieblingssongs")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.white)
+
+                    Text("\(favorites.count) Songs")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.80))
                 }
 
-                // Text & Play-Button
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Lieblingssongs")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
+                Spacer()
 
-                        Text("\(favorites.count) Titel")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.80))
+                // Play / Pause Circle Button
+                Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    if isPlayingFavorites {
+                        player.togglePlayPause()
+                    } else if !favorites.isEmpty {
+                        player.play(track: favorites[0], from: favorites)
                     }
-
-                    Spacer()
-
+                }) {
                     Circle()
                         .fill(Color.white)
                         .frame(width: 38, height: 38)
                         .overlay(
-                            Image(systemName: "play.fill")
+                            Image(systemName: isPlayingFavorites ? "pause.fill" : "play.fill")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.black)
-                                .offset(x: 1)
+                                .offset(x: isPlayingFavorites ? 0 : 1)
                         )
                         .shadow(color: Color.black.opacity(0.4), radius: 6, y: 2)
                 }
-                .padding(14)
+                .buttonStyle(PlainButtonStyle())
             }
-            .frame(width: 175, height: 175)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.4), radius: 8, y: 3)
+            .padding(14)
         }
-        .buttonStyle(PlainButtonStyle())
+        .frame(width: 175, height: 175)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.45), radius: 8, y: 3)
     }
 
     // MARK: - Playlist Hero Card
     private func playlistHeroCard(playlist: DiscoveryPlaylist) -> some View {
-        Button(action: {
-            let t = Track(
-                id: "pl_\(playlist.id)",
-                title: playlist.title,
-                artist: playlist.user ?? "Port Music",
-                album: "Playlist",
-                coverUrl: playlist.cover
-            )
-            player.play(track: t, from: [t], serverURL: serverURL)
-        }) {
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.white.opacity(0.08))
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack(alignment: .bottomTrailing) {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(hex: "#18181b"))
+                    .frame(width: 145, height: 145)
+
+                let resolved = resolveCoverURL(playlist.cover, serverURL: serverURL)
+                PortCachedAsyncImage(url: resolved) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
                         .frame(width: 145, height: 145)
-
-                    let resolved = resolveCoverURL(playlist.cover, serverURL: serverURL)
-                    PortCachedAsyncImage(url: resolved) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 145, height: 145)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                    } placeholder: {
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 32))
-                            .foregroundColor(Color.white.opacity(0.35))
-                    }
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } placeholder: {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 32))
+                        .foregroundColor(Color.white.opacity(0.35))
                 }
-                .frame(width: 145, height: 145)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
 
-                Text(playlist.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(PortColors.textPrimary)
-                    .lineLimit(1)
-                    .frame(maxWidth: 145, alignment: .leading)
-
-                let countText = playlist.nbTracks.map { "\($0) Songs" } ?? "Playlist"
-                Text(countText)
-                    .font(.system(size: 11))
-                    .foregroundColor(Color.white.opacity(0.60))
-                    .lineLimit(1)
+                // Subtiler Play Button
+                Circle()
+                    .fill(Color.black.opacity(0.65))
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .offset(x: 1)
+                    )
+                    .padding(8)
             }
+            .frame(width: 145, height: 145)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+
+            Text(playlist.title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .frame(maxWidth: 145, alignment: .leading)
+
+            let creator = playlist.user ?? "Port Music"
+            Text(creator)
+                .font(.system(size: 11))
+                .foregroundColor(Color(hex: "#a0a0a0"))
+                .lineLimit(1)
+
+            let countText = playlist.nbTracks.map { "\($0) Titel" } ?? "Playlist"
+            Text(countText)
+                .font(.system(size: 11))
+                .foregroundColor(Color(hex: "#a0a0a0"))
+                .lineLimit(1)
+        }
+    }
+
+    // MARK: - Category Navigation Rows (Feature #12)
+    private var categoryNavigationRows: some View {
+        VStack(spacing: 0) {
+            categoryRowItem(title: "Wiedergabelisten", icon: "music.note.list", route: .libraryCategory(category: "playlists"))
+            Divider().background(Color.white.opacity(0.08))
+
+            categoryRowItem(title: "Künstler", icon: "person.2.fill", route: .libraryCategory(category: "artists"))
+            Divider().background(Color.white.opacity(0.08))
+
+            categoryRowItem(title: "Alben", icon: "square.stack.fill", route: .libraryCategory(category: "albums"))
+            Divider().background(Color.white.opacity(0.08))
+
+            categoryRowItem(title: "Titel", icon: "music.note", route: .libraryCategory(category: "songs"))
+            Divider().background(Color.white.opacity(0.08))
+
+            categoryRowItem(title: "Heruntergeladen", icon: "arrow.down.circle.fill", route: .libraryCategory(category: "downloaded"))
+            Divider().background(Color.white.opacity(0.08))
+
+            categoryRowItem(title: "Zuletzt gehört", icon: "clock.arrow.circlepath", route: .libraryCategory(category: "history"))
+        }
+        .background(Color.white.opacity(0.03))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+
+    private func categoryRowItem(title: String, icon: String, route: AppRoute) -> some View {
+        NavigationLink(value: route) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(Color(hex: "#fc3c44"))
+                    .frame(width: 28, alignment: .center)
+
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.35))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -272,34 +358,64 @@ public struct LibraryView: View {
                     spacing: 16
                 ) {
                     ForEach(playlists) { pl in
-                        PortTrackCard(
-                            title: pl.title,
-                            subtitle: pl.user ?? (pl.nbTracks.map { "\($0) Songs" } ?? "Playlist"),
-                            coverUrl: pl.cover,
-                            serverURL: serverURL
-                        ) {
-                            let t = Track(
-                                id: "pl_\(pl.id)",
-                                title: pl.title,
-                                artist: pl.user ?? "Port Music",
-                                album: "Playlist",
-                                coverUrl: pl.cover
-                            )
-                            player.play(track: t, from: [t], serverURL: serverURL)
+                        NavigationLink(value: AppRoute.playlist(id: pl.id, title: pl.title, coverUrl: pl.cover)) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(hex: "#18181b"))
+                                        .aspectRatio(1, contentMode: .fit)
+
+                                    let resolved = resolveCoverURL(pl.cover, serverURL: serverURL)
+                                    PortCachedAsyncImage(url: resolved) { img in
+                                        img
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    } placeholder: {
+                                        Image(systemName: "music.note.list")
+                                            .font(.system(size: 32))
+                                            .foregroundColor(Color.white.opacity(0.25))
+                                    }
+                                }
+                                .aspectRatio(1, contentMode: .fit)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                )
+
+                                Text(pl.title)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+
+                                let creator = pl.user ?? "Port Music"
+                                Text(creator)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(hex: "#a0a0a0"))
+                                    .lineLimit(1)
+
+                                let count = pl.nbTracks.map { "\($0) Titel" } ?? "Playlist"
+                                Text(count)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(hex: "#a0a0a0"))
+                                    .lineLimit(1)
+                            }
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
             }
         }
     }
 
-    // MARK: - Songs Tab (Lieblingssongs)
+    // MARK: - Songs Tab (Lieblingssongs rendered via TrackRow)
     private var songsTabContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !favorites.isEmpty {
                 HStack(spacing: 12) {
                     Button(action: {
-                        player.play(track: favorites[0], from: favorites, serverURL: serverURL)
+                        player.play(track: favorites[0], from: favorites)
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "play.fill")
@@ -316,14 +432,16 @@ public struct LibraryView: View {
                     .buttonStyle(PlainButtonStyle())
 
                     Button(action: {
-                        player.isShuffle = true
-                        let randomIdx = Int.random(in: 0..<favorites.count)
-                        player.play(track: favorites[randomIdx], from: favorites, serverURL: serverURL)
+                        if !favorites.isEmpty {
+                            player.isShuffle = true
+                            let randomIdx = Int.random(in: 0..<favorites.count)
+                            player.play(track: favorites[randomIdx], from: favorites)
+                        }
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "shuffle")
                                 .font(.system(size: 13, weight: .semibold))
-                            Text("Zufallswiedergabe")
+                            Text("Mischen")
                                 .font(.system(size: 13, weight: .semibold))
                         }
                         .foregroundColor(.white)
@@ -343,21 +461,37 @@ public struct LibraryView: View {
             if favorites.isEmpty && !isLoading {
                 emptyPlaceholder(icon: "heart.slash", message: "Noch keine Lieblingssongs markiert")
             } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(favorites) { track in
-                        trackRowItem(track: track, fullQueue: favorites)
+                LazyVStack(spacing: 4) {
+                    ForEach(Array(favorites.prefix(50).enumerated()), id: \.element.id) { index, track in
+                        trackRowItem(track: track, index: index, contextQueue: favorites)
                     }
                 }
             }
         }
     }
 
-    // MARK: - Albums Tab
-    private var albumsTabContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Extrahierte Alben aus Favoriten und Verlauf
-            let uniqueAlbums = extractUniqueAlbums()
+    // MARK: - Album Extraction (Feature #13)
+    private func extractUniqueAlbums() -> [Track] {
+        let allTracks = favorites + historyTracks + player.recentTracks
+        var seenTitles = Set<String>()
+        var uniqueAlbums: [Track] = []
 
+        for t in allTracks {
+            if let alb = t.album, !alb.isEmpty {
+                let key = "\(alb.lowercased())_\(t.artist.lowercased())"
+                if !seenTitles.contains(key) {
+                    seenTitles.insert(key)
+                    uniqueAlbums.append(t)
+                }
+            }
+        }
+        return uniqueAlbums
+    }
+
+    // MARK: - Albums Tab (Feature #13 Real Content)
+    private var albumsTabContent: some View {
+        let uniqueAlbums = extractUniqueAlbums()
+        return VStack(alignment: .leading, spacing: 14) {
             if uniqueAlbums.isEmpty && !isLoading {
                 emptyPlaceholder(icon: "square.stack", message: "Noch keine Alben in der Bibliothek")
             } else {
@@ -370,12 +504,13 @@ public struct LibraryView: View {
                 ) {
                     ForEach(uniqueAlbums) { album in
                         PortAlbumCard(
-                            title: album.title,
+                            title: album.album ?? album.title,
                             subtitle: album.artist,
-                            coverUrl: album.coverUrl,
-                            serverURL: serverURL
+                            coverUrl: album.cover,
+                            serverURL: serverURL,
+                            isPlaying: player.currentTrack?.album == album.album && player.isPlaying
                         ) {
-                            player.play(track: album, from: uniqueAlbums, serverURL: serverURL)
+                            player.play(track: album, from: uniqueAlbums)
                         }
                     }
                 }
@@ -391,68 +526,88 @@ public struct LibraryView: View {
             if tracks.isEmpty && !isLoading {
                 emptyPlaceholder(icon: "clock.arrow.circlepath", message: "Bisher kein Wiedergabeverlauf vorhanden")
             } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(tracks) { track in
-                        trackRowItem(track: track, fullQueue: tracks)
+                LazyVStack(spacing: 4) {
+                    ForEach(Array(tracks.prefix(25).enumerated()), id: \.element.id) { index, track in
+                        trackRowItem(track: track, index: index, contextQueue: tracks)
                     }
                 }
             }
         }
     }
 
-    // MARK: - Track Row Item
-    private func trackRowItem(track: Track, fullQueue: [Track]) -> some View {
-        Button(action: {
-            player.play(track: track, from: fullQueue, serverURL: serverURL)
-        }) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.08))
+    // MARK: - Mobile Track Row Component (Feature #16)
+    @ViewBuilder
+    private func trackRowItem(track: Track, index: Int, contextQueue: [Track]) -> some View {
+        HStack(spacing: 12) {
+            // Standardized 48x48 artwork with cache fallback & music.note icon
+            ZStack {
+                let resolved = resolveCoverURL(track.cover, serverURL: serverURL)
+                PortCachedAsyncImage(url: resolved) { img in
+                    img
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
                         .frame(width: 48, height: 48)
-
-                    let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
-                    PortCachedAsyncImage(url: resolved) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 48, height: 48)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    } placeholder: {
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } placeholder: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(hex: "#1f1f23"))
                         Image(systemName: "music.note")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white.opacity(0.50))
+                            .font(.system(size: 20))
+                            .foregroundColor(Color.white.opacity(0.40))
+                    }
+                    .frame(width: 48, height: 48)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            // Title & Artist truncated with lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Text(track.artist)
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(hex: "#a0a0a0"))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 6)
+
+            // Duration string
+            Text(track.duration)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Color.white.opacity(0.45))
+
+            // Heart favorite toggle with 44x44 touch frame
+            Button(action: {
+                Task {
+                    await MusicService.shared.toggleFavorite(trackId: track.id, serverURL: serverURL, token: SessionManager.shared.currentToken)
+                    if let token = SessionManager.shared.currentToken {
+                        self.favorites = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
                     }
                 }
-                .frame(width: 48, height: 48)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(track.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(PortColors.textPrimary)
-                        .lineLimit(1)
-
-                    Text(track.artist)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.white.opacity(0.65))
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Text(track.duration)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.50))
+            }) {
+                Image(systemName: favorites.contains(where: { $0.id == track.id }) ? "heart.fill" : "heart")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(favorites.contains(where: { $0.id == track.id }) ? Color(hex: "#fc3c44") : Color.white.opacity(0.40))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-            .padding(10)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-            )
+            .buttonStyle(PlainButtonStyle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(height: 56)
+        .background(Color.white.opacity(player.currentTrack?.id == track.id ? 0.08 : 0.02))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            player.play(track: track, from: contextQueue)
+        }
     }
 
     // MARK: - Empty State Placeholder
@@ -467,19 +622,6 @@ public struct LibraryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 50)
-    }
-
-    // MARK: - Helper: Extract Unique Albums from Saved Tracks
-    private func extractUniqueAlbums() -> [Track] {
-        var seen = Set<String>()
-        var albums: [Track] = []
-        for t in (favorites + historyTracks + player.recentTracks) {
-            if let alb = t.album, !alb.isEmpty, !seen.contains(alb) {
-                seen.insert(alb)
-                albums.append(t)
-            }
-        }
-        return albums
     }
 
     // MARK: - Data Loading
