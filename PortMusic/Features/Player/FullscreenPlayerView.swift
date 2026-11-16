@@ -621,30 +621,26 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 2. Play / Pause Haupt-Button (Solider weißer abgerundeter Button mit schwarzem Symbol)
+            // 2. Play / Pause Haupt-Button (Exakt wie im Screenshot media_1794856506477_d5bf729e.jpg: Weisses Symbol)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .medium)
                 generator.impactOccurred()
                 player.togglePlayPause()
             }) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color.white)
-                        .frame(width: 68, height: 52)
-                        .shadow(color: Color.black.opacity(0.35), radius: 6, y: 2)
-
                     if player.isBuffering {
                         ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                            .scaleEffect(0.95)
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.2)
                     } else {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 26, weight: .bold))
-                            .foregroundColor(.black)
-                            .offset(x: player.isPlaying ? 0 : 1.5)
+                            .font(.system(size: 42, weight: .bold))
+                            .foregroundColor(.white)
+                            .offset(x: player.isPlaying ? 0 : 2)
                     }
                 }
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
 
@@ -748,7 +744,7 @@ public struct FullscreenPlayerView: View {
     // MARK: - Lautstärke-Regler mit Lautsprecher-Icon
     public var volumeSliderSection: some View {
         HStack(spacing: 12) {
-            Image(systemName: volume == 0 ? "speaker.slash.fill" : (volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.2.fill"))
+            Image(systemName: volume == 0 ? "speaker.slash.fill" : "speaker.fill")
                 .font(.system(size: 15))
                 .foregroundColor(Color.white.opacity(0.60))
                 .frame(width: 22)

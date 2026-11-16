@@ -265,12 +265,12 @@ public struct MainTabView: View {
                     ZStack {
                         Circle()
                             .fill(.ultraThinMaterial)
-                            .overlay(Color(hex: "#141416").opacity(0.80))
+                            .overlay(Color.black.opacity(0.20))
                             .overlay(
                                 Circle()
                                     .stroke(
                                         LinearGradient(
-                                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                                            colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
                                             startPoint: .top,
                                             endPoint: .bottom
                                         ),
@@ -306,6 +306,7 @@ public struct MainTabView: View {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
                         selectLiquidTab(.search)
+                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
                     }
                 )
             } else {
@@ -337,6 +338,7 @@ public struct MainTabView: View {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
                         selectLiquidTab(.search)
+                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
                     }
                 )
             }
@@ -420,12 +422,12 @@ private struct InteractiveTabCapsule: View {
                 // Layer 1-3: Base Glass Material, Obsidian Tint & Specular Rim Light
                 Capsule()
                     .fill(.ultraThinMaterial)
-                    .overlay(Color(hex: "#141416").opacity(0.80))
+                    .overlay(Color.black.opacity(0.20))
                     .overlay(
                         Capsule()
                             .stroke(
                                 LinearGradient(
-                                    colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                                    colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 ),
@@ -448,12 +450,19 @@ private struct InteractiveTabCapsule: View {
                     }()
 
                     Capsule()
-                        .fill(Color.white.opacity(0.14))
+                        .fill(Color.white.opacity(0.18))
                         .overlay(
                             Capsule()
-                                .stroke(Color.white.opacity(0.20), lineWidth: 0.5)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.5
+                                )
                         )
-                        .frame(width: tabWidth - 6, height: 50)
+                        .frame(width: tabWidth - 6, height: 52)
                         .position(x: currentCenterX, y: geo.size.height / 2)
                         .shadow(color: Color.black.opacity(0.25), radius: 4, y: 1)
                         .animation(dragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : nil, value: currentCenterX)
@@ -467,13 +476,13 @@ private struct InteractiveTabCapsule: View {
                         VStack(spacing: 2) {
                             Image(systemName: tab.iconName(isSelected: isSelected))
                                 .font(.system(size: iconsOnly ? 22 : 20, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.85))
                                 .frame(height: iconsOnly ? 28 : 22)
 
                             if !iconsOnly {
                                 Text(tab.title)
-                                    .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                                    .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.85))
                                     .minimumScaleFactor(0.8)
                                     .lineLimit(1)
                             }
@@ -533,12 +542,12 @@ private struct SearchApartCircle: View {
                 // Base 62pt Glass Circle
                 Circle()
                     .fill(.ultraThinMaterial)
-                    .overlay(Color(hex: "#141416").opacity(0.80))
+                    .overlay(Color.black.opacity(0.20))
                     .overlay(
                         Circle()
                             .stroke(
                                 LinearGradient(
-                                    colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                                    colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 ),
@@ -550,10 +559,17 @@ private struct SearchApartCircle: View {
                 // Active Glass Ring Highlight
                 if isSelected {
                     Circle()
-                        .fill(Color.white.opacity(0.14))
+                        .fill(Color.white.opacity(0.18))
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(0.20), lineWidth: 0.5)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.5
+                                )
                         )
                         .frame(width: 48, height: 48)
                         .shadow(color: Color.black.opacity(0.25), radius: 4, y: 1)
@@ -562,7 +578,7 @@ private struct SearchApartCircle: View {
 
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white)
+                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.85))
             }
             .frame(width: 62, height: 62)
         }

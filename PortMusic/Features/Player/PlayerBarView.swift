@@ -83,12 +83,12 @@ public struct PlayerBarView: View {
                     .background(
                         Capsule()
                             .fill(.ultraThinMaterial)
-                            .overlay(Color(hex: "#141416").opacity(0.80))
+                            .overlay(Color.black.opacity(0.20))
                             .overlay(
                                 Capsule()
                                     .stroke(
                                         LinearGradient(
-                                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                                            colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
                                             startPoint: .top,
                                             endPoint: .bottom
                                         ),
@@ -217,11 +217,18 @@ public struct PlayerBarView: View {
                             .fill(.ultraThinMaterial)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 22)
-                                    .fill(Color(hex: "#18181b").opacity(0.80))
+                                    .fill(Color.black.opacity(0.20))
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 22)
-                                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 0.5
+                                    )
                             )
                             .shadow(color: Color.black.opacity(0.40), radius: 10, y: 4)
                     )

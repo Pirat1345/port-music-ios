@@ -7,6 +7,9 @@ public struct SearchView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
 
     @State private var searchQuery: String = ""
+    @FocusState private var isSearchFieldFocused: Bool
+    @State private var searchScope: String = "Apple Music"
+    private let searchScopeOptions = ["Apple Music", "Ihre Mediathek"]
     @State private var searchTask: Task<Void, Never>? = nil
     @State private var autoSaveTask: Task<Void, Never>? = nil
 
@@ -120,6 +123,11 @@ public struct SearchView: View {
         .task {
             await initializeData()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PortMusic_FocusSearchField"))) { _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                isSearchFieldFocused = true
+            }
+        }
     }
 
     private var isEmptyResults: Bool {
@@ -132,91 +140,175 @@ public struct SearchView: View {
 
     // MARK: - Suchleiste & Navigation
     private var searchHeaderSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                // Back Button (<)
-                Button(action: handleGoBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(canGoBack ? .white : Color.white.opacity(0.35))
-                        .frame(width: 32, height: 32)
-                        .background(Color(hex: "#161618"))
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle().stroke(Color.white.opacity(canGoBack ? 0.18 : 0.08), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(!canGoBack)
-
-                // Forward Button (>)
-                Button(action: handleGoForward) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(canGoForward ? .white : Color.white.opacity(0.35))
-                        .frame(width: 32, height: 32)
-                        .background(Color(hex: "#161618"))
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle().stroke(Color.white.opacity(canGoForward ? 0.18 : 0.08), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(!canGoForward)
-
+        VStack(alignment: .leading, spacing: 12) {
+            // Zeile 1: Titel "Suche" und History-Navigation (< / >)
+            HStack(alignment: .center, spacing: 12) {
                 Text("Suche")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundColor(PortColors.textPrimary)
 
                 Spacer()
-            }
 
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.45))
+                if canGoBack || canGoForward {
+                    HStack(spacing: 8) {
+                        Button(action: handleGoBack) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(canGoBack ? .white : Color.white.opacity(0.30))
+                                .frame(width: 32, height: 32)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .disabled(!canGoBack)
 
-                TextField(
-                    "",
-                    text: $searchQuery,
-                    prompt: Text("Artists, Songs, Lyrics, and More")
-                        .foregroundColor(Color.white.opacity(0.35))
-                )
-                .font(.system(size: 15))
-                .foregroundColor(PortColors.textPrimary)
-                .tint(.white)
-                .accentColor(.white)
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
-                .submitLabel(.search)
-                .onChange(of: searchQuery) { newValue in
-                    scheduleDebouncedSearch(query: newValue)
-                }
-                .onSubmit {
-                    submitSearch(query: searchQuery)
-                }
-
-                if !searchQuery.isEmpty {
-                    Button(action: {
-                        searchQuery = ""
-                        searchResponse = nil
-                        fallbackTracks = []
-                        hasSearched = false
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.white.opacity(0.60))
+                        Button(action: handleGoForward) {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(canGoForward ? .white : Color.white.opacity(0.30))
+                                .frame(width: 32, height: 32)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .disabled(!canGoForward)
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color(hex: "#161618"))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+
+            // Zeile 2: Floating Liquid Glass Search Capsule + Abbrechen-Button
+            HStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.55))
+
+                    TextField(
+                        "",
+                        text: $searchQuery,
+                        prompt: Text("Künstler:innen, Titel, Songtexte und mehr")
+                            .foregroundColor(Color.white.opacity(0.38))
+                    )
+                    .font(.system(size: 15))
+                    .foregroundColor(PortColors.textPrimary)
+                    .tint(Color(hex: "#fc3c44"))
+                    .accentColor(Color(hex: "#fc3c44"))
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .submitLabel(.search)
+                    .focused($isSearchFieldFocused)
+                    .onChange(of: searchQuery) { newValue in
+                        scheduleDebouncedSearch(query: newValue)
+                    }
+                    .onSubmit {
+                        submitSearch(query: searchQuery)
+                    }
+
+                    if !searchQuery.isEmpty {
+                        Button(action: {
+                            searchQuery = ""
+                            searchResponse = nil
+                            fallbackTracks = []
+                            hasSearched = false
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color.white.opacity(0.60))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    } else {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(Color.white.opacity(0.45))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 44)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .overlay(Color.black.opacity(0.20))
+                        .overlay(
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.5
+                                )
+                        )
+                        .shadow(color: Color.black.opacity(0.35), radius: 10, y: 4)
+                )
+
+                if isSearchFieldFocused || !searchQuery.isEmpty {
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                            isSearchFieldFocused = false
+                            searchQuery = ""
+                            searchResponse = nil
+                            fallbackTracks = []
+                            hasSearched = false
+                        }
+                    }) {
+                        Text("Abbrechen")
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundColor(Color(hex: "#fc3c44"))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+
+            // Zeile 3: Segmented Scope Control ("Apple Music" vs. "Ihre Mediathek")
+            HStack(spacing: 0) {
+                ForEach(searchScopeOptions, id: \.self) { scope in
+                    let isSelected = (searchScope == scope)
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            searchScope = scope
+                        }
+                    }) {
+                        Text(scope)
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.60))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(
+                                Group {
+                                    if isSelected {
+                                        Capsule()
+                                            .fill(Color.white.opacity(0.20))
+                                            .overlay(
+                                                Capsule()
+                                                    .stroke(
+                                                        LinearGradient(
+                                                            colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
+                                                            startPoint: .top,
+                                                            endPoint: .bottom
+                                                        ),
+                                                        lineWidth: 0.5
+                                                    )
+                                            )
+                                    }
+                                }
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(3)
+            .background(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.25))
             )
+            .clipShape(Capsule())
         }
     }
 
