@@ -1,5 +1,6 @@
 build/
 derived_data/
+octave_decompiled/
 *.ipa
 .DS_Store
 UserInterfaceState.xcuserstate
