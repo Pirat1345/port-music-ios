@@ -8,9 +8,9 @@ public enum MainTabItem: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .home: return "Startseite"
+        case .home: return "Home"
         case .search: return "Suche"
-        case .library: return "Bibliothek"
+        case .library: return "Library"
         case .profile: return "Menü"
         }
     }
@@ -98,6 +98,7 @@ public struct MainTabView: View {
                             showFullscreenPlayer = true
                         }
                     }
+                    .padding(.horizontal, 16)
                     .transition(
                         .asymmetric(
                             insertion: .scale(scale: 0.94).combined(with: .opacity).combined(with: .move(edge: .bottom)),
@@ -106,9 +107,10 @@ public struct MainTabView: View {
                     )
                 }
 
-                // Custom Glass TabBar mit Safe-Area Unterstützung
+                // Custom Liquid Glass Floating Split TabBar mit Safe-Area Unterstützung
                 glassTabBar
             }
+            .padding(.bottom, 4)
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
             if showFullscreenPlayer {
@@ -155,65 +157,117 @@ public struct MainTabView: View {
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    // MARK: - Native Frosted Glass TabBar
+    // MARK: - Native Liquid Glass Floating Split TabBar (Kapsel + Abgesetzter Suchkreis)
     private var glassTabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(MainTabItem.allCases, id: \.self) { tab in
-                let isSelected = (selectedTab == tab)
+        HStack(spacing: 12) {
+            // 1. Linke längliche Glaskapsel (Pill): Home, Library, Menü
+            HStack(spacing: 2) {
+                ForEach(MainTabItem.allCases.filter { $0 != .search }, id: \.self) { tab in
+                    let isSelected = (selectedTab == tab)
 
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    if tab == .profile {
-                        // Menü öffnet/schließt ausschließlich die Seitenleiste (Drawer), ohne die aktuelle Hauptseite umzuschalten
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                            showMenuDrawer.toggle()
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        if tab == .profile {
+                            // Menü öffnet/schließt ausschließlich die Seitenleiste (Drawer)
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                                showMenuDrawer.toggle()
+                            }
+                        } else {
+                            if selectedTab == tab {
+                                NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
+                            }
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selectedTab = tab
+                                showMenuDrawer = false
+                            }
                         }
-                    } else {
-                        if selectedTab == tab {
-                            NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
-                        }
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTab = tab
-                            showMenuDrawer = false
-                        }
-                    }
-                }) {
-                    VStack(spacing: 3) {
-                        Image(systemName: tab.iconName(isSelected: isSelected))
-                            .font(.system(size: 21, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(isSelected ? Color.white : Color.white.opacity(0.45))
-                            .frame(height: 24)
+                    }) {
+                        VStack(spacing: 2) {
+                            Image(systemName: tab.iconName(isSelected: isSelected))
+                                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                                .frame(height: 22)
 
-                        Text(tab.title)
-                            .font(.system(size: 10, weight: isSelected ? .bold : .regular))
-                            .foregroundColor(isSelected ? Color.white : Color.white.opacity(0.45))
+                            Text(tab.title)
+                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, isSelected ? 8 : 4)
+                        .background(
+                            Group {
+                                if isSelected {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.12))
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                        )
+                                }
+                            }
+                        )
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
+            .padding(.horizontal, 6)
+            .frame(height: 58)
+            .background(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color(hex: "#141416").opacity(0.80))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+            )
+
+            // 2. Rechter abgesetzter schwebender Glaskreis: Suche (Apart Circle)
+            let isSearchSelected = (selectedTab == .search)
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                if selectedTab == .search {
+                    NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
+                }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    selectedTab = .search
+                    showMenuDrawer = false
+                }
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(Color(hex: "#141416").opacity(0.80))
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+
+                    if isSearchSelected {
+                        Circle()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(width: 44, height: 44)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            )
+                    }
+
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 20, weight: isSearchSelected ? .bold : .semibold))
+                        .foregroundColor(isSearchSelected ? Color(hex: "#fc3c44") : Color.white)
+                }
+                .frame(width: 58, height: 58)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
-        .padding(.top, 6)
         .padding(.bottom, 6)
-        .background(
-            ZStack(alignment: .top) {
-                // Frosted Glass Blur mit transluzenter Abdunklung
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Color(hex: "#121214").opacity(0.80)
-                    )
-
-                // 0.5pt Hairline-Border an der Oberkante
-                Rectangle()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(height: 0.5)
-            }
-            .ignoresSafeArea(edges: .bottom)
-        )
     }
 
     // MARK: - Navigation Destinations

@@ -226,11 +226,14 @@ public struct FullscreenPlayerView: View {
                 // Scrubber mit negativer Restzeit (-M:SS)
                 scrubberSection
 
-                // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
+                // Bedienelemente
                 playbackControlsSection
 
                 // Lautstärke-Regler
                 volumeSliderSection
+
+                // Untere Aktionen (Lyrics, AirPlay, Shuffle, Repeat, Queue)
+                bottomActionRow
 
                 Spacer(minLength: 12)
             }
@@ -306,22 +309,22 @@ public struct FullscreenPlayerView: View {
             .frame(width: geo.size.width)
             .transition(.opacity.combined(with: .scale(scale: 0.98)))
         } else {
-            // Klassischer Vollbild-Player (Big Picture Modus mit großem Cover)
+            // Klassischer Vollbild-Player (Big Picture Modus mit großem Cover und Melt Backdrop)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
-                    // Großes Albumcover zentriert
+                    // Großes Albumcover mit Weichzeichnungs-Melt-Effekt zentriert
                     artworkSection(maxSize: artworkSize)
                         .padding(.top, 4)
 
-                    // Titel, Interpret, Qualitäts-Chip & Favorit
+                    // Titel, Interpret & runde Aktionsbuttons (Favorit & Optionen)
                     trackInfoSection
                         .frame(width: contentWidth)
 
-                    // Scrubber mit negativer Restzeit (flüssig ohne verschachtelte GeometryReader)
+                    // Scrubber mit Qualitäts-Chip ("High") und negativer Restzeit
                     scrubberContent(fixedWidth: contentWidth)
                         .frame(width: contentWidth)
 
-                    // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
+                    // Große Transport-Bedienelemente (Vorheriger, solider weißer Play/Pause-Button, Nächster)
                     playbackControlsSection
                         .frame(width: contentWidth)
 
@@ -329,6 +332,10 @@ public struct FullscreenPlayerView: View {
                     volumeSliderSection
                         .frame(width: contentWidth)
                         .padding(.top, 2)
+
+                    // Untere Aktionszeile (Lyrics, AirPlay, Shuffle, Repeat, Queue)
+                    bottomActionRow
+                        .frame(width: contentWidth)
 
                     // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
                     phoneLyricsSection
@@ -343,22 +350,26 @@ public struct FullscreenPlayerView: View {
         }
     }
 
-    // MARK: - Album Cover mit Feder-Animation (Spring Scale & Wischgeste)
+    // MARK: - Album Cover mit Feder-Animation & Weichzeichnungs-Übergang (Melt Backdrop)
     private func artworkSection(maxSize: CGFloat) -> some View {
         let isLarge = maxSize > 100
-        return ZStack {
+        return ZStack(alignment: .bottom) {
             if let artwork = player.nowPlayingArtwork {
                 Image(uiImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 20 : 8))
+                    .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 24 : 8))
             } else {
                 let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 20 : 8))
+                        .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 24 : 8))
                 } placeholder: {
                     ZStack {
                         Color.white.opacity(0.08)
@@ -366,14 +377,28 @@ public struct FullscreenPlayerView: View {
                             .font(.system(size: isLarge ? 48 : 20))
                             .foregroundColor(Color.white.opacity(0.35))
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 20 : 8))
+                    .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 24 : 8))
                 }
             }
+
+            // Weicher Farbübergang (Melt Backdrop Overlay) an der Unterkante des Covers
+            if isLarge {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.45),
+                        .init(color: Color.black.opacity(0.35), location: 0.75),
+                        .init(color: Color.black.opacity(0.85), location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+            }
         }
-        .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: maxSize)
+        .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
         .overlay(
-            RoundedRectangle(cornerRadius: isLarge ? 20 : 8)
+            RoundedRectangle(cornerRadius: isLarge ? 24 : 8)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
         )
         .shadow(
@@ -381,7 +406,7 @@ public struct FullscreenPlayerView: View {
             radius: isLarge ? (player.isPlaying ? 30 : 14) : 4,
             y: isLarge ? (player.isPlaying ? 15 : 6) : 2
         )
-        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.84) : 1.0)
+        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.85) : 1.0)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
         .offset(x: isLarge ? artworkDragOffset : 0)
         .simultaneousGesture(
@@ -417,55 +442,75 @@ public struct FullscreenPlayerView: View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(player.currentTrack?.title ?? "Kein Titel")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(Color.white)
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundColor(Color.white.opacity(0.65))
-                        .lineLimit(1)
-
-                    // Hi-Res / Lossless Audio-Chip
-                    Text("LOSSLESS")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundColor(Color.white.opacity(0.75))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(Color.white.opacity(0.12))
-                        )
-                }
+                Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(Color.white.opacity(0.70))
+                    .lineLimit(1)
             }
 
             Spacer()
 
-            // Favoriten-Button (Herz in #fc3c44)
-            Button(action: {
-                guard let track = player.currentTrack else { return }
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-                isFavorite.toggle()
-                FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
-                Task {
-                    let token = SessionManager.shared.currentToken
-                    let ok = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
-                    if !ok {
-                        await MainActor.run {
-                            isFavorite.toggle()
-                            FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
+            // Runde Aktionsbuttons rechts: Favorit & Optionen
+            HStack(spacing: 10) {
+                // Favoriten-Button (Runder Frosted Glass Button mit Herz in #fc3c44)
+                Button(action: {
+                    guard let track = player.currentTrack else { return }
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    isFavorite.toggle()
+                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
+                    Task {
+                        let token = SessionManager.shared.currentToken
+                        let ok = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
+                        if !ok {
+                            await MainActor.run {
+                                isFavorite.toggle()
+                                FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
+                            }
                         }
                     }
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.12))
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            )
+                            .frame(width: 44, height: 44)
+
+                        Image(systemName: isFavorite ? "heart.fill" : "heart")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(isFavorite ? Color(hex: "#fc3c44") : Color.white)
+                    }
                 }
-            }) {
-                Image(systemName: isFavorite ? "heart.fill" : "heart")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundColor(isFavorite ? Color(hex: "#fc3c44") : Color.white.opacity(0.70))
-                    .frame(width: 44, height: 44)
+                .buttonStyle(PlainButtonStyle())
+
+                // Optionen-Button (Runder Frosted Glass Button mit •••)
+                Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.12))
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            )
+                            .frame(width: 44, height: 44)
+
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(Color.white)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
         }
         .frame(maxWidth: .infinity)
     }
@@ -487,11 +532,27 @@ public struct FullscreenPlayerView: View {
                 .frame(height: 24)
             }
 
-            // Links vergangen, Rechts verbleibend (-M:SS)
+            // Links vergangen, Mitte Qualitäts-Chip ("High" / "Lossless"), Rechts verbleibend (-M:SS)
             HStack {
                 Text(formatSeconds(activeProgress))
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(Color.white.opacity(0.60))
+
+                Spacer()
+
+                Text("High")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.85))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.14))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            )
+                    )
 
                 Spacer()
 
@@ -543,10 +604,98 @@ public struct FullscreenPlayerView: View {
         )
     }
 
-    // MARK: - Playback Controls (Exakt wie im Screenshot media_1794768801325_390874e2.jpg)
+    // MARK: - Playback Controls (Exakt wie im Screenshot media_1794856506477_d5bf729e.jpg)
     public var playbackControlsSection: some View {
         HStack(spacing: 0) {
-            // 1. Shuffle
+            // 1. Vorheriger Song (|◀◀ wie im Screenshot)
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                player.previous(serverURL: serverURL)
+            }) {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // 2. Play / Pause Haupt-Button (Solider weißer abgerundeter Button mit schwarzem Symbol)
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                player.togglePlayPause()
+            }) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color.white)
+                        .frame(width: 68, height: 52)
+                        .shadow(color: Color.black.opacity(0.35), radius: 6, y: 2)
+
+                    if player.isBuffering {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                            .scaleEffect(0.95)
+                    } else {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundColor(.black)
+                            .offset(x: player.isPlaying ? 0 : 1.5)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // 3. Nächster Song (▶▶| wie im Screenshot)
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                player.next(serverURL: serverURL)
+            }) {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Untere Aktionsleiste (Lyrics, AirPlay, Shuffle, Repeat, Queue)
+    public var bottomActionRow: some View {
+        HStack(spacing: 0) {
+            // 1. Lyrics Toggle (quote.bubble)
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    showLyrics.toggle()
+                    sidePanelMode = (sidePanelMode == .lyrics && !showLyrics) ? .queue : .lyrics
+                }
+            }) {
+                Image(systemName: (sidePanelMode == .lyrics || showLyrics) ? "quote.bubble.fill" : "quote.bubble")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor((sidePanelMode == .lyrics || showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // 2. AirPlay Symbol
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+            }) {
+                Image(systemName: "airplayaudio")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.65))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // 3. Shuffle
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -559,7 +708,7 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 2. Repeat
+            // 4. Repeat
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -572,69 +721,7 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 3. Vorheriger Song (|◀ wie im Screenshot)
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
-                player.previous(serverURL: serverURL)
-            }) {
-                Image(systemName: "backward.end.fill")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // 4. Play / Pause Haupt-Button (Reines solid weißes Symbol ohne weißen Kreis!)
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-                player.togglePlayPause()
-            }) {
-                if player.isBuffering {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.2)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 38, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // 5. Nächster Song (▶| wie im Screenshot)
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
-                player.next(serverURL: serverURL)
-            }) {
-                Image(systemName: "forward.end.fill")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // 6. Lyrics Toggle (quote.bubble)
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    showLyrics.toggle()
-                    sidePanelMode = (sidePanelMode == .lyrics && !showLyrics) ? .queue : .lyrics
-                }
-            }) {
-                Image(systemName: (sidePanelMode == .lyrics || showLyrics) ? "quote.bubble.fill" : "quote.bubble")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundColor((sidePanelMode == .lyrics || showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // 7. Queue Toggle (list.bullet)
+            // 5. Queue Toggle (list.bullet)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -647,14 +734,14 @@ public struct FullscreenPlayerView: View {
                 }
             }) {
                 Image(systemName: "list.bullet")
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundColor((sidePanelMode == .queue && !showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Lautstärke-Regler mit Lautsprecher-Icon
