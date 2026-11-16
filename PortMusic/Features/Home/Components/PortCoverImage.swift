@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 public func resolveCoverURL(_ raw: String?, serverURL: String) -> URL? {
     guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
@@ -159,6 +160,65 @@ public struct NativeBoringAvatarView: View {
     }
 }
 
+// MARK: - Native WebKit SVG Avatar View
+public struct PortSVGAvatarView: UIViewRepresentable {
+    public let svgContent: String
+    public let size: CGFloat
+
+    public init(svgContent: String, size: CGFloat) {
+        self.svgContent = svgContent
+        self.size = size
+    }
+
+    public func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: size, height: size), configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.isUserInteractionEnabled = false
+        webView.clipsToBounds = true
+        webView.layer.cornerRadius = size / 2
+        return webView
+    }
+
+    public func updateUIView(_ uiView: WKWebView, context: Context) {
+        let cleanSvg = svgContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanSvg.isEmpty else { return }
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          html, body {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          svg {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+            border-radius: 50%;
+          }
+        </style>
+        </head>
+        <body>
+          \(cleanSvg)
+        </body>
+        </html>
+        """
+        uiView.loadHTMLString(html, baseURL: nil)
+    }
+}
+
 // MARK: - Reusable Port User Avatar View
 public struct PortUserAvatarView: View {
     public let rawAvatar: String?
@@ -168,6 +228,7 @@ public struct PortUserAvatarView: View {
     public let isSelected: Bool
 
     @State private var rasterImage: UIImage?
+    @State private var svgString: String?
 
     public init(
         rawAvatar: String?,
@@ -189,6 +250,10 @@ public struct PortUserAvatarView: View {
                 Image(uiImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            } else if let svg = svgString, !svg.isEmpty {
+                PortSVGAvatarView(svgContent: svg, size: size)
                     .frame(width: size, height: size)
                     .clipShape(Circle())
             } else {
@@ -245,22 +310,52 @@ public struct PortUserAvatarView: View {
             }
         }
 
-        // 2. Remote URL (z.B. /api/files/avatars/... oder http...)
-        guard let url = resolveAvatarURL(raw, serverURL: serverURL) else { return }
+        // 2. Inline SVG string oder data:image/svg+xml
+        if raw.contains("<svg") || raw.contains("svg+xml") {
+            if raw.contains("base64,") {
+                if let b64 = raw.components(separatedBy: "base64,").last,
+                   let data = Data(base64Encoded: b64.trimmingCharacters(in: .whitespacesAndNewlines)),
+                   let str = String(data: data, encoding: .utf8), str.contains("<svg") {
+                    self.svgString = str
+                    return
+                }
+            } else if let commaIdx = raw.firstIndex(of: ",") {
+                let payload = String(raw[raw.index(after: commaIdx)...])
+                let decoded = payload.removingPercentEncoding ?? payload
+                if decoded.contains("<svg") {
+                    self.svgString = decoded
+                    return
+                }
+            } else if raw.contains("<svg") {
+                self.svgString = raw
+                return
+            }
+        }
 
-        // 2a. Sofort aus Memory-Cache laden falls vorhanden
+        // 3. Remote URL (z.B. /api/files/avatars/... oder http...)
+        guard let url = resolveAvatarURL(raw, serverURL: serverURL) else { return }
+        let urlKey = url.absoluteString
+        let svgCacheKey = "pm_avatar_svg_\(urlKey)"
+
+        // 3a. Cache-Prüfung für SVG
+        if let cachedSvg = UserDefaults.standard.string(forKey: svgCacheKey), !cachedSvg.isEmpty {
+            self.svgString = cachedSvg
+            return
+        }
+
+        // 3b. Sofort aus Memory-Cache laden falls Rasterbild vorhanden
         if let memImg = PortImageCache.shared.imageFromMemory(for: url) {
             rasterImage = memImg
             return
         }
 
-        // 2b. Über PortImageCache (Disk + Netzwerk) laden
+        // 3c. Über PortImageCache (Disk + Netzwerk) laden
         if let loaded = await PortImageCache.shared.loadImage(for: url) {
             rasterImage = loaded
             return
         }
 
-        // 2c. Direkte HTTP-Abfrage fuer Bilddateien
+        // 3d. Direkte HTTP-Abfrage (für SVG-Vektordateien oder sonstige Bilddateien)
         do {
             var req = URLRequest(url: url)
             req.timeoutInterval = 8.0
@@ -274,6 +369,12 @@ public struct PortUserAvatarView: View {
 
             if let img = UIImage(data: data) {
                 rasterImage = img
+                return
+            }
+
+            if let str = String(data: data, encoding: .utf8), str.contains("<svg") {
+                UserDefaults.standard.set(str, forKey: svgCacheKey)
+                self.svgString = str
                 return
             }
         } catch {}
