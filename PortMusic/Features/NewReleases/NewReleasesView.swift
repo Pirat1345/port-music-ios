@@ -77,9 +77,10 @@ public struct NewReleasesView: View {
                     }
                 }
 
-                Spacer(minLength: 120)
+                Spacer(minLength: 160)
             }
         }
+        .ignoresSafeArea(edges: .bottom)
         .background(Color.black.ignoresSafeArea())
         .task {
             await loadData()

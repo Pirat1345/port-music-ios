@@ -113,6 +113,7 @@ public struct HomeView: View {
             .refreshable {
                 await loadHomeData()
             }
+            .ignoresSafeArea(edges: .bottom)
         }
         .task {
             if discovery == nil {

@@ -116,6 +116,7 @@ public struct SearchView: View {
                     }
                     .padding(.top, 8)
                 }
+                .ignoresSafeArea(edges: .bottom)
             }
         }
         .preferredColorScheme(.dark)

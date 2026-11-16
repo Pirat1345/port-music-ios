@@ -80,7 +80,8 @@ public struct FullscreenPlayerView: View {
                 .frame(width: fullWidth)
             }
             .frame(width: fullWidth, height: fullHeight)
-            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: dragOffset > 0 ? 44 : (safeTop > 20 ? 42 : 0), style: .continuous))
+            .shadow(color: Color.black.opacity(dragOffset > 0 ? 0.50 : 0.0), radius: 30, y: 15)
             .offset(y: max(0, dragOffset))
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
@@ -189,7 +190,7 @@ public struct FullscreenPlayerView: View {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
                         onClose()
-                    } else if val.translation.height > 120 || val.predictedEndTranslation.height > 200 {
+                    } else if val.translation.height > 60 || val.translation.height > 120 || val.predictedEndTranslation.height > 100 {
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                         onClose()
@@ -416,23 +417,37 @@ public struct FullscreenPlayerView: View {
                     guard isLarge else { return }
                     if abs(val.translation.width) > abs(val.translation.height) {
                         artworkDragOffset = val.translation.width
+                    } else if val.translation.height > 0 {
+                        dragOffset = val.translation.height
                     }
                 }
                 .onEnded { val in
                     guard isLarge else { return }
-                    let dx = val.translation.width
-                    let velocity = val.predictedEndTranslation.width - val.translation.width
-                    if dx < -45 || velocity < -60 {
+                    let dy = val.translation.height
+                    let velocityY = val.predictedEndTranslation.height - val.translation.height
+                    if abs(val.translation.width) > abs(dy) {
+                        let dx = val.translation.width
+                        let velocityX = val.predictedEndTranslation.width - val.translation.width
+                        if dx < -45 || velocityX < -60 {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            player.next(serverURL: serverURL)
+                        } else if dx > 45 || velocityX > 60 {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            player.previous(serverURL: serverURL)
+                        }
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                            artworkDragOffset = 0
+                        }
+                    } else if dy > 60 || dy > 120 || velocityY > 100 {
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
-                        player.next(serverURL: serverURL)
-                    } else if dx > 45 || velocity > 60 {
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
-                        player.previous(serverURL: serverURL)
-                    }
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                        artworkDragOffset = 0
+                        onClose()
+                    } else {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                            dragOffset = 0
+                        }
                     }
                 }
         )

@@ -63,9 +63,10 @@ public struct RadioBrowserView: View {
                     .padding(.horizontal, 16)
                 }
 
-                Spacer(minLength: 120)
+                Spacer(minLength: 160)
             }
         }
+        .ignoresSafeArea(edges: .bottom)
         .background(Color.black.ignoresSafeArea())
         .task {
             await loadStations()

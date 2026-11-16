@@ -110,14 +110,18 @@ public struct MainTabView: View {
                 switch selectedTab {
                 case .home:
                     NavigationStack {
-                        Group {
-                            if activeLiquidTab == .radio {
-                                RadioBrowserView(serverURL: serverURL)
-                            } else if activeLiquidTab == .newReleases {
-                                NewReleasesView(serverURL: serverURL)
-                            } else {
-                                HomeView(serverURL: serverURL, user: user)
-                            }
+                        ZStack {
+                            HomeView(serverURL: serverURL, user: user)
+                                .opacity(activeLiquidTab == .home ? 1 : 0)
+                                .allowsHitTesting(activeLiquidTab == .home)
+
+                            NewReleasesView(serverURL: serverURL)
+                                .opacity(activeLiquidTab == .newReleases ? 1 : 0)
+                                .allowsHitTesting(activeLiquidTab == .newReleases)
+
+                            RadioBrowserView(serverURL: serverURL)
+                                .opacity(activeLiquidTab == .radio ? 1 : 0)
+                                .allowsHitTesting(activeLiquidTab == .radio)
                         }
                         .navigationDestination(for: AppRoute.self) { route in
                             destinationForRoute(route)

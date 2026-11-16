@@ -63,6 +63,7 @@ public struct LibraryView: View {
             .refreshable {
                 await loadLibraryData()
             }
+            .ignoresSafeArea(edges: .bottom)
         }
         .navigationTitle("Bibliothek")
         .navigationBarTitleDisplayMode(.inline)
