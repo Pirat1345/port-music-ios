@@ -215,7 +215,7 @@ public struct PortSVGAvatarView: UIViewRepresentable {
         </body>
         </html>
         """
-        uiView.loadHTMLString(html, baseURL: nil)
+        uiView.loadHTMLString(html, baseURL: URL(string: "http://localhost/"))
     }
 }
 
@@ -229,6 +229,7 @@ public struct PortUserAvatarView: View {
 
     @State private var rasterImage: UIImage?
     @State private var svgString: String?
+    @State private var boringColors: (Color, Color, Color, Double)?
 
     public init(
         rawAvatar: String?,
@@ -252,6 +253,14 @@ public struct PortUserAvatarView: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size, height: size)
                     .clipShape(Circle())
+            } else if let colors = boringColors {
+                NativeBoringAvatarView(
+                    bgColor: colors.0,
+                    accentColor: colors.1,
+                    faceColor: colors.2,
+                    rotation: colors.3,
+                    size: size
+                )
             } else if let svg = svgString, !svg.isEmpty {
                 PortSVGAvatarView(svgContent: svg, size: size)
                     .frame(width: size, height: size)
@@ -294,6 +303,31 @@ public struct PortUserAvatarView: View {
         .frame(width: size, height: size)
     }
 
+    private func extractBoringColors(from svg: String) -> (Color, Color, Color, Double)? {
+        let pattern = "fill=['\"](#[0-9a-fA-F]{6})['\"]"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let matches = regex.matches(in: svg, range: NSRange(svg.startIndex..., in: svg))
+        var fills: [String] = []
+        for m in matches {
+            if let range = Range(m.range(at: 1), in: svg) {
+                fills.append(String(svg[range]))
+            }
+        }
+        let colors = fills.filter { $0.lowercased() != "#ffffff" && $0.lowercased() != "#fff" }
+        guard colors.count >= 2 else { return nil }
+        let bg = Color(hex: colors[0])
+        let accent = Color(hex: colors[1])
+        let face = colors.count >= 3 ? Color(hex: colors[2]) : Color.black
+        var rot = 65.0
+        if let rotRange = svg.range(of: "rotate(") {
+            let sub = svg[rotRange.upperBound...]
+            if let spaceIdx = sub.firstIndex(of: " ") {
+                if let r = Double(sub[..<spaceIdx]) { rot = r }
+            }
+        }
+        return (bg, accent, face, rot)
+    }
+
     @MainActor
     private func resolveAvatar() async {
         guard let raw = rawAvatar?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
@@ -316,6 +350,9 @@ public struct PortUserAvatarView: View {
                 if let b64 = raw.components(separatedBy: "base64,").last,
                    let data = Data(base64Encoded: b64.trimmingCharacters(in: .whitespacesAndNewlines)),
                    let str = String(data: data, encoding: .utf8), str.contains("<svg") {
+                    if let parsed = extractBoringColors(from: str) {
+                        self.boringColors = parsed
+                    }
                     self.svgString = str
                     return
                 }
@@ -323,10 +360,16 @@ public struct PortUserAvatarView: View {
                 let payload = String(raw[raw.index(after: commaIdx)...])
                 let decoded = payload.removingPercentEncoding ?? payload
                 if decoded.contains("<svg") {
+                    if let parsed = extractBoringColors(from: decoded) {
+                        self.boringColors = parsed
+                    }
                     self.svgString = decoded
                     return
                 }
             } else if raw.contains("<svg") {
+                if let parsed = extractBoringColors(from: raw) {
+                    self.boringColors = parsed
+                }
                 self.svgString = raw
                 return
             }
@@ -339,23 +382,50 @@ public struct PortUserAvatarView: View {
 
         // 3a. Cache-Prüfung für SVG
         if let cachedSvg = UserDefaults.standard.string(forKey: svgCacheKey), !cachedSvg.isEmpty {
+            if let parsed = extractBoringColors(from: cachedSvg) {
+                self.boringColors = parsed
+            }
             self.svgString = cachedSvg
             return
         }
 
-        // 3b. Sofort aus Memory-Cache laden falls Rasterbild vorhanden
+        // 3b. Falls es sich um eine SVG-Datei handelt, direkt abrufen (PortImageCache kann kein SVG dekodieren)
+        if url.pathExtension.lowercased() == "svg" || raw.contains(".svg") {
+            do {
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 8.0
+                if let token = SessionManager.shared.currentToken, !token.isEmpty {
+                    req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                }
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    return
+                }
+                if let str = String(data: data, encoding: .utf8), str.contains("<svg") {
+                    UserDefaults.standard.set(str, forKey: svgCacheKey)
+                    if let parsed = extractBoringColors(from: str) {
+                        self.boringColors = parsed
+                    }
+                    self.svgString = str
+                    return
+                }
+            } catch {}
+            return
+        }
+
+        // 3c. Sofort aus Memory-Cache laden falls Rasterbild vorhanden
         if let memImg = PortImageCache.shared.imageFromMemory(for: url) {
             rasterImage = memImg
             return
         }
 
-        // 3c. Über PortImageCache (Disk + Netzwerk) laden
+        // 3d. Über PortImageCache (Disk + Netzwerk) laden
         if let loaded = await PortImageCache.shared.loadImage(for: url) {
             rasterImage = loaded
             return
         }
 
-        // 3d. Direkte HTTP-Abfrage (für SVG-Vektordateien oder sonstige Bilddateien)
+        // 3e. Direkte HTTP-Abfrage für sonstige Bilder
         do {
             var req = URLRequest(url: url)
             req.timeoutInterval = 8.0
@@ -374,6 +444,9 @@ public struct PortUserAvatarView: View {
 
             if let str = String(data: data, encoding: .utf8), str.contains("<svg") {
                 UserDefaults.standard.set(str, forKey: svgCacheKey)
+                if let parsed = extractBoringColors(from: str) {
+                    self.boringColors = parsed
+                }
                 self.svgString = str
                 return
             }

@@ -3,6 +3,7 @@ import Foundation
 public struct UserProfile: Codable, Identifiable, Equatable {
     public let id: String
     public let username: String
+    public let displayName: String?
     public let email: String?
     public let role: String?
     public let createdAt: String?
@@ -11,6 +12,7 @@ public struct UserProfile: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, userId, user_id
         case username
+        case displayName, display_name, name
         case email
         case role
         case createdAt, created_at
@@ -23,10 +25,12 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         email: String? = nil,
         role: String? = nil,
         createdAt: String? = nil,
-        avatar: String? = nil
+        avatar: String? = nil,
+        displayName: String? = nil
     ) {
         self.id = id
         self.username = username
+        self.displayName = displayName
         self.email = email
         self.role = role
         self.createdAt = createdAt
@@ -45,6 +49,16 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         self.id = decodedId ?? UUID().uuidString
 
         self.username = (try? container.decode(String.self, forKey: .username)) ?? "Benutzer"
+
+        var disp = try? container.decodeIfPresent(String.self, forKey: .displayName)
+        if disp == nil {
+            disp = try? container.decodeIfPresent(String.self, forKey: .display_name)
+        }
+        if disp == nil {
+            disp = try? container.decodeIfPresent(String.self, forKey: .name)
+        }
+        self.displayName = disp
+
         self.email = try? container.decodeIfPresent(String.self, forKey: .email)
         self.role = try? container.decodeIfPresent(String.self, forKey: .role)
 
@@ -71,6 +85,7 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(username, forKey: .username)
+        try container.encodeIfPresent(displayName, forKey: .displayName)
         try container.encodeIfPresent(email, forKey: .email)
         try container.encodeIfPresent(role, forKey: .role)
         try container.encodeIfPresent(createdAt, forKey: .createdAt)

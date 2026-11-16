@@ -10,6 +10,8 @@ public struct PortMenuDrawerView: View {
     public let user: UserProfile
     public let serverURL: String
     @Binding public var isPresented: Bool
+    public var externalDragOffset: CGFloat = 0
+    public var isExternalDragging: Bool = false
     public let onNavigateHome: (() -> Void)?
     public let onOpenProfile: () -> Void
     public let onOpenSettings: () -> Void
@@ -30,6 +32,8 @@ public struct PortMenuDrawerView: View {
         user: UserProfile,
         serverURL: String,
         isPresented: Binding<Bool>,
+        externalDragOffset: CGFloat = 0,
+        isExternalDragging: Bool = false,
         onNavigateHome: (() -> Void)? = nil,
         onOpenProfile: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
@@ -38,6 +42,8 @@ public struct PortMenuDrawerView: View {
         self.user = user
         self.serverURL = serverURL
         self._isPresented = isPresented
+        self.externalDragOffset = externalDragOffset
+        self.isExternalDragging = isExternalDragging
         self.onNavigateHome = onNavigateHome
         self.onOpenProfile = onOpenProfile
         self.onOpenSettings = onOpenSettings
@@ -61,8 +67,14 @@ public struct PortMenuDrawerView: View {
             let drawerWidth = min(300, geo.size.width * 0.78)
             let safeTop = max(geo.safeAreaInsets.top, deviceSafeTop)
             let safeBottom = max(geo.safeAreaInsets.bottom, 16)
-            let currentOffset: CGFloat = isVisible ? min(0, dragOffset) : -drawerWidth
-            let backdropOpacity: Double = isVisible ? max(0, 0.60 * (1.0 + Double(dragOffset / drawerWidth))) : 0.0
+
+            let effectiveOffset: CGFloat = isExternalDragging
+                ? min(0, -drawerWidth + externalDragOffset)
+                : (isVisible ? min(0, dragOffset) : -drawerWidth)
+
+            let backdropOpacity: Double = isExternalDragging
+                ? max(0, min(0.60, 0.60 * Double(externalDragOffset / drawerWidth)))
+                : (isVisible ? max(0, 0.60 * (1.0 + Double(dragOffset / drawerWidth))) : 0.0)
 
             ZStack(alignment: .leading) {
                 // 1. Abgedunkelter Hintergrund (Backdrop)
@@ -106,7 +118,7 @@ public struct PortMenuDrawerView: View {
                             alignment: .trailing
                         )
                 )
-                .offset(x: currentOffset)
+                .offset(x: effectiveOffset)
                 .gesture(
                     DragGesture()
                         .onChanged { val in
@@ -127,8 +139,10 @@ public struct PortMenuDrawerView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .onAppear {
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                    isVisible = true
+                if !isExternalDragging {
+                    withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                        isVisible = true
+                    }
                 }
                 Task {
                     await fetchUnreadCount()

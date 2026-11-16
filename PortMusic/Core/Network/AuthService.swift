@@ -253,7 +253,8 @@ public final class AuthService {
 
         if let userObj = json["user"] as? [String: Any] {
             let userId = (userObj["userId"] as? String) ?? (userObj["user_id"] as? String) ?? (userObj["id"] as? String) ?? UUID().uuidString
-            let username = (userObj["username"] as? String) ?? (userObj["displayName"] as? String) ?? (userObj["display_name"] as? String) ?? "Benutzer"
+            let displayName = (userObj["displayName"] as? String) ?? (userObj["display_name"] as? String) ?? (userObj["name"] as? String)
+            let username = (userObj["username"] as? String) ?? displayName ?? "Benutzer"
             let email = userObj["email"] as? String
             let role = userObj["role"] as? String
             let createdAt = userObj["createdAt"] as? String
@@ -265,12 +266,14 @@ public final class AuthService {
                 email: email,
                 role: role,
                 createdAt: createdAt,
-                avatar: avatar
+                avatar: avatar,
+                displayName: displayName
             )
         }
 
         let userId = (json["userId"] as? String) ?? (json["user_id"] as? String) ?? (json["id"] as? String) ?? UUID().uuidString
-        let username = (json["username"] as? String) ?? (json["displayName"] as? String) ?? (json["display_name"] as? String) ?? "Benutzer"
+        let displayName = (json["displayName"] as? String) ?? (json["display_name"] as? String) ?? (json["name"] as? String)
+        let username = (json["username"] as? String) ?? displayName ?? "Benutzer"
         let email = json["email"] as? String
         let role = json["role"] as? String
         let createdAt = json["createdAt"] as? String
@@ -282,7 +285,8 @@ public final class AuthService {
             email: email,
             role: role,
             createdAt: createdAt,
-            avatar: avatar
+            avatar: avatar,
+            displayName: displayName
         )
     }
 
@@ -348,7 +352,8 @@ public final class AuthService {
         if (200...299).contains(httpResponse.statusCode) {
             let userObj = json["user"] as? [String: Any]
             let userId = (userObj?["userId"] as? String) ?? (userObj?["id"] as? String) ?? (json["userId"] as? String) ?? UUID().uuidString
-            let uname = (userObj?["username"] as? String) ?? (json["username"] as? String) ?? payload.email ?? "Benutzer"
+            let displayName = (userObj?["displayName"] as? String) ?? (userObj?["display_name"] as? String) ?? (json["displayName"] as? String)
+            let uname = (userObj?["username"] as? String) ?? (json["username"] as? String) ?? displayName ?? payload.email ?? "Benutzer"
             let role = (userObj?["role"] as? String) ?? (json["role"] as? String) ?? "user"
             let email = (userObj?["email"] as? String) ?? (json["email"] as? String)
             let createdAt = (userObj?["createdAt"] as? String) ?? (json["createdAt"] as? String)
@@ -361,7 +366,8 @@ public final class AuthService {
                 email: email,
                 role: role,
                 createdAt: createdAt,
-                avatar: avatar
+                avatar: avatar,
+                displayName: displayName
             )
             saveSession(user: profile, token: token)
             return .success(user: profile, token: token)
