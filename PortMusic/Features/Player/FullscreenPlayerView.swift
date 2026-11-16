@@ -251,10 +251,11 @@ public struct FullscreenPlayerView: View {
         .frame(width: geo.size.width)
     }
 
-    // MARK: - PHONE PORTRAIT LAYOUT (Perfekt zentriert, nahtloser Wechsel zwischen Artwork & Lyrics)
+    // MARK: - PHONE PORTRAIT LAYOUT (Großes Cover, 1:1 Layout)
     @ViewBuilder
     private func phoneScrollLayout(geo: GeometryProxy) -> some View {
-        let contentWidth = min(geo.size.width - 36, 420)
+        let contentWidth = min(geo.size.width - 44, 420)
+        let artworkSize = min(contentWidth, geo.size.height * 0.44)
 
         if showLyrics {
             // Vollbild-Songtext-Modus auf dem Smartphone mit Live-Scroll
@@ -305,10 +306,12 @@ public struct FullscreenPlayerView: View {
             .frame(width: geo.size.width)
             .transition(.opacity.combined(with: .scale(scale: 0.98)))
         } else {
+            // Klassischer Vollbild-Player (Big Picture Modus mit großem Cover)
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
-                    // Albumcover zentriert
-                    artworkSection(maxSize: min(contentWidth, 310))
+                VStack(spacing: 16) {
+                    // Großes Albumcover zentriert
+                    artworkSection(maxSize: artworkSize)
+                        .padding(.top, 4)
 
                     // Titel, Interpret, Qualitäts-Chip & Favorit
                     trackInfoSection
@@ -325,14 +328,14 @@ public struct FullscreenPlayerView: View {
                     // Lautstärke-Schieberegler
                     volumeSliderSection
                         .frame(width: contentWidth)
-                        .padding(.top, 4)
+                        .padding(.top, 2)
 
                     // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
                     phoneLyricsSection
                         .frame(width: contentWidth)
-                        .padding(.top, 10)
+                        .padding(.top, 8)
 
-                    Spacer(minLength: 40)
+                    Spacer(minLength: 36)
                 }
                 .frame(width: geo.size.width, alignment: .center)
             }
@@ -348,14 +351,14 @@ public struct FullscreenPlayerView: View {
                 Image(uiImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 18 : 8))
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 20 : 8))
             } else {
                 let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 18 : 8))
+                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 20 : 8))
                 } placeholder: {
                     ZStack {
                         Color.white.opacity(0.08)
@@ -363,46 +366,46 @@ public struct FullscreenPlayerView: View {
                             .font(.system(size: isLarge ? 48 : 20))
                             .foregroundColor(Color.white.opacity(0.35))
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 18 : 8))
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 20 : 8))
                 }
             }
         }
         .aspectRatio(1, contentMode: .fit)
         .frame(maxWidth: maxSize)
         .overlay(
-            RoundedRectangle(cornerRadius: isLarge ? 18 : 8)
+            RoundedRectangle(cornerRadius: isLarge ? 20 : 8)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
         )
         .shadow(
             color: Color.black.opacity(player.isPlaying ? 0.65 : 0.35),
-            radius: isLarge ? (player.isPlaying ? 28 : 14) : 4,
-            y: isLarge ? (player.isPlaying ? 14 : 6) : 2
+            radius: isLarge ? (player.isPlaying ? 30 : 14) : 4,
+            y: isLarge ? (player.isPlaying ? 15 : 6) : 2
         )
-        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.88) : 1.0)
+        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.86) : 1.0)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
         .offset(x: isLarge ? artworkDragOffset : 0)
         .simultaneousGesture(
-            DragGesture(minimumDistance: 15)
+            DragGesture(minimumDistance: 10)
                 .onChanged { val in
                     guard isLarge else { return }
                     if abs(val.translation.width) > abs(val.translation.height) {
-                        artworkDragOffset = val.translation.width * 0.35
+                        artworkDragOffset = val.translation.width
                     }
                 }
                 .onEnded { val in
                     guard isLarge else { return }
                     let dx = val.translation.width
                     let velocity = val.predictedEndTranslation.width - val.translation.width
-                    if dx < -60 || velocity < -80 {
+                    if dx < -45 || velocity < -60 {
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                         player.next(serverURL: serverURL)
-                    } else if dx > 60 || velocity > 80 {
+                    } else if dx > 45 || velocity > 60 {
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                         player.previous(serverURL: serverURL)
                     }
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
                         artworkDragOffset = 0
                     }
                 }

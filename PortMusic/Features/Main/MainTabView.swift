@@ -20,7 +20,16 @@ public enum MainTabItem: Int, CaseIterable {
         case .home: return "house.fill"
         case .search: return "magnifyingglass"
         case .library: return "square.stack.fill"
-        case .profile: return "person.crop.circle.fill"
+        case .profile: return "line.3.horizontal"
+        }
+    }
+
+    func iconName(isSelected: Bool) -> String {
+        switch self {
+        case .home: return isSelected ? "house.fill" : "house"
+        case .search: return "magnifyingglass"
+        case .library: return isSelected ? "square.stack.fill" : "square.stack"
+        case .profile: return "line.3.horizontal"
         }
     }
 }
@@ -146,7 +155,7 @@ public struct MainTabView: View {
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    // MARK: - Custom Glass TabBar (Clean Minimalist Dark - No Glow, No Separator Line)
+    // MARK: - Native Frosted Glass TabBar
     private var glassTabBar: some View {
         HStack(spacing: 0) {
             ForEach(MainTabItem.allCases, id: \.self) { tab in
@@ -167,46 +176,41 @@ public struct MainTabView: View {
                         }
                     }
                 }) {
-                    VStack(spacing: 4) {
-                        tabIconView(tab: tab, isSelected: isSelected)
-                            .frame(height: 26)
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.iconName(isSelected: isSelected))
+                            .font(.system(size: 21, weight: isSelected ? .bold : .medium))
+                            .foregroundColor(isSelected ? Color.white : Color.white.opacity(0.45))
+                            .frame(height: 24)
 
                         Text(tab.title)
                             .font(.system(size: 10, weight: isSelected ? .bold : .regular))
-                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
+                            .foregroundColor(isSelected ? Color.white : Color.white.opacity(0.45))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 4)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)
-        .padding(.bottom, 10)
+        .padding(.bottom, 6)
         .background(
-            Color.black
-                .background(.ultraThinMaterial)
-                .ignoresSafeArea(edges: .bottom)
-        )
-    }
+            ZStack(alignment: .top) {
+                // Frosted Glass Blur mit transluzenter Abdunklung
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Color(hex: "#121214").opacity(0.80)
+                    )
 
-    @ViewBuilder
-    private func tabIconView(tab: MainTabItem, isSelected: Bool) -> some View {
-        if tab == .profile {
-            let curUser = session.currentUser ?? user
-            PortUserAvatarView(
-                rawAvatar: curUser.avatar,
-                username: curUser.username,
-                serverURL: serverURL,
-                size: 26,
-                isSelected: isSelected
-            )
-        } else {
-            Image(systemName: tab.icon)
-                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                .foregroundColor(isSelected ? .white : Color.white.opacity(0.45))
-        }
+                // 0.5pt Hairline-Border an der Oberkante
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: 0.5)
+            }
+            .ignoresSafeArea(edges: .bottom)
+        )
     }
 
     // MARK: - Navigation Destinations

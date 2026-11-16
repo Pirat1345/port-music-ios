@@ -243,22 +243,18 @@ public struct PortUserAvatarView: View {
         self.serverURL = serverURL
         self.size = size
         self.isSelected = isSelected
-        let initialColors = PortUserAvatarView.deterministicBoringColors(for: username.isEmpty ? "User" : username)
-        self._boringColors = State(initialValue: initialColors)
+        let safeName = username.isEmpty ? "User" : username
+        if let cached = AvatarDataCache.shared.getCachedColors(for: safeName) {
+            self._boringColors = State(initialValue: (Color(hex: cached.0), Color(hex: cached.1), Color(hex: cached.2), cached.3))
+        } else {
+            let initialColors = PortUserAvatarView.deterministicBoringColors(for: safeName)
+            self._boringColors = State(initialValue: initialColors)
+        }
     }
 
     public static func deterministicBoringColors(for name: String) -> (Color, Color, Color, Double) {
-        let beamPalette: [String] = ["#ffb238", "#ff4b4b", "#000000", "#f1f5f9", "#6366f1"]
-        let safeName = name.isEmpty ? "User" : name
-        var hash: UInt64 = 5381
-        for byte in safeName.utf8 {
-            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
-        }
-        let bgHex = beamPalette[Int(hash % UInt64(beamPalette.count))]
-        let accentHex = beamPalette[Int((hash / 5) % UInt64(beamPalette.count))]
-        let faceColor = Color.black
-        let rot = Double(45 + (hash % 90))
-        return (Color(hex: bgHex), Color(hex: accentHex), faceColor, rot)
+        // Fallback-Farben abgestimmt auf das Standard-Boring-Avatar-Theme (#ffb238 / #ff4b4b / #000000)
+        return (Color(hex: "#ffb238"), Color(hex: "#ff4b4b"), Color.black, 65.0)
     }
 
     public var body: some View {
@@ -267,6 +263,10 @@ public struct PortUserAvatarView: View {
                 Image(uiImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            } else if let svg = svgString, !svg.isEmpty {
+                PortSVGAvatarView(svgContent: svg, size: size)
                     .frame(width: size, height: size)
                     .clipShape(Circle())
             } else {
@@ -282,7 +282,7 @@ public struct PortUserAvatarView: View {
         .frame(width: size, height: size)
         .overlay(
             Circle()
-                .stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
+                .stroke(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.35), lineWidth: 1.5)
         )
         .task(id: rawAvatar) {
             await resolveAvatar()
@@ -386,7 +386,13 @@ public struct PortUserAvatarView: View {
         }
 
         // 3. Remote URL (z.B. /api/files/avatars/... oder http...)
-        guard let url = resolveAvatarURL(raw, serverURL: serverURL) else { return }
+        let effectiveServerURL: String = {
+            if !serverURL.isEmpty && !serverURL.contains("localhost") && !serverURL.contains("127.0.0.1") {
+                return serverURL
+            }
+            return SessionManager.shared.serverURL ?? serverURL
+        }()
+        guard let url = resolveAvatarURL(raw, serverURL: effectiveServerURL) else { return }
         let urlKey = url.absoluteString
         let svgCacheKey = "pm_avatar_svg_\(urlKey)"
 
@@ -415,6 +421,7 @@ public struct PortUserAvatarView: View {
                     UserDefaults.standard.set(str, forKey: svgCacheKey)
                     if let parsed = extractBoringColors(from: str) {
                         self.boringColors = parsed
+                        AvatarDataCache.shared.saveColors(bg: "#ffb238", accent: "#ff4b4b", face: "#000000", rot: parsed.3, for: username.isEmpty ? "User" : username)
                     }
                     self.svgString = str
                     return

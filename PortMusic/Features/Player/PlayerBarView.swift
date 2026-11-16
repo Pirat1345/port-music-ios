@@ -156,13 +156,13 @@ public struct PlayerBarView: View {
                         )
                         .shadow(color: Color.black.opacity(0.40), radius: 10, y: 4)
                 )
-                // Wischgeste horizontal zum Titelwechsel (Glissando)
+                // Wischgeste horizontal zum Titelwechsel (Glissando - 1:1 direktes Tracking)
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 15)
+                    DragGesture(minimumDistance: 10)
                         .onChanged { val in
                             if abs(val.translation.width) > abs(val.translation.height) {
                                 isSwiping = true
-                                horizontalDragOffset = val.translation.width * 0.4
+                                horizontalDragOffset = val.translation.width
                             }
                         }
                         .onEnded { val in
@@ -170,18 +170,18 @@ public struct PlayerBarView: View {
                             isSwiping = false
                             let dx = val.translation.width
                             let velocity = val.predictedEndTranslation.width - val.translation.width
-                            if dx < -60 || velocity < -80 {
-                                // Nach links gewischt: Naechster Titel
+                            if dx < -45 || velocity < -60 {
+                                // Nach links gewischt: Nächster Titel
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.impactOccurred()
                                 player.next(serverURL: serverURL)
-                            } else if dx > 60 || velocity > 80 {
+                            } else if dx > 45 || velocity > 60 {
                                 // Nach rechts gewischt: Vorheriger Titel
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.impactOccurred()
                                 player.previous(serverURL: serverURL)
                             }
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
                                 horizontalDragOffset = 0
                             }
                         }
