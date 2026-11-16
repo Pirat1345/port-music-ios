@@ -381,7 +381,7 @@ public struct FullscreenPlayerView: View {
             radius: isLarge ? (player.isPlaying ? 30 : 14) : 4,
             y: isLarge ? (player.isPlaying ? 15 : 6) : 2
         )
-        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.86) : 1.0)
+        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.84) : 1.0)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
         .offset(x: isLarge ? artworkDragOffset : 0)
         .simultaneousGesture(

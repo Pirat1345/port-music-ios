@@ -144,14 +144,14 @@ public struct PlayerBarView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 22)
                         .fill(.ultraThinMaterial)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14)
+                            RoundedRectangle(cornerRadius: 22)
                                 .fill(Color(hex: "#18181b").opacity(0.80))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14)
+                            RoundedRectangle(cornerRadius: 22)
                                 .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                         )
                         .shadow(color: Color.black.opacity(0.40), radius: 10, y: 4)

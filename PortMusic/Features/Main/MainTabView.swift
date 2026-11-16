@@ -170,6 +170,9 @@ public struct MainTabView: View {
                             showMenuDrawer.toggle()
                         }
                     } else {
+                        if selectedTab == tab {
+                            NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
+                        }
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             selectedTab = tab
                             showMenuDrawer = false
