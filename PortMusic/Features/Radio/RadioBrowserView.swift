@@ -134,12 +134,13 @@ public struct RadioBrowserView: View {
             title: station.name,
             artist: "Live Radio",
             album: station.genre,
-            duration: 0,
+            duration: "LIVE",
+            durationSeconds: 0,
             coverUrl: nil,
-            sourceUrl: station.streamUrl,
-            isLive: true
+            isLive: true,
+            isExplicit: false
         )
-        player.playTrack(radioTrack, fromQueue: [radioTrack], serverURL: serverURL)
+        player.play(track: radioTrack, from: [radioTrack], serverURL: serverURL)
     }
 
     private func loadStations() async {

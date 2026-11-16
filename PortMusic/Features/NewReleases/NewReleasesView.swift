@@ -6,7 +6,7 @@ public struct NewReleasesView: View {
     public let serverURL: String
     @ObservedObject private var player = AudioPlayerManager.shared
 
-    @State private var newReleases: [Album] = []
+    @State private var newReleases: [DiscoveryAlbum] = []
     @State private var topTracks: [Track] = []
     @State private var isLoading: Bool = true
 
@@ -86,10 +86,10 @@ public struct NewReleasesView: View {
         }
     }
 
-    private func albumCard(_ album: Album) -> some View {
-        NavigationLink(value: AppRoute.album(id: album.id, title: album.title, artist: album.artist, coverUrl: album.coverUrl)) {
+    private func albumCard(_ album: DiscoveryAlbum) -> some View {
+        NavigationLink(value: AppRoute.album(id: album.id, title: album.title, artist: album.artist, coverUrl: album.cover)) {
             VStack(alignment: .leading, spacing: 6) {
-                let resolved = resolveCoverURL(album.coverUrl, serverURL: serverURL)
+                let resolved = resolveCoverURL(album.cover, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
@@ -123,7 +123,7 @@ public struct NewReleasesView: View {
         Button(action: {
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
-            player.playTrack(track, fromQueue: topTracks, serverURL: serverURL)
+            player.play(track: track, from: topTracks, serverURL: serverURL)
         }) {
             HStack(spacing: 12) {
                 let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
@@ -163,10 +163,11 @@ public struct NewReleasesView: View {
 
     private func loadData() async {
         isLoading = true
-        let homeData = await MusicService.shared.fetchHomeFeed(serverURL: serverURL)
+        let token = SessionManager.shared.currentToken
+        let discovery = await MusicService.shared.fetchHomeDiscovery(serverURL: serverURL, token: token)
         await MainActor.run {
-            self.newReleases = homeData.newReleases
-            self.topTracks = homeData.trending
+            self.newReleases = discovery?.newMusic ?? []
+            self.topTracks = (discovery?.trendingEverywhere ?? []).map { $0.toTrack() }
             self.isLoading = false
         }
     }
