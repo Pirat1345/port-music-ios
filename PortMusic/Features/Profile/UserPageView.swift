@@ -177,12 +177,13 @@ public struct UserPageView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
                     ForEach(playlists, id: \.id) { pl in
+                        let coverUrl = pl.cover.isEmpty ? nil : pl.cover
                         Button(action: {
-                            navPath.append(.playlist(id: pl.id, title: pl.title, coverUrl: pl.coverUrl))
+                            navPath.append(.playlist(id: pl.id, title: pl.title, coverUrl: coverUrl))
                         }) {
                             VStack(alignment: .leading, spacing: 8) {
                                 PortCoverImage(
-                                    coverUrl: pl.coverUrl,
+                                    coverUrl: coverUrl,
                                     serverURL: serverURL,
                                     placeholderIcon: "music.note.list"
                                 )
@@ -196,8 +197,8 @@ public struct UserPageView: View {
                                     .lineLimit(1)
                                     .frame(width: 140, alignment: .leading)
 
-                                if let desc = pl.description, !desc.isEmpty {
-                                    Text(desc)
+                                if let nb = pl.nbTracks {
+                                    Text("\(nb) Songs")
                                         .font(.system(size: 12, weight: .regular))
                                         .foregroundColor(Color.white.opacity(0.50))
                                         .lineLimit(1)
@@ -225,7 +226,7 @@ public struct UserPageView: View {
                 if !favoriteTracks.isEmpty {
                     Button(action: {
                         if let first = favoriteTracks.first {
-                            player.playTrack(first, queue: favoriteTracks, queueIndex: 0)
+                            player.play(track: first, from: favoriteTracks, serverURL: serverURL)
                         }
                     }) {
                         HStack(spacing: 6) {
@@ -248,7 +249,7 @@ public struct UserPageView: View {
                 ForEach(Array(favoriteTracks.prefix(25).enumerated()), id: \.element.id) { index, track in
                     let isCurrent = player.currentTrack?.id == track.id
                     Button(action: {
-                        player.playTrack(track, queue: favoriteTracks, queueIndex: index)
+                        player.play(track: track, from: favoriteTracks, serverURL: serverURL)
                     }) {
                         HStack(spacing: 12) {
                             Text("\(index + 1)")
