@@ -107,7 +107,7 @@ public struct HomeView: View {
                     }
 
                     // Ausreichend Abstand am unteren Rand fuer MiniPlayer & TabBar
-                    Spacer(minLength: 100)
+                    Spacer(minLength: 160)
                 }
             }
             .refreshable {

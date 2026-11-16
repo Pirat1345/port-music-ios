@@ -109,7 +109,7 @@ public struct SearchView: View {
                         }
 
                         // Abstand fuer MiniPlayer & TabBar
-                        Spacer(minLength: 120)
+                        Spacer(minLength: 160)
                     }
                     .padding(.top, 8)
                 }

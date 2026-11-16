@@ -56,7 +56,7 @@ public struct LibraryView: View {
                     .padding(.top, 8)
 
                     // Ausreichend Abstand am unteren Rand fuer MiniPlayer & TabBar
-                    Spacer(minLength: 120)
+                    Spacer(minLength: 160)
                 }
                 .padding(.top, 6)
             }
