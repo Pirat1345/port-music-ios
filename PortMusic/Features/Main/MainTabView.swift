@@ -160,21 +160,6 @@ public struct MainTabView: View {
                     }
             )
 
-            // ── Layer 0: Background Dimming Scrim (SGRBarFade) ──
-            // Reicht 88pt über die Leiste hinaus und verhindert Überstrahlung durch hellen Hintergrund
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0.0), location: 0.0),
-                    .init(color: Color.black.opacity(0.30), location: 0.45),
-                    .init(color: Color.black.opacity(0.50), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 180)
-            .allowsHitTesting(false)
-            .ignoresSafeArea(edges: .bottom)
-
             // ── Unterer Schwebender Bereich: MiniPlayer + Custom Liquid Glass TabBar ──
             VStack(spacing: 8) {
                 // Wenn minimiert: MiniPlayer sitzt direkt inline in der Leiste zwischen den beiden Kreisen!
@@ -319,6 +304,7 @@ public struct MainTabView: View {
                         selectLiquidTab(tab)
                     }
                 )
+                .frame(height: 62)
                 .contextMenu {
                     Button(action: { iconsOnly.toggle() }) {
                         Label(iconsOnly ? "Namen einblenden" : "Nur Icons anzeigen", systemImage: iconsOnly ? "text.bubble" : "circle.circle")
@@ -343,6 +329,7 @@ public struct MainTabView: View {
                 )
             }
         }
+        .frame(height: 62)
         .padding(.horizontal, 16)
         .padding(.bottom, 2)
     }
@@ -402,6 +389,7 @@ private struct InteractiveTabCapsule: View {
 
     @State private var dragX: CGFloat? = nil
     @State private var lastHapticIndex: Int? = nil
+    private let inactiveTabOpacity: Double = 0.45
 
     // 4 Haupt-Tabs in der Kapsel (Exakt wie im Screenshot media_1794856565902_f88fd565.jpg)
     private let tabs: [LiquidTabID] = [.home, .newReleases, .radio, .library]
@@ -422,7 +410,7 @@ private struct InteractiveTabCapsule: View {
                 // Layer 1-3: Base Glass Material, Obsidian Tint & Specular Rim Light
                 Capsule()
                     .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.20))
+                    .overlay(Color.black.opacity(0.18))
                     .overlay(
                         Capsule()
                             .stroke(
@@ -469,7 +457,7 @@ private struct InteractiveTabCapsule: View {
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
 
-                // Layer 5: Tab Items Stack (Icons + Labels oder Nur-Icons-Variante)
+                // Layer 5: Tab Items Stack (Icons + Labels oder Nur-Icons-Variante, Inactive Baseline Opacity 0.45 Contract T1_F03_3)
                 HStack(spacing: 0) {
                     ForEach(tabs) { tab in
                         let isSelected = (activeTab == tab)
@@ -542,7 +530,7 @@ private struct SearchApartCircle: View {
                 // Base 62pt Glass Circle
                 Circle()
                     .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.20))
+                    .overlay(Color.black.opacity(0.18))
                     .overlay(
                         Circle()
                             .stroke(
