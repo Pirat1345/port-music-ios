@@ -113,6 +113,9 @@ public struct MainTabView: View {
                     user: session.currentUser ?? user,
                     serverURL: serverURL,
                     isPresented: $showMenuDrawer,
+                    onNavigateHome: {
+                        selectedTab = .home
+                    },
                     onOpenProfile: {
                         selectedTab = .profile
                         showMenuDrawer = false
@@ -123,8 +126,27 @@ public struct MainTabView: View {
                     },
                     onLogout: onLogout
                 )
-                .transition(.opacity)
+                .ignoresSafeArea()
                 .zIndex(998)
+            }
+        }
+        .overlay(alignment: .leading) {
+            if !showMenuDrawer && !showFullscreenPlayer {
+                Color.clear
+                    .frame(width: 28)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                            .onEnded { value in
+                                if value.startLocation.x <= 28 && (value.translation.width > 45 || value.predictedEndTranslation.width > 80) {
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.impactOccurred()
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                        showMenuDrawer = true
+                                    }
+                                }
+                            }
+                    )
             }
         }
         .preferredColorScheme(.dark)
@@ -145,9 +167,9 @@ public struct MainTabView: View {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
                     if tab == .profile {
-                        // Menü öffnet ausschließlich die Seitenleiste (Drawer), ohne die aktuelle Hauptseite umzuschalten
+                        // Menü öffnet/schließt ausschließlich die Seitenleiste (Drawer), ohne die aktuelle Hauptseite umzuschalten
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            showMenuDrawer = true
+                            showMenuDrawer.toggle()
                         }
                     } else {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {

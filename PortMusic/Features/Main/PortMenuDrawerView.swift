@@ -10,13 +10,17 @@ public struct PortMenuDrawerView: View {
     public let user: UserProfile
     public let serverURL: String
     @Binding public var isPresented: Bool
+    public let onNavigateHome: (() -> Void)?
     public let onOpenProfile: () -> Void
     public let onOpenSettings: () -> Void
     public let onLogout: () -> Void
 
     @AppStorage("portmusic_offline_mode") private var isOffline: Bool = false
     @ObservedObject private var favorites = FavoritesManager.shared
+    @State private var isVisible: Bool = false
     @State private var dragOffset: CGFloat = 0
+    @State private var unreadCount: Int = 0
+    @State private var isJamActive: Bool = false
     @State private var showNewsSheet: Bool = false
     @State private var showStatsSheet: Bool = false
     @State private var showJamSheet: Bool = false
@@ -26,6 +30,7 @@ public struct PortMenuDrawerView: View {
         user: UserProfile,
         serverURL: String,
         isPresented: Binding<Bool>,
+        onNavigateHome: (() -> Void)? = nil,
         onOpenProfile: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
         onLogout: @escaping () -> Void
@@ -33,6 +38,7 @@ public struct PortMenuDrawerView: View {
         self.user = user
         self.serverURL = serverURL
         self._isPresented = isPresented
+        self.onNavigateHome = onNavigateHome
         self.onOpenProfile = onOpenProfile
         self.onOpenSettings = onOpenSettings
         self.onLogout = onLogout
@@ -52,13 +58,15 @@ public struct PortMenuDrawerView: View {
 
     public var body: some View {
         GeometryReader { geo in
-            let drawerWidth = min(320, geo.size.width * 0.82)
+            let drawerWidth = min(300, geo.size.width * 0.78)
             let safeTop = max(geo.safeAreaInsets.top, deviceSafeTop)
             let safeBottom = max(geo.safeAreaInsets.bottom, 16)
+            let currentOffset: CGFloat = isVisible ? min(0, dragOffset) : -drawerWidth
+            let backdropOpacity: Double = isVisible ? max(0, 0.60 * (1.0 + Double(dragOffset / drawerWidth))) : 0.0
 
             ZStack(alignment: .leading) {
                 // 1. Abgedunkelter Hintergrund (Backdrop)
-                Color.black.opacity(0.60)
+                Color.black.opacity(backdropOpacity)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -79,7 +87,7 @@ public struct PortMenuDrawerView: View {
 
                     // Navigations-Menüpunkte (Neuigkeiten, Statistiken, Jam, Einstellungen, Abmelden)
                     menuItemsSection
-                        .padding(.top, 20)
+                        .padding(.top, 18)
 
                     Spacer(minLength: 16)
 
@@ -90,7 +98,7 @@ public struct PortMenuDrawerView: View {
                 .padding(.horizontal, 20)
                 .frame(width: drawerWidth, height: geo.size.height, alignment: .topLeading)
                 .background(
-                    Color(hex: "#0e0e12")
+                    Color(hex: "#0b0b0e")
                         .overlay(
                             Rectangle()
                                 .fill(Color.white.opacity(0.08))
@@ -98,7 +106,7 @@ public struct PortMenuDrawerView: View {
                             alignment: .trailing
                         )
                 )
-                .offset(x: min(0, dragOffset))
+                .offset(x: currentOffset)
                 .gesture(
                     DragGesture()
                         .onChanged { val in
@@ -107,10 +115,10 @@ public struct PortMenuDrawerView: View {
                             }
                         }
                         .onEnded { val in
-                            if val.translation.width < -80 || val.predictedEndTranslation.width < -120 {
+                            if val.translation.width < -75 || val.predictedEndTranslation.width < -110 {
                                 closeDrawer()
                             } else {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
                                     dragOffset = 0
                                 }
                             }
@@ -118,6 +126,14 @@ public struct PortMenuDrawerView: View {
                 )
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .onAppear {
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                    isVisible = true
+                }
+                Task {
+                    await fetchUnreadCount()
+                }
+            }
             .sheet(isPresented: $showNewsSheet) {
                 newsSheetView
             }
@@ -144,28 +160,41 @@ public struct PortMenuDrawerView: View {
     private func closeDrawer() {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
             dragOffset = -340
+            isVisible = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
             isPresented = false
+            dragOffset = 0
         }
     }
 
     // MARK: - 1. Branding Header (Logo + "Port Music" + Schließen-Button)
     private var headerBrandingSection: some View {
         HStack(spacing: 12) {
-            PortLogoView(size: 32)
+            Button(action: {
+                closeDrawer()
+                onNavigateHome?()
+            }) {
+                HStack(spacing: 10) {
+                    PortLogoView(size: 32)
 
-            Text("Port Music")
-                .font(.manosque(size: 22))
-                .foregroundColor(.white)
+                    Text("Port Music")
+                        .font(.system(size: 21, weight: .heavy))
+                        .tracking(-0.4)
+                        .foregroundColor(.white)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
 
             Spacer()
 
             Button(action: { closeDrawer() }) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color.white.opacity(0.60))
-                    .frame(width: 32, height: 32)
+                    .frame(width: 30, height: 30)
                     .background(Color.white.opacity(0.08))
                     .clipShape(Circle())
             }
@@ -178,23 +207,27 @@ public struct PortMenuDrawerView: View {
             closeDrawer()
             onOpenProfile()
         }) {
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 PortUserAvatarView(
                     rawAvatar: user.avatar,
                     username: user.username,
                     serverURL: serverURL,
-                    size: 46
+                    size: 48
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
                 )
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(user.username)
+                    Text(user.displayName ?? user.username)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
 
                     Text("Profil ansehen")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.50))
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(Color.white.opacity(0.55))
                 }
 
                 Spacer()
@@ -205,7 +238,7 @@ public struct PortMenuDrawerView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(Color.white.opacity(0.06))
+            .background(Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(PlainButtonStyle())
@@ -213,19 +246,20 @@ public struct PortMenuDrawerView: View {
 
     // MARK: - 3. Menüpunkte
     private var menuItemsSection: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             // Neuigkeiten
+            let badgeText = unreadCount > 0 ? (unreadCount > 99 ? "99+" : "\(unreadCount)") : nil
             menuRowButton(
-                icon: "bell.fill",
+                icon: "bell",
                 title: "Neuigkeiten",
-                badge: nil
+                badge: badgeText
             ) {
                 showNewsSheet = true
             }
 
             // Statistiken
             menuRowButton(
-                icon: "chart.bar.fill",
+                icon: "chart.bar.xaxis",
                 title: "Statistiken",
                 badge: nil
             ) {
@@ -236,14 +270,15 @@ public struct PortMenuDrawerView: View {
             menuRowButton(
                 icon: "antenna.radiowaves.left.and.right",
                 title: "Jam",
-                badge: nil
+                badge: nil,
+                isLive: isJamActive
             ) {
                 showJamSheet = true
             }
 
             // Einstellungen
             menuRowButton(
-                icon: "gearshape.fill",
+                icon: "gearshape",
                 title: "Einstellungen",
                 badge: nil
             ) {
@@ -263,9 +298,9 @@ public struct PortMenuDrawerView: View {
             }) {
                 HStack(spacing: 16) {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 19, weight: .regular))
                         .foregroundColor(Color.red.opacity(0.85))
-                        .frame(width: 24)
+                        .frame(width: 24, height: 24)
 
                     Text("Abmelden")
                         .font(.system(size: 15, weight: .medium))
@@ -274,7 +309,7 @@ public struct PortMenuDrawerView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.vertical, 11)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
@@ -285,6 +320,7 @@ public struct PortMenuDrawerView: View {
         icon: String,
         title: String,
         badge: String?,
+        isLive: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: {
@@ -294,9 +330,9 @@ public struct PortMenuDrawerView: View {
         }) {
             HStack(spacing: 16) {
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 19, weight: .regular))
                     .foregroundColor(Color.white.opacity(0.70))
-                    .frame(width: 24)
+                    .frame(width: 24, height: 24)
 
                 Text(title)
                     .font(.system(size: 15, weight: .medium))
@@ -308,14 +344,20 @@ public struct PortMenuDrawerView: View {
                     Text(b)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
                         .background(Color.red)
                         .clipShape(Capsule())
                 }
+
+                if isLive {
+                    Circle()
+                        .fill(Color(hex: "#8b5cf6"))
+                        .frame(width: 8, height: 8)
+                }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.vertical, 11)
             .background(Color.white.opacity(0.001))
             .contentShape(Rectangle())
         }
@@ -330,9 +372,9 @@ public struct PortMenuDrawerView: View {
                 .frame(height: 1)
 
             Text("OFFLINE-OPTIONEN")
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Color.white.opacity(0.40))
-                .tracking(0.6)
+                .tracking(0.8)
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -349,8 +391,36 @@ public struct PortMenuDrawerView: View {
 
                 Toggle("", isOn: $isOffline)
                     .labelsHidden()
-                    .tint(Color.purple)
+                    .tint(Color(hex: "#8b5cf6"))
             }
+        }
+    }
+
+    // MARK: - Unread Count Fetching
+    private struct NotificationSummary: Decodable {
+        let id: String?
+        let read: Bool?
+    }
+
+    private func fetchUnreadCount() async {
+        guard !serverURL.isEmpty, let base = URL(string: serverURL) else { return }
+        let url = base.appendingPathComponent("api/notifications")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let token = SessionManager.shared.currentToken, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+            if let list = try? JSONDecoder().decode([NotificationSummary].self, from: data) {
+                let unread = list.filter { !($0.read ?? false) }.count
+                await MainActor.run {
+                    self.unreadCount = unread
+                }
+            }
+        } catch {
+            // Silently ignore network failures
         }
     }
 
