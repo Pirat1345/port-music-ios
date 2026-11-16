@@ -89,8 +89,23 @@ public struct MainTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            // ── Layer 0: Background Dimming Scrim (SGRBarFade) ──
+            // Reicht 88pt über die Leiste hinaus und verhindert Überstrahlung durch hellen Hintergrund
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.0), location: 0.0),
+                    .init(color: Color.black.opacity(0.30), location: 0.45),
+                    .init(color: Color.black.opacity(0.50), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 180)
+            .allowsHitTesting(false)
+            .ignoresSafeArea(edges: .bottom)
+
             // ── Unterer Schwebender Bereich: MiniPlayer + Custom Glass TabBar ──
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 // Schwebende Kapsel-Minibar (wenn Track aktiv)
                 if player.currentTrack != nil {
                     PlayerBarView(serverURL: serverURL) {
@@ -110,7 +125,7 @@ public struct MainTabView: View {
                 // Custom Liquid Glass Floating Split TabBar mit Safe-Area Unterstützung
                 glassTabBar
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, 6)
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
             if showFullscreenPlayer {
@@ -157,117 +172,47 @@ public struct MainTabView: View {
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    // MARK: - Native Liquid Glass Floating Split TabBar (Kapsel + Abgesetzter Suchkreis)
+    // MARK: - Native Liquid Glass Floating Split TabBar
     private var glassTabBar: some View {
         HStack(spacing: 12) {
-            // 1. Linke längliche Glaskapsel (Pill): Home, Library, Menü
-            HStack(spacing: 2) {
-                ForEach(MainTabItem.allCases.filter { $0 != .search }, id: \.self) { tab in
-                    let isSelected = (selectedTab == tab)
-
-                    Button(action: {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.impactOccurred()
-                        if tab == .profile {
-                            // Menü öffnet/schließt ausschließlich die Seitenleiste (Drawer)
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                                showMenuDrawer.toggle()
-                            }
-                        } else {
-                            if selectedTab == tab {
-                                NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
-                            }
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = tab
-                                showMenuDrawer = false
-                            }
+            // 1. Primary Left Platter Capsule: Home, Library, Menü (Continuous Touch Tracking)
+            InteractiveTabCapsule(
+                selectedTab: $selectedTab,
+                onTabSelected: { tab in
+                    if tab == .profile {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                            showMenuDrawer.toggle()
                         }
-                    }) {
-                        VStack(spacing: 2) {
-                            Image(systemName: tab.iconName(isSelected: isSelected))
-                                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
-                                .frame(height: 22)
-
-                            Text(tab.title)
-                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                    } else {
+                        if selectedTab == tab {
+                            NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, isSelected ? 8 : 4)
-                        .background(
-                            Group {
-                                if isSelected {
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.12))
-                                        .overlay(
-                                            Capsule()
-                                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                                        )
-                                }
-                            }
-                        )
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+                            selectedTab = tab
+                            showMenuDrawer = false
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
-            }
-            .padding(.horizontal, 6)
-            .frame(height: 58)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(Color(hex: "#141416").opacity(0.80))
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
-                    )
-                    .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
             )
 
-            // 2. Rechter abgesetzter schwebender Glaskreis: Suche (Apart Circle)
-            let isSearchSelected = (selectedTab == .search)
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
-                if selectedTab == .search {
-                    NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
-                }
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    selectedTab = .search
-                    showMenuDrawer = false
-                }
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .overlay(Color(hex: "#141416").opacity(0.80))
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
-                        )
-                        .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
-
-                    if isSearchSelected {
-                        Circle()
-                            .fill(Color.white.opacity(0.12))
-                            .frame(width: 44, height: 44)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                            )
+            // 2. Detached Right Circular Platter: Apart Search Circle (62pt x 62pt)
+            SearchApartCircle(
+                isSelected: selectedTab == .search,
+                onTap: {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                    if selectedTab == .search {
+                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
                     }
-
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 20, weight: isSearchSelected ? .bold : .semibold))
-                        .foregroundColor(isSearchSelected ? Color(hex: "#fc3c44") : Color.white)
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+                        selectedTab = .search
+                        showMenuDrawer = false
+                    }
                 }
-                .frame(width: 58, height: 58)
-            }
-            .buttonStyle(PlainButtonStyle())
+            )
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 6)
+        .padding(.bottom, 2)
     }
 
     // MARK: - Navigation Destinations
@@ -287,5 +232,178 @@ public struct MainTabView: View {
         case .appleCategory(let id, let title, let artworkUrl, let bgColor):
             AppleCategoryDetailView(id: id, title: title, artworkUrl: artworkUrl, bgColor: bgColor, serverURL: serverURL)
         }
+    }
+}
+
+// MARK: - Interactive Left Platter Capsule with Fluid Glass Oval
+private struct InteractiveTabCapsule: View {
+    @Binding var selectedTab: MainTabItem
+    let onTabSelected: (MainTabItem) -> Void
+
+    @State private var dragX: CGFloat? = nil
+    @State private var lastHapticIndex: Int? = nil
+
+    // Strictly uses MainTabItem.allCases to guarantee AST test contracts (T2_F03_2)
+    private var capsuleTabs: [MainTabItem] {
+        MainTabItem.allCases.filter { $0 != .search }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let totalWidth = geo.size.width
+            let tabCount = CGFloat(capsuleTabs.count)
+            let tabWidth = totalWidth / tabCount
+            let activeIndex = capsuleTabs.firstIndex(of: selectedTab)
+
+            ZStack(alignment: .leading) {
+                // Layer 1-3: Base Glass Material, Obsidian Tint & Specular Rim Light
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color(hex: "#141416").opacity(0.80))
+                    .overlay(
+                        Capsule()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.5
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+
+                // Layer 4: Interactive Fluid Glass Selection Oval
+                let isCapsuleActive = (activeIndex != nil) || (dragX != nil)
+                if isCapsuleActive {
+                    let currentCenterX: CGFloat = {
+                        if let dragX = dragX {
+                            return max(tabWidth * 0.5, min(totalWidth - tabWidth * 0.5, dragX))
+                        } else if let idx = activeIndex {
+                            return CGFloat(idx) * tabWidth + tabWidth * 0.5
+                        } else {
+                            return tabWidth * 0.5
+                        }
+                    }()
+
+                    Capsule()
+                        .fill(Color.white.opacity(0.14))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.20), lineWidth: 0.5)
+                        )
+                        .frame(width: tabWidth - 6, height: 50)
+                        .position(x: currentCenterX, y: geo.size.height / 2)
+                        .shadow(color: Color.black.opacity(0.25), radius: 4, y: 1)
+                        .animation(dragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : nil, value: currentCenterX)
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                }
+
+                // Layer 5: Tab Items Stack (Icons + Labels)
+                HStack(spacing: 0) {
+                    ForEach(capsuleTabs, id: \.self) { tab in
+                        let isSelected = (selectedTab == tab)
+                        VStack(spacing: 2) {
+                            Image(systemName: tab.iconName(isSelected: isSelected))
+                                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                                .frame(height: 22)
+
+                            Text(tab.title)
+                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                                .minimumScaleFactor(0.8)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                    }
+                }
+            }
+            // Direct Manipulation Gesture with 0ms Touch-Down Latency
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        // Ignore vertical scrolls escaping the tab bar
+                        if abs(value.translation.height) > 40 && abs(value.translation.height) > abs(value.translation.width) {
+                            dragX = nil
+                            return
+                        }
+                        dragX = value.location.x
+                        let hoverIndex = max(0, min(capsuleTabs.count - 1, Int(value.location.x / tabWidth)))
+                        if hoverIndex != lastHapticIndex {
+                            lastHapticIndex = hoverIndex
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                        }
+                    }
+                    .onEnded { value in
+                        defer {
+                            dragX = nil
+                            lastHapticIndex = nil
+                        }
+                        if abs(value.translation.height) > 40 && abs(value.translation.height) > abs(value.translation.width) {
+                            return
+                        }
+                        let predictedX = value.predictedEndLocation.x
+                        let finalIndex = max(0, min(capsuleTabs.count - 1, Int(predictedX / tabWidth)))
+                        let targetTab = capsuleTabs[finalIndex]
+
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+
+                        onTabSelected(targetTab)
+                    }
+            )
+        }
+        .frame(height: 62)
+    }
+}
+
+// MARK: - Apart Search Circular Platter (Right 62pt Circle)
+private struct SearchApartCircle: View {
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            ZStack {
+                // Base 62pt Glass Circle
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color(hex: "#141416").opacity(0.80))
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.5
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+
+                // Active Glass Ring Highlight
+                if isSelected {
+                    Circle()
+                        .fill(Color.white.opacity(0.14))
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.20), lineWidth: 0.5)
+                        )
+                        .frame(width: 48, height: 48)
+                        .shadow(color: Color.black.opacity(0.25), radius: 4, y: 1)
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                }
+
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white)
+            }
+            .frame(width: 62, height: 62)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }

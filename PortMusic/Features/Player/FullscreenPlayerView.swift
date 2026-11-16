@@ -312,9 +312,9 @@ public struct FullscreenPlayerView: View {
             // Klassischer Vollbild-Player (Big Picture Modus mit großem Cover und Melt Backdrop)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
-                    // Großes Albumcover mit Weichzeichnungs-Melt-Effekt zentriert
-                    artworkSection(maxSize: artworkSize)
-                        .padding(.top, 4)
+                    // Großes Albumcover mit Weichzeichnungs-Melt-Effekt im Poster-Format
+                    artworkSection(maxSize: min(geo.size.width, 440))
+                        .padding(.top, 2)
 
                     // Titel, Interpret & runde Aktionsbuttons (Favorit & Optionen)
                     trackInfoSection
@@ -353,23 +353,24 @@ public struct FullscreenPlayerView: View {
     // MARK: - Album Cover mit Feder-Animation & Weichzeichnungs-Übergang (Melt Backdrop)
     private func artworkSection(maxSize: CGFloat) -> some View {
         let isLarge = maxSize > 100
+        let posterHeight = isLarge ? min(maxSize * 1.08, 410) : maxSize
         return ZStack(alignment: .bottom) {
             if let artwork = player.nowPlayingArtwork {
                 Image(uiImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
+                    .frame(maxWidth: maxSize, maxHeight: posterHeight)
                     .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 24 : 8))
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous))
             } else {
                 let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
+                        .frame(maxWidth: maxSize, maxHeight: posterHeight)
                         .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 24 : 8))
+                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous))
                 } placeholder: {
                     ZStack {
                         Color.white.opacity(0.08)
@@ -377,8 +378,8 @@ public struct FullscreenPlayerView: View {
                             .font(.system(size: isLarge ? 48 : 20))
                             .foregroundColor(Color.white.opacity(0.35))
                     }
-                    .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 24 : 8))
+                    .frame(maxWidth: maxSize, maxHeight: posterHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous))
                 }
             }
 
@@ -386,19 +387,19 @@ public struct FullscreenPlayerView: View {
             if isLarge {
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0.45),
-                        .init(color: Color.black.opacity(0.35), location: 0.75),
+                        .init(color: .clear, location: 0.40),
+                        .init(color: Color.black.opacity(0.35), location: 0.72),
                         .init(color: Color.black.opacity(0.85), location: 1.0)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 24))
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             }
         }
-        .frame(maxWidth: maxSize, maxHeight: isLarge ? min(maxSize * 1.15, 380) : maxSize)
+        .frame(maxWidth: maxSize, maxHeight: posterHeight)
         .overlay(
-            RoundedRectangle(cornerRadius: isLarge ? 24 : 8)
+            RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
         )
         .shadow(
