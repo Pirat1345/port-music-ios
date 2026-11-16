@@ -34,8 +34,7 @@ public struct MainTabView: View {
     @State private var previousTab: MainTabItem = .home
     @State private var showFullscreenPlayer: Bool = false
     @State private var showMenuDrawer: Bool = false
-    @State private var edgeDragOffset: CGFloat = 0
-    @State private var isEdgeDragging: Bool = false
+    @State private var showUserProfileSheet: Bool = false
     @State private var searchPath: [AppRoute] = []
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var session = SessionManager.shared
@@ -110,64 +109,29 @@ public struct MainTabView: View {
             }
 
             // ── Menü Drawer (Slide-In Sheet von links - exakt wie auf der Webseite) ──
-            if showMenuDrawer || isEdgeDragging {
-                PortMenuDrawerView(
-                    user: session.currentUser ?? user,
-                    serverURL: serverURL,
-                    isPresented: $showMenuDrawer,
-                    externalDragOffset: edgeDragOffset,
-                    isExternalDragging: isEdgeDragging,
-                    onNavigateHome: {
-                        selectedTab = .home
-                    },
-                    onOpenProfile: {
-                        selectedTab = .profile
-                        showMenuDrawer = false
-                        isEdgeDragging = false
-                    },
-                    onOpenSettings: {
-                        selectedTab = .profile
-                        showMenuDrawer = false
-                        isEdgeDragging = false
-                    },
-                    onLogout: onLogout
-                )
-                .ignoresSafeArea()
-                .zIndex(998)
-            }
+            PortMenuDrawerView(
+                user: session.currentUser ?? user,
+                serverURL: serverURL,
+                isPresented: $showMenuDrawer,
+                onNavigateHome: {
+                    selectedTab = .home
+                    showMenuDrawer = false
+                },
+                onOpenProfile: {
+                    showUserProfileSheet = true
+                    showMenuDrawer = false
+                },
+                onOpenSettings: {
+                    selectedTab = .profile
+                    showMenuDrawer = false
+                },
+                onLogout: onLogout
+            )
+            .ignoresSafeArea()
+            .zIndex(998)
         }
-        .overlay(alignment: .leading) {
-            if !showMenuDrawer && !showFullscreenPlayer {
-                Color.clear
-                    .frame(width: 32)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 8, coordinateSpace: .local)
-                            .onChanged { value in
-                                guard value.startLocation.x <= 32, value.translation.width > 0 else { return }
-                                isEdgeDragging = true
-                                edgeDragOffset = value.translation.width
-                            }
-                            .onEnded { value in
-                                guard isEdgeDragging else { return }
-                                if value.translation.width > 70 || value.predictedEndTranslation.width > 110 {
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.impactOccurred()
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                        showMenuDrawer = true
-                                        isEdgeDragging = false
-                                        edgeDragOffset = 0
-                                    }
-                                } else {
-                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
-                                        showMenuDrawer = false
-                                        isEdgeDragging = false
-                                        edgeDragOffset = 0
-                                    }
-                                }
-                            }
-                    )
-            }
+        .sheet(isPresented: $showUserProfileSheet) {
+            UserPageView(user: session.currentUser ?? user, serverURL: serverURL)
         }
         .preferredColorScheme(.dark)
         .task {
@@ -188,7 +152,7 @@ public struct MainTabView: View {
                     generator.impactOccurred()
                     if tab == .profile {
                         // Menü öffnet/schließt ausschließlich die Seitenleiste (Drawer), ohne die aktuelle Hauptseite umzuschalten
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
                             showMenuDrawer.toggle()
                         }
                     } else {

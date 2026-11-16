@@ -229,7 +229,7 @@ public struct PortUserAvatarView: View {
 
     @State private var rasterImage: UIImage?
     @State private var svgString: String?
-    @State private var boringColors: (Color, Color, Color, Double)?
+    @State private var boringColors: (Color, Color, Color, Double)
 
     public init(
         rawAvatar: String?,
@@ -243,6 +243,22 @@ public struct PortUserAvatarView: View {
         self.serverURL = serverURL
         self.size = size
         self.isSelected = isSelected
+        let initialColors = PortUserAvatarView.deterministicBoringColors(for: username.isEmpty ? "User" : username)
+        self._boringColors = State(initialValue: initialColors)
+    }
+
+    public static func deterministicBoringColors(for name: String) -> (Color, Color, Color, Double) {
+        let beamPalette: [String] = ["#ffb238", "#ff4b4b", "#000000", "#f1f5f9", "#6366f1"]
+        let safeName = name.isEmpty ? "User" : name
+        var hash: UInt64 = 5381
+        for byte in safeName.utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        let bgHex = beamPalette[Int(hash % UInt64(beamPalette.count))]
+        let accentHex = beamPalette[Int((hash / 5) % UInt64(beamPalette.count))]
+        let faceColor = Color.black
+        let rot = Double(45 + (hash % 90))
+        return (Color(hex: bgHex), Color(hex: accentHex), faceColor, rot)
     }
 
     public var body: some View {
@@ -253,20 +269,14 @@ public struct PortUserAvatarView: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size, height: size)
                     .clipShape(Circle())
-            } else if let colors = boringColors {
+            } else {
                 NativeBoringAvatarView(
-                    bgColor: colors.0,
-                    accentColor: colors.1,
-                    faceColor: colors.2,
-                    rotation: colors.3,
+                    bgColor: boringColors.0,
+                    accentColor: boringColors.1,
+                    faceColor: boringColors.2,
+                    rotation: boringColors.3,
                     size: size
                 )
-            } else if let svg = svgString, !svg.isEmpty {
-                PortSVGAvatarView(svgContent: svg, size: size)
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-            } else {
-                fallbackMonogram
             }
         }
         .frame(width: size, height: size)

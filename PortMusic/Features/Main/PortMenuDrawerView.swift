@@ -19,8 +19,9 @@ public struct PortMenuDrawerView: View {
 
     @AppStorage("portmusic_offline_mode") private var isOffline: Bool = false
     @ObservedObject private var favorites = FavoritesManager.shared
-    @State private var isVisible: Bool = false
-    @State private var dragOffset: CGFloat = 0
+    @State private var dragTranslation: CGFloat = 0
+    @State private var isDragging: Bool = false
+    @State private var hasFiredBreakoutHaptic: Bool = false
     @State private var unreadCount: Int = 0
     @State private var isJamActive: Bool = false
     @State private var showNewsSheet: Bool = false
@@ -68,26 +69,27 @@ public struct PortMenuDrawerView: View {
             let safeTop = max(geo.safeAreaInsets.top, deviceSafeTop)
             let safeBottom = max(geo.safeAreaInsets.bottom, 16)
 
-            let effectiveOffset: CGFloat = isExternalDragging
-                ? min(0, -drawerWidth + externalDragOffset)
-                : (isVisible ? min(0, dragOffset) : -drawerWidth)
+            // Berechne die absolute Position des Drawers
+            let currentOffset: CGFloat = isPresented
+                ? (isDragging ? min(0, dragTranslation) : 0)
+                : (isDragging ? min(0, -drawerWidth + dragTranslation) : -drawerWidth)
 
-            let backdropOpacity: Double = isExternalDragging
-                ? max(0, min(0.60, 0.60 * Double(externalDragOffset / drawerWidth)))
-                : (isVisible ? max(0, 0.60 * (1.0 + Double(dragOffset / drawerWidth))) : 0.0)
+            let progress: Double = max(0, min(1.0, Double((drawerWidth + currentOffset) / drawerWidth)))
+            let backdropOpacity: Double = progress * 0.60
 
             ZStack(alignment: .leading) {
                 // 1. Abgedunkelter Hintergrund (Backdrop)
                 Color.black.opacity(backdropOpacity)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
+                    .allowsHitTesting(isPresented || isDragging)
                     .onTapGesture {
                         closeDrawer()
                     }
 
                 // 2. Menü-Seitenleiste (Drawer Container von links)
                 VStack(alignment: .leading, spacing: 0) {
-                    // Safe-Area Abstand oben (1:1 wie pt-[calc(env(safe-area-inset-top)+1.5rem)])
+                    // Safe-Area Abstand oben
                     Spacer().frame(height: safeTop + 24)
 
                     // Kopfbereich: Port Music Branding (Logo + Titel)
@@ -118,32 +120,99 @@ public struct PortMenuDrawerView: View {
                             alignment: .trailing
                         )
                 )
-                .offset(x: effectiveOffset)
+                .offset(x: currentOffset)
+                .allowsHitTesting(isPresented || isDragging)
                 .gesture(
                     DragGesture()
                         .onChanged { val in
+                            guard isPresented else { return }
                             if val.translation.width < 0 {
-                                dragOffset = val.translation.width
+                                isDragging = true
+                                dragTranslation = val.translation.width
                             }
                         }
                         .onEnded { val in
-                            if val.translation.width < -75 || val.predictedEndTranslation.width < -110 {
-                                closeDrawer()
+                            guard isPresented, isDragging else { return }
+                            let dx = val.translation.width
+                            let velocity = val.predictedEndTranslation.width - val.translation.width
+                            isDragging = false
+                            if dx < -65 || velocity < -80 {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                                    isPresented = false
+                                    dragTranslation = 0
+                                }
                             } else {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
-                                    dragOffset = 0
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                                    isPresented = true
+                                    dragTranslation = 0
                                 }
                             }
                         }
                 )
+
+                // 3. Rand-Gesten-Sensor (AirPods-Haptik: Erst schwer/magnetisch, dann freier Sprung)
+                if !isPresented {
+                    Color.clear
+                        .frame(width: 28)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                                .onChanged { val in
+                                    let dx = val.translation.width
+                                    guard dx > 0 else { return }
+                                    isDragging = true
+
+                                    let breakoutThreshold: CGFloat = 45.0
+                                    let effectiveOffset: CGFloat
+                                    if dx < breakoutThreshold {
+                                        // AirPods-Magnetverschluss: Erste 45pt stark gedämpft (starker Anfangswiderstand)
+                                        effectiveOffset = -drawerWidth + (dx * 0.45)
+                                    } else {
+                                        // Magnetische Verriegelung gelöst: Knackiger Haptik-Klick & freies Aufgleiten
+                                        if !hasFiredBreakoutHaptic {
+                                            hasFiredBreakoutHaptic = true
+                                            let generator = UIImpactFeedbackGenerator(style: .rigid)
+                                            generator.prepare()
+                                            generator.impactOccurred()
+                                        }
+                                        let baseOffset = -drawerWidth + (breakoutThreshold * 0.45)
+                                        let freeDx = dx - breakoutThreshold
+                                        effectiveOffset = min(0, baseOffset + (freeDx * 1.18))
+                                    }
+                                    dragTranslation = effectiveOffset - (-drawerWidth)
+                                }
+                                .onEnded { val in
+                                    guard isDragging else { return }
+                                    let dx = val.translation.width
+                                    let velocity = val.predictedEndTranslation.width - val.translation.width
+                                    let shouldOpen = dx >= 45.0 || velocity > 60
+
+                                    hasFiredBreakoutHaptic = false
+                                    isDragging = false
+
+                                    if shouldOpen {
+                                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                                        generator.impactOccurred()
+                                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                                            isPresented = true
+                                            dragTranslation = 0
+                                        }
+                                    } else {
+                                        let generator = UIImpactFeedbackGenerator(style: .light)
+                                        generator.impactOccurred()
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                            isPresented = false
+                                            dragTranslation = 0
+                                        }
+                                    }
+                                }
+                        )
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .onAppear {
-                if !isExternalDragging {
-                    withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                        isVisible = true
-                    }
-                }
                 Task {
                     await fetchUnreadCount()
                 }
@@ -174,13 +243,10 @@ public struct PortMenuDrawerView: View {
     private func closeDrawer() {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            dragOffset = -300
-            isVisible = false
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
             isPresented = false
-            dragOffset = 0
+            dragTranslation = 0
+            isDragging = false
         }
     }
 
@@ -285,7 +351,9 @@ public struct PortMenuDrawerView: View {
             menuRowButton(
                 icon: "rectangle.portrait.and.arrow.right",
                 title: "Abmelden",
-                badge: nil
+                badge: nil,
+                titleColor: Color(hex: "#f87171"),
+                iconColor: Color(hex: "#f87171").opacity(0.85)
             ) {
                 showLogoutConfirm = true
             }
@@ -297,6 +365,8 @@ public struct PortMenuDrawerView: View {
         title: String,
         badge: String?,
         isLive: Bool = false,
+        titleColor: Color = .white,
+        iconColor: Color = Color.white.opacity(0.60),
         action: @escaping () -> Void
     ) -> some View {
         Button(action: {
@@ -307,12 +377,12 @@ public struct PortMenuDrawerView: View {
             HStack(spacing: 16) {
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.60))
+                    .foregroundColor(iconColor)
                     .frame(width: 24, height: 24)
 
                 Text(title)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(titleColor)
 
                 Spacer()
 
