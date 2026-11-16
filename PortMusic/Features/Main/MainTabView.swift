@@ -80,19 +80,24 @@ public struct MainTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // ── Unterer Schwebender Bereich: MiniPlayer + Custom Octave Glass TabBar ──
-            VStack(spacing: 0) {
-                // Schwebende Minibar-Leiste (wenn Track aktiv)
+            // ── Unterer Schwebender Bereich: MiniPlayer + Custom Glass TabBar ──
+            VStack(spacing: 6) {
+                // Schwebende Kapsel-Minibar (wenn Track aktiv)
                 if player.currentTrack != nil {
                     PlayerBarView(serverURL: serverURL) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
                             showFullscreenPlayer = true
                         }
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.94).combined(with: .opacity).combined(with: .move(edge: .bottom)),
+                            removal: .scale(scale: 0.94).combined(with: .opacity).combined(with: .move(edge: .bottom))
+                        )
+                    )
                 }
 
-                // Custom Octave Glass TabBar mit Safe-Area Unterstützung
+                // Custom Glass TabBar mit Safe-Area Unterstützung
                 glassTabBar
             }
 
@@ -141,7 +146,7 @@ public struct MainTabView: View {
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    // MARK: - Custom Octave TabBar (Clean Minimalist Dark - No Glow, No Separator Line)
+    // MARK: - Custom Glass TabBar (Clean Minimalist Dark - No Glow, No Separator Line)
     private var glassTabBar: some View {
         HStack(spacing: 0) {
             ForEach(MainTabItem.allCases, id: \.self) { tab in

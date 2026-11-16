@@ -219,7 +219,7 @@ public struct FullscreenPlayerView: View {
                 // Großes Albumcover mit Feder-Animation
                 artworkSection(maxSize: min(geo.size.height * 0.44, 460))
 
-                // Titel, Interpret & Stern-Favorit (☆)
+                // Titel, Interpret & Favorit
                 trackInfoSection
 
                 // Scrubber mit negativer Restzeit (-M:SS)
@@ -227,6 +227,9 @@ public struct FullscreenPlayerView: View {
 
                 // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
                 playbackControlsSection
+
+                // Lautstärke-Regler
+                volumeSliderSection
 
                 Spacer(minLength: 12)
             }
@@ -268,6 +271,11 @@ public struct FullscreenPlayerView: View {
                 // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
                 playbackControlsSection
                     .frame(width: contentWidth)
+
+                // Lautstärke-Schieberegler
+                volumeSliderSection
+                    .frame(width: contentWidth)
+                    .padding(.top, 4)
 
                 // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
                 phoneLyricsSection
@@ -318,11 +326,11 @@ public struct FullscreenPlayerView: View {
             radius: player.isPlaying ? 28 : 14,
             y: player.isPlaying ? 14 : 6
         )
-        .scaleEffect(player.isPlaying ? 1.0 : 0.86)
+        .scaleEffect(player.isPlaying ? 1.0 : 0.88)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
     }
 
-    // MARK: - Titel, Interpret & Stern-Favorit (☆ wie im Web-App Screenshot)
+    // MARK: - Titel, Interpret, Qualitäts-Chip & Favorit
     public var trackInfoSection: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
@@ -331,15 +339,28 @@ public struct FullscreenPlayerView: View {
                     .foregroundColor(Color.white)
                     .lineLimit(1)
 
-                Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.65))
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(Color.white.opacity(0.65))
+                        .lineLimit(1)
+
+                    // Hi-Res / Lossless Audio-Chip
+                    Text("LOSSLESS")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.75))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.12))
+                        )
+                }
             }
 
             Spacer()
 
-            // Stern-Favoriten-Button (☆ im Screenshot)
+            // Favoriten-Button (Herz in #fc3c44)
             Button(action: {
                 guard let track = player.currentTrack else { return }
                 let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -357,9 +378,9 @@ public struct FullscreenPlayerView: View {
                     }
                 }
             }) {
-                Image(systemName: isFavorite ? "star.fill" : "star")
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundColor(isFavorite ? Color(hex: "#ffcc00") : Color.white.opacity(0.70))
+                    .foregroundColor(isFavorite ? Color(hex: "#fc3c44") : Color.white.opacity(0.70))
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(PlainButtonStyle())
@@ -515,7 +536,7 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // 6. Lyrics Toggle (mic wie im Screenshot)
+            // 6. Lyrics Toggle (quote.bubble)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -524,7 +545,7 @@ public struct FullscreenPlayerView: View {
                     sidePanelMode = (sidePanelMode == .lyrics && !showLyrics) ? .queue : .lyrics
                 }
             }) {
-                Image(systemName: (sidePanelMode == .lyrics || showLyrics) ? "mic.fill" : "mic")
+                Image(systemName: (sidePanelMode == .lyrics || showLyrics) ? "quote.bubble.fill" : "quote.bubble")
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundColor((sidePanelMode == .lyrics || showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
@@ -588,6 +609,11 @@ public struct FullscreenPlayerView: View {
                 )
             }
             .frame(height: 20)
+
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.system(size: 15))
+                .foregroundColor(Color.white.opacity(0.60))
+                .frame(width: 22)
         }
     }
 
