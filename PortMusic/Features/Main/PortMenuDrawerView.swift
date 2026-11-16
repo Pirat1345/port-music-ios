@@ -2,9 +2,9 @@ import SwiftUI
 
 // MARK: - Port Music Menü Drawer (1:1 Web-App Drawer)
 // Exakt wie das mobile Sheet ("Menü") in AppLayout.tsx auf der Webseite:
-// - App-Branding (Port Music Logo & Titel)
-// - Benutzerprofil-Banner mit Avatar & "Profil ansehen"
-// - Menüpunkte: Neuigkeiten, Statistiken, Jam, Einstellungen, Abmelden
+// - App-Branding (Port Music Logo & Titel) ohne Schließen-Button
+// - Benutzerprofil-Banner mit Avatar & "Profil ansehen" ohne Kastenrahmen
+// - Menüpunkte: Neuigkeiten, Statistiken, Jam, Einstellungen, Abmelden (ohne Trennstrich)
 // - Offline-Optionen mit Offline-Modus Schalter am unteren Rand
 public struct PortMenuDrawerView: View {
     public let user: UserProfile
@@ -64,7 +64,7 @@ public struct PortMenuDrawerView: View {
 
     public var body: some View {
         GeometryReader { geo in
-            let drawerWidth = min(300, geo.size.width * 0.78)
+            let drawerWidth: CGFloat = min(280, geo.size.width * 0.78)
             let safeTop = max(geo.safeAreaInsets.top, deviceSafeTop)
             let safeBottom = max(geo.safeAreaInsets.bottom, 16)
 
@@ -87,25 +87,25 @@ public struct PortMenuDrawerView: View {
 
                 // 2. Menü-Seitenleiste (Drawer Container von links)
                 VStack(alignment: .leading, spacing: 0) {
-                    // Safe-Area Abstand oben
-                    Spacer().frame(height: safeTop + 12)
+                    // Safe-Area Abstand oben (1:1 wie pt-[calc(env(safe-area-inset-top)+1.5rem)])
+                    Spacer().frame(height: safeTop + 24)
 
-                    // Kopfbereich: Port Music Branding & Schließen-Button
+                    // Kopfbereich: Port Music Branding (Logo + Titel)
                     headerBrandingSection
 
                     // Benutzerprofil-Banner (Avatar + Name + "Profil ansehen")
                     profileBannerSection
-                        .padding(.top, 24)
+                        .padding(.top, 32)
 
                     // Navigations-Menüpunkte (Neuigkeiten, Statistiken, Jam, Einstellungen, Abmelden)
                     menuItemsSection
-                        .padding(.top, 18)
+                        .padding(.top, 24)
 
                     Spacer(minLength: 16)
 
                     // Offline-Optionen am unteren Rand
                     offlineSection
-                        .padding(.bottom, safeBottom + 12)
+                        .padding(.bottom, safeBottom + 20)
                 }
                 .padding(.horizontal, 20)
                 .frame(width: drawerWidth, height: geo.size.height, alignment: .topLeading)
@@ -175,7 +175,7 @@ public struct PortMenuDrawerView: View {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            dragOffset = -340
+            dragOffset = -300
             isVisible = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
@@ -184,38 +184,25 @@ public struct PortMenuDrawerView: View {
         }
     }
 
-    // MARK: - 1. Branding Header (Logo + "Port Music" + Schließen-Button)
+    // MARK: - 1. Branding Header (Logo + "Port Music" wie Link to="/" in AppLayout.tsx)
     private var headerBrandingSection: some View {
-        HStack(spacing: 12) {
-            Button(action: {
-                closeDrawer()
-                onNavigateHome?()
-            }) {
-                HStack(spacing: 10) {
-                    PortLogoView(size: 32)
+        Button(action: {
+            closeDrawer()
+            onNavigateHome?()
+        }) {
+            HStack(spacing: 10) {
+                PortLogoView(size: 32)
 
-                    Text("Port Music")
-                        .font(.system(size: 21, weight: .heavy))
-                        .tracking(-0.4)
-                        .foregroundColor(.white)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            Spacer()
-
-            Button(action: { closeDrawer() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.60))
-                    .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Circle())
+                Text("Port Music")
+                    .font(.system(size: 20, weight: .heavy))
+                    .tracking(-0.3)
+                    .foregroundColor(.white)
             }
         }
+        .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - 2. Profil-Banner (Avatar + Name + "Profil ansehen")
+    // MARK: - 2. Profil-Banner (Avatar + Name + "Profil ansehen" wie button in AppLayout.tsx)
     private var profileBannerSection: some View {
         Button(action: {
             closeDrawer()
@@ -230,37 +217,31 @@ public struct PortMenuDrawerView: View {
                 )
                 .overlay(
                     Circle()
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.20), lineWidth: 1)
                 )
+                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(user.displayName ?? user.username)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
 
                     Text("Profil ansehen")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.system(size: 14, weight: .regular))
                         .foregroundColor(Color.white.opacity(0.55))
                 }
 
                 Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.35))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - 3. Menüpunkte
+    // MARK: - 3. Menüpunkte (nav flex-col gap-1 in AppLayout.tsx)
     private var menuItemsSection: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             // Neuigkeiten
             let badgeText = unreadCount > 0 ? (unreadCount > 99 ? "99+" : "\(unreadCount)") : nil
             menuRowButton(
@@ -300,33 +281,14 @@ public struct PortMenuDrawerView: View {
                 onOpenSettings()
             }
 
-            // Trennlinie vor Abmelden
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 1)
-                .padding(.vertical, 6)
-
             // Abmelden
-            Button(action: {
+            menuRowButton(
+                icon: "rectangle.portrait.and.arrow.right",
+                title: "Abmelden",
+                badge: nil
+            ) {
                 showLogoutConfirm = true
-            }) {
-                HStack(spacing: 16) {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 19, weight: .regular))
-                        .foregroundColor(Color.red.opacity(0.85))
-                        .frame(width: 24, height: 24)
-
-                    Text("Abmelden")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color.red.opacity(0.85))
-
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(PlainButtonStyle())
         }
     }
 
@@ -344,12 +306,12 @@ public struct PortMenuDrawerView: View {
         }) {
             HStack(spacing: 16) {
                 Image(systemName: icon)
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.70))
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundColor(Color.white.opacity(0.60))
                     .frame(width: 24, height: 24)
 
                 Text(title)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white)
 
                 Spacer()
@@ -370,25 +332,25 @@ public struct PortMenuDrawerView: View {
                         .frame(width: 8, height: 8)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 12)
             .background(Color.white.opacity(0.001))
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - 4. Offline-Optionen (Unten)
+    // MARK: - 4. Offline-Optionen (Unten fixiert)
     private var offlineSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(Color.white.opacity(0.12))
                 .frame(height: 1)
 
             Text("OFFLINE-OPTIONEN")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color.white.opacity(0.40))
-                .tracking(0.8)
+                .foregroundColor(Color.white.opacity(0.50))
+                .tracking(1.0)
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
