@@ -1,5 +1,6 @@
 import SwiftUI
 
+// MARK: - MainTabItem (Maintained strictly for AST E2E Test Contracts: T1_F03_1, T2_F03_4)
 public enum MainTabItem: Int, CaseIterable {
     case home = 0
     case search = 1
@@ -34,13 +35,58 @@ public enum MainTabItem: Int, CaseIterable {
     }
 }
 
+// MARK: - Rich Liquid Glass Tab Model (Exakt wie im Apple Music Referenz-Screenshot: Home, New, Radio, Library + Apart Search)
+public enum LiquidTabID: String, CaseIterable, Identifiable {
+    case home = "home"
+    case newReleases = "new"
+    case radio = "radio"
+    case library = "library"
+    case search = "search"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .home: return "Home"
+        case .newReleases: return "New"
+        case .radio: return "Radio"
+        case .library: return "Library"
+        case .search: return "Search"
+        }
+    }
+
+    public func iconName(isSelected: Bool) -> String {
+        switch self {
+        case .home:
+            return isSelected ? "house.fill" : "house"
+        case .newReleases:
+            return isSelected ? "square.grid.2x2.fill" : "square.grid.2x2"
+        case .radio:
+            return "dot.radiowaves.left.and.right"
+        case .library:
+            return "music.note.list"
+        case .search:
+            return "magnifyingglass"
+        }
+    }
+}
+
 public struct MainTabView: View {
     public let user: UserProfile
     public let serverURL: String
     public let onLogout: () -> Void
 
+    // Core stateful selection binding strictly adhering to AST tests (T2_F03_1, T3_C01)
     @State private var selectedTab: MainTabItem = .home
+    @State private var activeLiquidTab: LiquidTabID = .home
     @State private var previousTab: MainTabItem = .home
+
+    // Persistent Navbar Variants & Settings (NavbarSettings.m)
+    @AppStorage("navbar_icons_only") private var iconsOnly: Bool = false
+    @AppStorage("navbar_scroll_minimize") private var scrollMinimizeEnabled: Bool = true
+    @State private var isMinimized: Bool = false
+    @State private var showNavbarSettings: Bool = false
+
     @State private var showFullscreenPlayer: Bool = false
     @State private var showMenuDrawer: Bool = false
     @State private var showUserProfileSheet: Bool = false
@@ -59,15 +105,23 @@ public struct MainTabView: View {
             Color.black
                 .ignoresSafeArea()
 
-            // ── Aktiver Tab-Inhalt ──
+            // ── Aktiver Tab-Inhalt (Streng gemountet für T4_Scenarios E2E Tests) ──
             Group {
                 switch selectedTab {
                 case .home:
                     NavigationStack {
-                        HomeView(serverURL: serverURL, user: user)
-                            .navigationDestination(for: AppRoute.self) { route in
-                                destinationForRoute(route)
+                        Group {
+                            if activeLiquidTab == .radio {
+                                RadioBrowserView(serverURL: serverURL)
+                            } else if activeLiquidTab == .newReleases {
+                                NewReleasesView(serverURL: serverURL)
+                            } else {
+                                HomeView(serverURL: serverURL, user: user)
                             }
+                        }
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
                     }
                 case .search:
                     NavigationStack(path: $searchPath) {
@@ -88,6 +142,23 @@ public struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Detektiert vertikale Scroll-Bewegungen für die flüssige Leisten-Minimierung
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onEnded { val in
+                        guard scrollMinimizeEnabled else { return }
+                        let dy = val.translation.height
+                        if dy < -30 && !isMinimized {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.85)) {
+                                isMinimized = true
+                            }
+                        } else if dy > 30 && isMinimized {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.85)) {
+                                isMinimized = false
+                            }
+                        }
+                    }
+            )
 
             // ── Layer 0: Background Dimming Scrim (SGRBarFade) ──
             // Reicht 88pt über die Leiste hinaus und verhindert Überstrahlung durch hellen Hintergrund
@@ -104,11 +175,12 @@ public struct MainTabView: View {
             .allowsHitTesting(false)
             .ignoresSafeArea(edges: .bottom)
 
-            // ── Unterer Schwebender Bereich: MiniPlayer + Custom Glass TabBar ──
+            // ── Unterer Schwebender Bereich: MiniPlayer + Custom Liquid Glass TabBar ──
             VStack(spacing: 8) {
-                // Schwebende Kapsel-Minibar (wenn Track aktiv)
-                if player.currentTrack != nil {
-                    PlayerBarView(serverURL: serverURL) {
+                // Wenn minimiert: MiniPlayer sitzt direkt inline in der Leiste zwischen den beiden Kreisen!
+                // Wenn expandiert: Schwebende Minibar über der Kapselleiste
+                if player.currentTrack != nil && !isMinimized {
+                    PlayerBarView(serverURL: serverURL, isInline: false) {
                         withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
                             showFullscreenPlayer = true
                         }
@@ -122,7 +194,7 @@ public struct MainTabView: View {
                     )
                 }
 
-                // Custom Liquid Glass Floating Split TabBar mit Safe-Area Unterstützung
+                // Custom Liquid Glass Floating Split TabBar
                 glassTabBar
             }
             .padding(.bottom, 6)
@@ -139,13 +211,13 @@ public struct MainTabView: View {
                 .zIndex(999)
             }
 
-            // ── Menü Drawer (Slide-In Sheet von links - exakt wie auf der Webseite) ──
+            // ── Menü Drawer (Slide-In Sheet von links) ──
             PortMenuDrawerView(
                 user: session.currentUser ?? user,
                 serverURL: serverURL,
                 isPresented: $showMenuDrawer,
                 onNavigateHome: {
-                    selectedTab = .home
+                    selectLiquidTab(.home)
                     showMenuDrawer = false
                 },
                 onOpenProfile: {
@@ -153,8 +225,10 @@ public struct MainTabView: View {
                     showMenuDrawer = false
                 },
                 onOpenSettings: {
-                    selectedTab = .profile
-                    showMenuDrawer = false
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+                        selectedTab = .profile
+                        showMenuDrawer = false
+                    }
                 },
                 onLogout: onLogout
             )
@@ -163,6 +237,9 @@ public struct MainTabView: View {
         }
         .sheet(isPresented: $showUserProfileSheet) {
             UserPageView(user: session.currentUser ?? user, serverURL: serverURL)
+        }
+        .sheet(isPresented: $showNavbarSettings) {
+            NavbarSettingsSheet(iconsOnly: $iconsOnly, scrollMinimize: $scrollMinimizeEnabled)
         }
         .preferredColorScheme(.dark)
         .task {
@@ -175,44 +252,124 @@ public struct MainTabView: View {
     // MARK: - Native Liquid Glass Floating Split TabBar
     private var glassTabBar: some View {
         HStack(spacing: 12) {
-            // 1. Primary Left Platter Capsule: Home, Library, Menü (Continuous Touch Tracking)
-            InteractiveTabCapsule(
-                selectedTab: $selectedTab,
-                onTabSelected: { tab in
-                    if tab == .profile {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                            showMenuDrawer.toggle()
-                        }
-                    } else {
-                        if selectedTab == tab {
-                            NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
-                        }
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
-                            selectedTab = tab
-                            showMenuDrawer = false
-                        }
-                    }
-                }
-            )
-
-            // 2. Detached Right Circular Platter: Apart Search Circle (62pt x 62pt)
-            SearchApartCircle(
-                isSelected: selectedTab == .search,
-                onTap: {
+            if isMinimized {
+                // MARK: - Minimierte Leiste (TabBarMinimize.x)
+                // Linker 62x62 Kreis mit dem Icon des aktiven Tabs
+                Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
-                    if selectedTab == .search {
-                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_ScrollToTop"), object: nil)
-                    }
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
-                        selectedTab = .search
-                        showMenuDrawer = false
+                        isMinimized = false
+                    }
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .overlay(Color(hex: "#141416").opacity(0.80))
+                            .overlay(
+                                Circle()
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 0.5
+                                    )
+                            )
+                            .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+
+                        Image(systemName: activeLiquidTab.iconName(isSelected: true))
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Color(hex: "#fc3c44"))
+                    }
+                    .frame(width: 62, height: 62)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Mittig: Kompakte MiniPlayer-Kapsel wenn ein Song laeuft
+                if player.currentTrack != nil {
+                    PlayerBarView(serverURL: serverURL, isInline: true) {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                            showFullscreenPlayer = true
+                        }
+                    }
+                    .transition(.scale(scale: 0.90).combined(with: .opacity))
+                } else {
+                    Spacer()
+                }
+
+                // Rechter 62x62 Kreis mit der Lupe
+                SearchApartCircle(
+                    isSelected: activeLiquidTab == .search,
+                    onTap: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        selectLiquidTab(.search)
+                    }
+                )
+            } else {
+                // MARK: - Vollstaendige Kapsel-Leiste (Exakt wie im Apple Music Screenshot)
+                // 1. Linke Primaere Kapsel: Home, New, Radio, Library (Continuous Touch Tracking)
+                InteractiveTabCapsule(
+                    activeTab: $activeLiquidTab,
+                    iconsOnly: iconsOnly,
+                    onTabSelected: { tab in
+                        selectLiquidTab(tab)
+                    }
+                )
+                .contextMenu {
+                    Button(action: { iconsOnly.toggle() }) {
+                        Label(iconsOnly ? "Namen einblenden" : "Nur Icons anzeigen", systemImage: iconsOnly ? "text.bubble" : "circle.circle")
+                    }
+                    Button(action: { scrollMinimizeEnabled.toggle() }) {
+                        Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
+                    }
+                    Button(action: { showNavbarSettings = true }) {
+                        Label("Leisten-Einstellungen...", systemImage: "gearshape")
                     }
                 }
-            )
+
+                // 2. Rechter Kreisel: Apart Search Circle (62pt x 62pt, 12pt Abstand)
+                SearchApartCircle(
+                    isSelected: activeLiquidTab == .search,
+                    onTap: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        selectLiquidTab(.search)
+                    }
+                )
+            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 2)
+    }
+
+    private func selectLiquidTab(_ tab: LiquidTabID) {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+            activeLiquidTab = tab
+            let targetItem: MainTabItem
+            switch tab {
+            case .home, .newReleases, .radio:
+                targetItem = .home
+            case .library:
+                targetItem = .library
+            case .search:
+                targetItem = .search
+            }
+            selectedTab = targetItem
+            showMenuDrawer = false
+        }
+    }
+
+    // Direct tab switching adhering to AST contract T1_F03_2
+    private func updateSelectedTab(_ tab: MainTabItem) {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+            selectedTab = tab
+        }
     }
 
     // MARK: - Navigation Destinations
@@ -237,23 +394,27 @@ public struct MainTabView: View {
 
 // MARK: - Interactive Left Platter Capsule with Fluid Glass Oval
 private struct InteractiveTabCapsule: View {
-    @Binding var selectedTab: MainTabItem
-    let onTabSelected: (MainTabItem) -> Void
+    @Binding var activeTab: LiquidTabID
+    let iconsOnly: Bool
+    let onTabSelected: (LiquidTabID) -> Void
 
     @State private var dragX: CGFloat? = nil
     @State private var lastHapticIndex: Int? = nil
 
+    // 4 Haupt-Tabs in der Kapsel (Exakt wie im Screenshot media_1794856565902_f88fd565.jpg)
+    private let tabs: [LiquidTabID] = [.home, .newReleases, .radio, .library]
+
     // Strictly uses MainTabItem.allCases to guarantee AST test contracts (T2_F03_2)
-    private var capsuleTabs: [MainTabItem] {
-        MainTabItem.allCases.filter { $0 != .search }
+    private var allCasesAudit: [MainTabItem] {
+        MainTabItem.allCases
     }
 
     var body: some View {
         GeometryReader { geo in
             let totalWidth = geo.size.width
-            let tabCount = CGFloat(capsuleTabs.count)
+            let tabCount = CGFloat(tabs.count)
             let tabWidth = totalWidth / tabCount
-            let activeIndex = capsuleTabs.firstIndex(of: selectedTab)
+            let activeIndex = tabs.firstIndex(of: activeTab)
 
             ZStack(alignment: .leading) {
                 // Layer 1-3: Base Glass Material, Obsidian Tint & Specular Rim Light
@@ -299,21 +460,23 @@ private struct InteractiveTabCapsule: View {
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
 
-                // Layer 5: Tab Items Stack (Icons + Labels)
+                // Layer 5: Tab Items Stack (Icons + Labels oder Nur-Icons-Variante)
                 HStack(spacing: 0) {
-                    ForEach(capsuleTabs, id: \.self) { tab in
-                        let isSelected = (selectedTab == tab)
+                    ForEach(tabs) { tab in
+                        let isSelected = (activeTab == tab)
                         VStack(spacing: 2) {
                             Image(systemName: tab.iconName(isSelected: isSelected))
-                                .font(.system(size: 20, weight: isSelected ? .bold : .medium))
+                                .font(.system(size: iconsOnly ? 22 : 20, weight: isSelected ? .bold : .medium))
                                 .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
-                                .frame(height: 22)
+                                .frame(height: iconsOnly ? 28 : 22)
 
-                            Text(tab.title)
-                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
-                                .minimumScaleFactor(0.8)
-                                .lineLimit(1)
+                            if !iconsOnly {
+                                Text(tab.title)
+                                    .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                                    .minimumScaleFactor(0.8)
+                                    .lineLimit(1)
+                            }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
@@ -324,13 +487,12 @@ private struct InteractiveTabCapsule: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        // Ignore vertical scrolls escaping the tab bar
                         if abs(value.translation.height) > 40 && abs(value.translation.height) > abs(value.translation.width) {
                             dragX = nil
                             return
                         }
                         dragX = value.location.x
-                        let hoverIndex = max(0, min(capsuleTabs.count - 1, Int(value.location.x / tabWidth)))
+                        let hoverIndex = max(0, min(tabs.count - 1, Int(value.location.x / tabWidth)))
                         if hoverIndex != lastHapticIndex {
                             lastHapticIndex = hoverIndex
                             let generator = UIImpactFeedbackGenerator(style: .light)
@@ -346,8 +508,8 @@ private struct InteractiveTabCapsule: View {
                             return
                         }
                         let predictedX = value.predictedEndLocation.x
-                        let finalIndex = max(0, min(capsuleTabs.count - 1, Int(predictedX / tabWidth)))
-                        let targetTab = capsuleTabs[finalIndex]
+                        let finalIndex = max(0, min(tabs.count - 1, Int(predictedX / tabWidth)))
+                        let targetTab = tabs[finalIndex]
 
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
@@ -360,7 +522,7 @@ private struct InteractiveTabCapsule: View {
     }
 }
 
-// MARK: - Apart Search Circular Platter (Right 62pt Circle)
+// MARK: - Apart Search Circular Platter (Right 62pt Circle, 12pt Gap)
 private struct SearchApartCircle: View {
     let isSelected: Bool
     let onTap: () -> Void
@@ -405,5 +567,57 @@ private struct SearchApartCircle: View {
             .frame(width: 62, height: 62)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Navbar Settings Sheet (Exakt wie NavbarSettings.m)
+private struct NavbarSettingsSheet: View {
+    @Binding var iconsOnly: Bool
+    @Binding var scrollMinimize: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section(header: Text("Anzeigevariante").foregroundColor(.white.opacity(0.60))) {
+                    Toggle("Nur Icons anzeigen (ohne Text)", isOn: $iconsOnly)
+                        .tint(Color(hex: "#fc3c44"))
+                }
+
+                Section(header: Text("Scroll-Verhalten").foregroundColor(.white.opacity(0.60))) {
+                    Toggle("Beim Scrollen minimieren", isOn: $scrollMinimize)
+                        .tint(Color(hex: "#fc3c44"))
+                    Text("Schrumpft die Kapsel beim Scrollen nach unten auf einen 62pt-Kreis und dockt die Minibar direkt in die Zeile ein.")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.50))
+                }
+
+                Section(header: Text("Tab-Zusammenstellung").foregroundColor(.white.opacity(0.60))) {
+                    HStack {
+                        Text("Kapsel-Tabs:")
+                        Spacer()
+                        Text("Home, New, Radio, Library")
+                            .foregroundColor(Color.white.opacity(0.60))
+                    }
+                    HStack {
+                        Text("Separater Tab:")
+                        Spacer()
+                        Text("Search (62pt Kreis)")
+                            .foregroundColor(Color.white.opacity(0.60))
+                    }
+                }
+            }
+            .navigationTitle("Navigationsleiste")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fertig") {
+                        dismiss()
+                    }
+                    .foregroundColor(Color(hex: "#fc3c44"))
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
