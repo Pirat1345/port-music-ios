@@ -15,6 +15,7 @@ public struct FullscreenPlayerView: View {
     @State private var sidePanelMode: SidePanelMode = .lyrics
     @State private var dragOffset: CGFloat = 0.0
     @State private var volume: Float = 0.7
+    @State private var artworkDragOffset: CGFloat = 0.0
 
     // Feature #18: Synced Lyrics State
     @State private var lyricsLines: [LyricLine] = []
@@ -250,84 +251,162 @@ public struct FullscreenPlayerView: View {
         .frame(width: geo.size.width)
     }
 
-    // MARK: - PHONE PORTRAIT LAYOUT (Perfekt zentriert, kein Rechts-Versatz, Lyrics zum Runterscrollen)
+    // MARK: - PHONE PORTRAIT LAYOUT (Perfekt zentriert, nahtloser Wechsel zwischen Artwork & Lyrics)
     @ViewBuilder
     private func phoneScrollLayout(geo: GeometryProxy) -> some View {
         let contentWidth = min(geo.size.width - 36, 420)
 
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 18) {
-                // Albumcover zentriert
-                artworkSection(maxSize: min(contentWidth, 310))
+        if showLyrics {
+            // Vollbild-Songtext-Modus auf dem Smartphone mit Live-Scroll
+            VStack(spacing: 12) {
+                // Kompakte Kopfzeile mit Mini-Cover & Song-Info
+                HStack(spacing: 12) {
+                    artworkSection(maxSize: 52)
 
-                // Titel, Interpret & Stern-Favorit (☆)
-                trackInfoSection
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(player.currentTrack?.title ?? "Kein Titel")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.65))
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Button(action: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showLyrics = false
+                        }
+                    }) {
+                        Image(systemName: "quote.bubble.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(Color(hex: "#fc3c44"))
+                            .frame(width: 44, height: 44)
+                    }
+                }
+                .frame(width: contentWidth)
+                .padding(.top, 4)
+
+                // Synchronisierter Karaoke-Songtext mit dynamischem Auto-Scroll
+                tabletLyricsColumn
                     .frame(width: contentWidth)
 
-                // Scrubber mit negativer Restzeit (flüssig ohne verschachtelte GeometryReader)
-                scrubberContent(fixedWidth: contentWidth)
-                    .frame(width: contentWidth)
-
-                // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
-                playbackControlsSection
-                    .frame(width: contentWidth)
-
-                // Lautstärke-Schieberegler
-                volumeSliderSection
-                    .frame(width: contentWidth)
-                    .padding(.top, 4)
-
-                // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
-                phoneLyricsSection
-                    .frame(width: contentWidth)
-                    .padding(.top, 10)
-
-                Spacer(minLength: 40)
+                // Scrubber & Transport-Leiste unten
+                VStack(spacing: 8) {
+                    scrubberContent(fixedWidth: contentWidth)
+                    playbackControlsSection
+                        .frame(width: contentWidth)
+                }
+                .padding(.bottom, max(geo.safeAreaInsets.bottom, 20))
             }
-            .frame(width: geo.size.width, alignment: .center)
+            .frame(width: geo.size.width)
+            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+        } else {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 18) {
+                    // Albumcover zentriert
+                    artworkSection(maxSize: min(contentWidth, 310))
+
+                    // Titel, Interpret, Qualitäts-Chip & Favorit
+                    trackInfoSection
+                        .frame(width: contentWidth)
+
+                    // Scrubber mit negativer Restzeit (flüssig ohne verschachtelte GeometryReader)
+                    scrubberContent(fixedWidth: contentWidth)
+                        .frame(width: contentWidth)
+
+                    // Bedienelemente (Shuffle, Repeat, Zurück, Play/Pause rein weiß ohne Kreis, Vor, Lyrics, Queue)
+                    playbackControlsSection
+                        .frame(width: contentWidth)
+
+                    // Lautstärke-Schieberegler
+                    volumeSliderSection
+                        .frame(width: contentWidth)
+                        .padding(.top, 4)
+
+                    // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
+                    phoneLyricsSection
+                        .frame(width: contentWidth)
+                        .padding(.top, 10)
+
+                    Spacer(minLength: 40)
+                }
+                .frame(width: geo.size.width, alignment: .center)
+            }
+            .frame(width: geo.size.width)
         }
-        .frame(width: geo.size.width)
     }
 
-    // MARK: - Album Cover mit Feder-Animation (Spring Scale)
+    // MARK: - Album Cover mit Feder-Animation (Spring Scale & Wischgeste)
     private func artworkSection(maxSize: CGFloat) -> some View {
-        ZStack {
+        let isLarge = maxSize > 100
+        return ZStack {
             if let artwork = player.nowPlayingArtwork {
                 Image(uiImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 18 : 8))
             } else {
                 let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 18 : 8))
                 } placeholder: {
                     ZStack {
                         Color.white.opacity(0.08)
                         Image(systemName: "music.note")
-                            .font(.system(size: 48))
+                            .font(.system(size: isLarge ? 48 : 20))
                             .foregroundColor(Color.white.opacity(0.35))
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 18 : 8))
                 }
             }
         }
         .aspectRatio(1, contentMode: .fit)
         .frame(maxWidth: maxSize)
         .overlay(
-            RoundedRectangle(cornerRadius: 18)
+            RoundedRectangle(cornerRadius: isLarge ? 18 : 8)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
         )
         .shadow(
             color: Color.black.opacity(player.isPlaying ? 0.65 : 0.35),
-            radius: player.isPlaying ? 28 : 14,
-            y: player.isPlaying ? 14 : 6
+            radius: isLarge ? (player.isPlaying ? 28 : 14) : 4,
+            y: isLarge ? (player.isPlaying ? 14 : 6) : 2
         )
-        .scaleEffect(player.isPlaying ? 1.0 : 0.88)
+        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.88) : 1.0)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
+        .offset(x: isLarge ? artworkDragOffset : 0)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 15)
+                .onChanged { val in
+                    guard isLarge else { return }
+                    if abs(val.translation.width) > abs(val.translation.height) {
+                        artworkDragOffset = val.translation.width * 0.35
+                    }
+                }
+                .onEnded { val in
+                    guard isLarge else { return }
+                    let dx = val.translation.width
+                    let velocity = val.predictedEndTranslation.width - val.translation.width
+                    if dx < -60 || velocity < -80 {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        player.next(serverURL: serverURL)
+                    } else if dx > 60 || velocity > 80 {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        player.previous(serverURL: serverURL)
+                    }
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        artworkDragOffset = 0
+                    }
+                }
+        )
     }
 
     // MARK: - Titel, Interpret, Qualitäts-Chip & Favorit
