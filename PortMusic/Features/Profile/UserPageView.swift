@@ -286,8 +286,8 @@ public struct UserPageView: View {
                                     .padding(.trailing, 4)
                             }
 
-                            if let dur = track.duration, !dur.isEmpty {
-                                Text(dur)
+                            if !track.duration.isEmpty {
+                                Text(track.duration)
                                     .font(.system(size: 12, weight: .regular))
                                     .foregroundColor(Color.white.opacity(0.40))
                             }
