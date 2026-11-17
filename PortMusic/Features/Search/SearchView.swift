@@ -85,21 +85,21 @@ public struct SearchView: View {
             Color.black
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Header & Suchleiste
-                searchHeaderSection
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+            // Hauptbereich mit mitscrollender Suchleiste
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Header & Suchleiste (wandert beim Scrollen natuerlich nach oben mit)
+                    searchHeaderSection
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
 
-                if !searchQuery.isEmpty && hasSearched {
-                    // Filter-Pills
-                    filterPillsSection
-                        .padding(.bottom, 12)
-                }
+                    if !searchQuery.isEmpty && hasSearched {
+                        // Filter-Pills
+                        filterPillsSection
+                            .padding(.bottom, 6)
+                    }
 
-                // Hauptbereich
-                ScrollView(showsIndicators: false) {
+                    // Such-Ergebnisse oder Discover-Inhalte
                     VStack(alignment: .leading, spacing: 24) {
                         if isSearching && searchResponse == nil && fallbackTracks.isEmpty {
                             loadingView
@@ -114,20 +114,15 @@ public struct SearchView: View {
                         // Abstand fuer MiniPlayer & TabBar
                         Spacer(minLength: 160)
                     }
-                    .padding(.top, 8)
+                    .padding(.top, 4)
                 }
-                .ignoresSafeArea(edges: .bottom)
             }
+            .ignoresSafeArea(edges: .bottom)
         }
         .preferredColorScheme(.dark)
         .tint(.white)
         .task {
             await initializeData()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PortMusic_FocusSearchField"))) { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                isSearchFieldFocused = true
-            }
         }
     }
 
@@ -141,16 +136,11 @@ public struct SearchView: View {
 
     // MARK: - Suchleiste & Navigation
     private var searchHeaderSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Zeile 1: Titel "Suche" und History-Navigation (< / >)
-            HStack(alignment: .center, spacing: 12) {
-                Text("Suche")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(PortColors.textPrimary)
-
-                Spacer()
-
-                if canGoBack || canGoForward {
+        VStack(alignment: .leading, spacing: 10) {
+            // History-Navigation (< / >) falls verfuegbar (Schriftzug "Suche" oben entfernt)
+            if canGoBack || canGoForward {
+                HStack {
+                    Spacer()
                     HStack(spacing: 8) {
                         Button(action: handleGoBack) {
                             Image(systemName: "chevron.left")
@@ -177,7 +167,7 @@ public struct SearchView: View {
                 }
             }
 
-            // Zeile 2: Floating Liquid Glass Search Capsule + Abbrechen-Button
+            // Floating Liquid Glass Search Capsule + Abbrechen-Button
             HStack(spacing: 10) {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
@@ -414,7 +404,8 @@ public struct SearchView: View {
 
     // MARK: - Browse Categories Section
     private var categoryGridColumns: [GridItem] {
-        if UIDevice.current.userInterfaceIdiom == .pad {
+        let screenWidth = UIScreen.main.bounds.width
+        if UIDevice.current.userInterfaceIdiom == .pad && screenWidth > 600 {
             return [
                 GridItem(.flexible(), spacing: 14),
                 GridItem(.flexible(), spacing: 14),

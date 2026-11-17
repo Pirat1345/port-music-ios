@@ -190,7 +190,7 @@ public struct MainTabView: View {
             )
 
             // ── Unterer Schwebender Bereich: MiniPlayer + Custom Liquid Glass TabBar ──
-            VStack(spacing: 8) {
+            VStack(spacing: 5) {
                 // Wenn minimiert: MiniPlayer sitzt direkt inline in der Leiste zwischen den beiden Kreisen!
                 // Wenn expandiert: Schwebende Minibar über der Kapselleiste
                 if player.currentTrack != nil && !isMinimized {
@@ -211,7 +211,7 @@ public struct MainTabView: View {
                 // Custom Liquid Glass Floating Split TabBar
                 glassTabBar
             }
-            .padding(.bottom, 6)
+            .padding(.bottom, -10)
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
             if showFullscreenPlayer {
@@ -363,7 +363,6 @@ public struct MainTabView: View {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
                         selectLiquidTab(.search)
-                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
                     }
                 )
             } else {
@@ -412,7 +411,6 @@ public struct MainTabView: View {
                 targetItem = .library
             case .search:
                 targetItem = .search
-                NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
             }
             selectedTab = targetItem
             showMenuDrawer = false
