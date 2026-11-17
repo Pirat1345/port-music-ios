@@ -22,13 +22,13 @@ public struct AppleLiquidGlassView: UIViewRepresentable {
             effect = UIBlurEffect(style: style)
         }
         let blurView = UIVisualEffectView(effect: effect)
-        // Authentische Apple-Luminanz: Verhindert das Absaufen auf reinem Schwarz
-        blurView.backgroundColor = UIColor(white: 0.22, alpha: tintAlpha)
+        // Authentische Apple-Luminanz: Sanfte milchige Frost-Luminanz statt Absaufen auf Schwarz
+        blurView.backgroundColor = UIColor(white: 0.35, alpha: tintAlpha)
         blurView.isUserInteractionEnabled = false
         return blurView
     }
 
     public func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
-        uiView.backgroundColor = UIColor(white: 0.22, alpha: tintAlpha)
+        uiView.backgroundColor = UIColor(white: 0.35, alpha: tintAlpha)
     }
 }

@@ -343,13 +343,15 @@ public struct MainTabView: View {
                     }
                 )
             } else {
-                // MARK: - Vollstaendige Kapsel-Leiste (62pt Kapsel + 62pt Suchkreis)
-                // 1. Linke Primaere Kapsel: Home, New, Radio, Library
+                // MARK: - Vollstaendige Kapsel-Leiste: Ein einziger ovaler Balken mit allen Buttons (inkl. Search)
                 InteractiveTabCapsule(
                     activeTab: $activeLiquidTab,
                     iconsOnly: iconsOnly,
                     onTabSelected: { tab in
                         selectLiquidTab(tab)
+                    },
+                    onOpenSettings: {
+                        showNavbarSettings = true
                     }
                 )
                 .frame(height: 62)
@@ -364,17 +366,6 @@ public struct MainTabView: View {
                         Label("Leisten-Einstellungen...", systemImage: "gearshape")
                     }
                 }
-
-                // 2. Rechter Kreisel: Apart Search Circle (62pt x 62pt, 12pt Abstand)
-                SearchApartCircle(
-                    isSelected: activeLiquidTab == .search,
-                    onTap: {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.impactOccurred()
-                        selectLiquidTab(.search)
-                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
-                    }
-                )
             }
         }
         .frame(height: 62)
@@ -396,6 +387,7 @@ public struct MainTabView: View {
                 targetItem = .library
             case .search:
                 targetItem = .search
+                NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
             }
             selectedTab = targetItem
             showMenuDrawer = false
@@ -439,18 +431,20 @@ public struct MainTabView: View {
     }
 }
 
-// MARK: - Interactive Left Platter Capsule with Fluid Glass Oval
+// MARK: - Interactive Liquid Glass Capsule with Fluid Hover Oval
 private struct InteractiveTabCapsule: View {
     @Binding var activeTab: LiquidTabID
     let iconsOnly: Bool
     let onTabSelected: (LiquidTabID) -> Void
+    let onOpenSettings: () -> Void
 
-    @State private var dragX: CGFloat? = nil
+    // Live touch tracking with @GestureState - automatically resets to nil on end or cancellation!
+    @GestureState private var liveDragX: CGFloat? = nil
     @State private var lastHapticIndex: Int? = nil
     private let inactiveTabOpacity: Double = 0.45
 
-    // 4 Haupt-Tabs in der Kapsel (Exakt wie im Screenshot media_1794856565902_f88fd565.jpg)
-    private let tabs: [LiquidTabID] = [.home, .newReleases, .radio, .library]
+    // Alle 5 Tabs in einer einzigen Schwebekapsel vereint (Home, New, Radio, Library, Search)
+    private let tabs: [LiquidTabID] = [.home, .newReleases, .radio, .library, .search]
 
     // Strictly uses MainTabItem.allCases to guarantee AST test contracts (T2_F03_2)
     private var allCasesAudit: [MainTabItem] {
@@ -465,31 +459,68 @@ private struct InteractiveTabCapsule: View {
             let activeIndex = tabs.firstIndex(of: activeTab)
 
             ZStack(alignment: .leading) {
-                // Layer 1-3: Base Glass Material, Specular Frost Sheen & Precision Rim Lighting
+                // Layer 1: Native Apple Liquid Glass View
+                AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.38)
+                    .clipShape(Capsule())
+
+                // Layer 2: SwiftUI Material for dynamic OS blending
                 Capsule()
                     .fill(.ultraThinMaterial)
-                AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.40)
-                    .clipShape(Capsule())
+
+                // Layer 3: Specular Frost Sheen
                 Capsule()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.14), location: 0.0),
-                                .init(color: Color.white.opacity(0.04), location: 0.45),
-                                .init(color: Color.black.opacity(0.06), location: 1.0)
+                                .init(color: Color.white.opacity(0.24), location: 0.0),
+                                .init(color: Color.white.opacity(0.08), location: 0.30),
+                                .init(color: Color.white.opacity(0.02), location: 0.65),
+                                .init(color: Color.black.opacity(0.08), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
+
+                // Layer 4: Specular Glass Edge (Lichtkante)
+                Capsule()
+                    .stroke(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.75), location: 0.0),
+                                .init(color: Color.white.opacity(0.35), location: 0.25),
+                                .init(color: Color.white.opacity(0.12), location: 0.70),
+                                .init(color: Color.white.opacity(0.25), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1.0
+                    )
+                    .shadow(color: Color.black.opacity(0.40), radius: 18, x: 0, y: 8)
+                    .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+
+                // Layer 5: Fluid Liquid Glass Selection Oval (Hover & Drag Tracking)
+                let currentCenterX: CGFloat = {
+                    if let dragX = liveDragX {
+                        return max(tabWidth * 0.5, min(totalWidth - tabWidth * 0.5, dragX))
+                    } else if let idx = activeIndex {
+                        return CGFloat(idx) * tabWidth + tabWidth * 0.5
+                    } else {
+                        return tabWidth * 0.5
+                    }
+                }()
+
+                Capsule()
+                    .fill(Color.white.opacity(0.22))
                     .overlay(
                         Capsule()
                             .stroke(
                                 LinearGradient(
                                     stops: [
-                                        .init(color: Color.white.opacity(0.65), location: 0.0),
-                                        .init(color: Color.white.opacity(0.24), location: 0.35),
-                                        .init(color: Color.white.opacity(0.08), location: 1.0)
+                                        .init(color: Color.white.opacity(0.80), location: 0.0),
+                                        .init(color: Color.white.opacity(0.32), location: 0.45),
+                                        .init(color: Color.white.opacity(0.15), location: 1.0)
                                     ],
                                     startPoint: .top,
                                     endPoint: .bottom
@@ -497,97 +528,50 @@ private struct InteractiveTabCapsule: View {
                                 lineWidth: 0.85
                             )
                     )
-                    .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
-                    .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+                    .frame(width: tabWidth - 6, height: 52)
+                    .position(x: currentCenterX, y: geo.size.height / 2)
+                    .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
+                    .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: currentCenterX)
 
-                // Layer 4: Interactive Fluid Glass Selection Oval
-                let isCapsuleActive = (activeIndex != nil) || (dragX != nil)
-                if isCapsuleActive {
-                    let currentCenterX: CGFloat = {
-                        if let dragX = dragX {
-                            return max(tabWidth * 0.5, min(totalWidth - tabWidth * 0.5, dragX))
-                        } else if let idx = activeIndex {
-                            return CGFloat(idx) * tabWidth + tabWidth * 0.5
-                        } else {
-                            return tabWidth * 0.5
-                        }
-                    }()
-
-                    Capsule()
-                        .fill(Color.white.opacity(0.20))
-                        .overlay(
-                            Capsule()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.60), Color.white.opacity(0.25)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.75
-                                )
-                        )
-                        .frame(width: tabWidth - 6, height: 52)
-                        .position(x: currentCenterX, y: geo.size.height / 2)
-                        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
-                        .animation(dragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : nil, value: currentCenterX)
-                        .transition(.scale(scale: 0.85).combined(with: .opacity))
-                }
-
-                // Layer 5: Tab Items Stack mit direktem Button-Tap (Gegen Desynchronisation)
+                // Layer 6: Tab Items Stack
                 HStack(spacing: 0) {
                     ForEach(tabs) { tab in
                         let isSelected = (activeTab == tab)
-                        Button(action: {
-                            dragX = nil
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.impactOccurred()
-                            onTabSelected(tab)
-                        }) {
-                            VStack(spacing: 2) {
-                                Image(systemName: tab.iconName(isSelected: isSelected))
-                                    .font(.system(size: iconsOnly ? 22 : 20, weight: isSelected ? .bold : .medium))
-                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(inactiveTabOpacity))
-                                    .frame(height: iconsOnly ? 28 : 22)
+                        VStack(spacing: 2) {
+                            Image(systemName: tab.iconName(isSelected: isSelected))
+                                .font(.system(size: iconsOnly ? 22 : 20, weight: isSelected ? .bold : .medium))
+                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(inactiveTabOpacity))
+                                .frame(height: iconsOnly ? 28 : 22)
 
-                                if !iconsOnly {
-                                    Text(tab.title)
-                                        .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
-                                        .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(inactiveTabOpacity))
-                                        .minimumScaleFactor(0.8)
-                                        .lineLimit(1)
-                                }
+                            if !iconsOnly {
+                                Text(tab.title)
+                                    .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(inactiveTabOpacity))
+                                    .minimumScaleFactor(0.8)
+                                    .lineLimit(1)
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
                     }
                 }
             }
-            // Direct Manipulation Gesture with 15pt Minimum Distance to prevent scroll cancellation deadlock
+            // Direct hover & drag tracking with 0ms touch latency
             .gesture(
-                DragGesture(minimumDistance: 15)
-                    .onChanged { value in
-                        if abs(value.translation.height) > 40 && abs(value.translation.height) > abs(value.translation.width) {
-                            dragX = nil
-                            return
-                        }
-                        dragX = value.location.x
+                DragGesture(minimumDistance: 0)
+                    .updating($liveDragX) { value, state, _ in
+                        state = value.location.x
                         let hoverIndex = max(0, min(tabs.count - 1, Int(value.location.x / tabWidth)))
                         if hoverIndex != lastHapticIndex {
-                            lastHapticIndex = hoverIndex
+                            DispatchQueue.main.async {
+                                lastHapticIndex = hoverIndex
+                            }
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.impactOccurred()
                         }
                     }
                     .onEnded { value in
-                        defer {
-                            dragX = nil
-                            lastHapticIndex = nil
-                        }
-                        if abs(value.translation.height) > 40 && abs(value.translation.height) > abs(value.translation.width) {
-                            return
-                        }
+                        lastHapticIndex = nil
                         let predictedX = value.predictedEndLocation.x
                         let finalIndex = max(0, min(tabs.count - 1, Int(predictedX / tabWidth)))
                         let targetTab = tabs[finalIndex]
@@ -596,6 +580,15 @@ private struct InteractiveTabCapsule: View {
                         generator.impactOccurred()
 
                         onTabSelected(targetTab)
+                    }
+            )
+            // Long Press to open settings (Gedrückt halten -> Settings)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45)
+                    .onEnded { _ in
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        onOpenSettings()
                     }
             )
         }
@@ -702,13 +695,7 @@ private struct NavbarSettingsSheet: View {
                     HStack {
                         Text("Kapsel-Tabs:")
                         Spacer()
-                        Text("Home, New, Radio, Library")
-                            .foregroundColor(Color.white.opacity(0.60))
-                    }
-                    HStack {
-                        Text("Separater Tab:")
-                        Spacer()
-                        Text("Search (62pt Kreis)")
+                        Text("Home, New, Radio, Library, Search")
                             .foregroundColor(Color.white.opacity(0.60))
                     }
                 }
