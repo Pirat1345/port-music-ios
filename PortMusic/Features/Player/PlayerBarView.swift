@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Floating Frosted Glass MiniPlayer (Schwebende Kapsel mit Gestensteuerung)
+// MARK: - Floating Frosted Glass MiniPlayer (Apple Liquid Glass Kapsel mit Gestensteuerung)
 public struct PlayerBarView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
     public let serverURL: String
@@ -35,25 +35,25 @@ public struct PlayerBarView: View {
         if let track = player.currentTrack {
             if isInline {
                 // MARK: - Inline Minibar (Kompakter Modus für minimierte Liquid Glass TabBar)
-                // Sitzt exakt zwischen den beiden 62x62 Kreisen (Aktiver Tab links, Suche rechts)
+                // Sitzt exakt zwischen den beiden 58x58 Kreisen (Aktiver Tab links, Suche rechts)
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
                     onOpenFullscreen()
                 }) {
                     HStack(spacing: 8) {
-                        // Mini Cover Artwork
+                        // Mini Cover Artwork (34x34)
                         let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
                         PortCachedAsyncImage(url: resolved) { image in
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 38, height: 38)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .frame(width: 34, height: 34)
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
                         } placeholder: {
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: 7)
                                 .fill(Color.white.opacity(0.12))
-                                .frame(width: 38, height: 38)
+                                .frame(width: 34, height: 34)
                         }
                         .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
 
@@ -71,97 +71,100 @@ public struct PlayerBarView: View {
                             player.togglePlayPause()
                         }) {
                             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.white)
-                                .frame(width: 32, height: 32)
+                                .frame(width: 30, height: 30)
                                 .background(Circle().fill(Color.white.opacity(0.18)))
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                     .padding(.horizontal, 10)
-                    .frame(height: 62)
+                    .frame(height: 58)
                     .background(
                         ZStack {
                             Capsule()
                                 .fill(.ultraThinMaterial)
-                            AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.38)
+                            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
                                 .clipShape(Capsule())
                             Capsule()
                                 .fill(
                                     LinearGradient(
                                         stops: [
-                                            .init(color: Color.white.opacity(0.16), location: 0.0),
-                                            .init(color: Color.white.opacity(0.06), location: 0.45),
-                                            .init(color: Color.clear, location: 1.0)
+                                            .init(color: Color.white.opacity(0.18), location: 0.0),
+                                            .init(color: Color.white.opacity(0.04), location: 0.40),
+                                            .init(color: Color.clear, location: 0.70),
+                                            .init(color: Color.white.opacity(0.03), location: 1.0)
                                         ],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
                                 )
                             Capsule()
-                                .stroke(
+                                .strokeBorder(
                                     LinearGradient(
                                         stops: [
-                                            .init(color: Color.white.opacity(0.65), location: 0.0),
-                                            .init(color: Color.white.opacity(0.24), location: 0.35),
-                                            .init(color: Color.white.opacity(0.08), location: 1.0)
+                                            .init(color: Color.white.opacity(0.55), location: 0.0),
+                                            .init(color: Color.white.opacity(0.20), location: 0.35),
+                                            .init(color: Color.clear, location: 0.70),
+                                            .init(color: Color.white.opacity(0.15), location: 1.0)
                                         ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
                                     ),
-                                    lineWidth: 0.85
+                                    lineWidth: 0.75
                                 )
                         }
-                        .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
-                        .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+                        .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
+                        .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
-                // MARK: - Vollwertige Schwebende Minibar (Authentisches Apple Music Design)
+                // MARK: - Vollwertige Schwebende Minibar (Authentisches Apple Liquid Glass Design)
+                // Exakt wie in Apple Music: Flache 48pt Kapsel, identische Randrundung wie die TabBar-Kapsel
                 ZStack(alignment: .bottom) {
-                    HStack(spacing: 12) {
-                        // Linker Bereich: Cover + Titel (Antippen oeffnet Vollbild)
+                    HStack(spacing: 10) {
+                        // Linker Bereich: Cover + Titel + Interpret (Antippen oeffnet Vollbild)
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .medium)
                             generator.impactOccurred()
                             onOpenFullscreen()
                         }) {
-                            HStack(spacing: 12) {
-                                // Cover-Artwork (40x40, 8pt Radius)
+                            HStack(spacing: 10) {
+                                // Cover-Artwork (36x36, 8pt Radius)
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 8)
                                         .fill(Color.white.opacity(0.08))
-                                        .frame(width: 40, height: 40)
+                                        .frame(width: 36, height: 36)
 
                                     let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
                                     PortCachedAsyncImage(url: resolved) { image in
                                         image
                                             .resizable()
                                             .aspectRatio(contentMode: .fill)
-                                            .frame(width: 40, height: 40)
+                                            .frame(width: 36, height: 36)
                                             .clipShape(RoundedRectangle(cornerRadius: 8))
                                     } placeholder: {
                                         Image(systemName: "music.note")
-                                            .font(.system(size: 16))
+                                            .font(.system(size: 15))
                                             .foregroundColor(Color.white.opacity(0.5))
                                     }
                                 }
-                                .frame(width: 40, height: 40)
+                                .frame(width: 36, height: 36)
                                 .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
 
                                 // Titel und Interpret
                                 let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
                                 let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
 
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: 1) {
                                     Text(displayTitle)
-                                        .font(.system(size: 14, weight: .semibold))
+                                        .font(.system(size: 13.5, weight: .semibold))
                                         .foregroundColor(.white)
                                         .lineLimit(1)
 
                                     Text(displayArtist)
-                                        .font(.system(size: 12, weight: .regular))
+                                        .font(.system(size: 11.5, weight: .regular))
                                         .foregroundColor(Color.white.opacity(0.65))
                                         .lineLimit(1)
                                 }
@@ -174,7 +177,7 @@ public struct PlayerBarView: View {
                         .offset(x: horizontalDragOffset)
 
                         // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
-                        HStack(spacing: 10) {
+                        HStack(spacing: 8) {
                             // Play/Pause Button (Reines, randloses Apple Symbol)
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -184,53 +187,74 @@ public struct PlayerBarView: View {
                                 if player.isBuffering {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        .scaleEffect(0.85)
-                                        .frame(width: 32, height: 32)
+                                        .scaleEffect(0.80)
+                                        .frame(width: 30, height: 30)
                                 } else {
                                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                        .font(.system(size: 19, weight: .bold))
+                                        .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.white)
-                                        .frame(width: 32, height: 32)
+                                        .frame(width: 30, height: 30)
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())
 
-                            // Naechster Titel (Apple Music Style: forward.fill)
+                            // Naechster Titel (forward.fill)
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.impactOccurred()
                                 player.next(serverURL: serverURL)
                             }) {
                                 Image(systemName: "forward.fill")
-                                    .font(.system(size: 18, weight: .bold))
+                                    .font(.system(size: 17, weight: .bold))
                                     .foregroundColor(Color.white.opacity(0.90))
-                                    .frame(width: 32, height: 32)
+                                    .frame(width: 30, height: 30)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
                     }
                     .padding(.horizontal, 12)
-                    .frame(height: 54)
+                    .frame(height: 48)
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(.regularMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(
-                                        LinearGradient(
-                                            stops: [
-                                                .init(color: Color.white.opacity(0.30), location: 0.0),
-                                                .init(color: Color.white.opacity(0.10), location: 0.45),
-                                                .init(color: Color.white.opacity(0.02), location: 1.0)
-                                            ],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 0.65
+                        ZStack {
+                            // 1. Echte Hardware Liquid Glass Basis
+                            Capsule()
+                                .fill(.ultraThinMaterial)
+                            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
+                                .clipShape(Capsule())
+
+                            // 2. Subtiler Specular Frost Sheen
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.18), location: 0.0),
+                                            .init(color: Color.white.opacity(0.04), location: 0.40),
+                                            .init(color: Color.clear, location: 0.70),
+                                            .init(color: Color.white.opacity(0.03), location: 1.0)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
                                     )
-                            )
-                            .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
-                            .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
+                                )
+
+                            // 3. Specular Glass Edge (0.75pt Haarlinie der schwebenden Kapsel)
+                            Capsule()
+                                .strokeBorder(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.55), location: 0.0),
+                                            .init(color: Color.white.opacity(0.20), location: 0.35),
+                                            .init(color: Color.clear, location: 0.70),
+                                            .init(color: Color.white.opacity(0.15), location: 1.0)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 0.75
+                                )
+                        }
+                        .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
+                        .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
                     )
                     // Gesten: Wischen nach oben oeffnet Vollbild, Wischen horizontal wechselt Titel
                     .simultaneousGesture(
@@ -275,9 +299,9 @@ public struct PlayerBarView: View {
                             }
                     )
 
-                    // 2px filigrane Fortschrittslinie direkt am unteren Rand der Karte
+                    // 2px filigrane Fortschrittslinie direkt am unteren Rand der Kapsel
                     timelineScrubberSection
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, 16)
                         .padding(.bottom, 2)
                 }
             }
