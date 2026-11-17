@@ -14,6 +14,7 @@ public struct FullscreenPlayerView: View {
     @State private var showLyrics: Bool = false
     @State private var sidePanelMode: SidePanelMode = .lyrics
     @State private var dragOffset: CGFloat = 0.0
+    @State private var isDismissing: Bool = false
     @State private var volume: Float = 0.7
     @State private var artworkDragOffset: CGFloat = 0.0
 
@@ -30,6 +31,20 @@ public struct FullscreenPlayerView: View {
     public init(serverURL: String, onClose: @escaping () -> Void) {
         self.serverURL = serverURL
         self.onClose = onClose
+    }
+
+    private func triggerDismiss(fullHeight: CGFloat) {
+        guard !isDismissing else { return }
+        isDismissing = true
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+            dragOffset = fullHeight + 60
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+            onClose()
+        }
     }
 
     private var activeProgress: Double {
@@ -67,7 +82,7 @@ public struct FullscreenPlayerView: View {
                 // 2. Inhalt
                 VStack(spacing: 0) {
                     // Kopfleiste mit Drag-Griff
-                    topBarSection(safeTop: safeTop)
+                    topBarSection(safeTop: safeTop, fullHeight: fullHeight)
 
                     if isTablet {
                         // Tablet / iPad Split 2-Spalten-Layout (Exakt wie im Web-App Screenshot)
@@ -87,17 +102,17 @@ public struct FullscreenPlayerView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { val in
+                        guard !isDismissing else { return }
                         if val.translation.height > 0 && abs(val.translation.height) > abs(val.translation.width) {
                             dragOffset = val.translation.height
                         }
                     }
                     .onEnded { val in
+                        guard !isDismissing else { return }
                         let dy = val.translation.height
                         let predicted = val.predictedEndTranslation.height
-                        if dy > 60 || dy > 120 || predicted > 90 {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.impactOccurred()
-                            onClose()
+                        if dy > 120 || dy > 60 || predicted > 90 {
+                            triggerDismiss(fullHeight: fullHeight)
                         } else {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                                 dragOffset = 0
@@ -186,7 +201,7 @@ public struct FullscreenPlayerView: View {
     }
 
     // MARK: - Obere Kopfleiste (Drag-Griff zentriert zum Herunterziehen)
-    private func topBarSection(safeTop: CGFloat) -> some View {
+    private func topBarSection(safeTop: CGFloat, fullHeight: CGFloat) -> some View {
         let effectiveSafeTop = max(safeTop, deviceSafeTop)
         let topDistance = effectiveSafeTop + 10
 
@@ -204,18 +219,16 @@ public struct FullscreenPlayerView: View {
         .gesture(
             DragGesture(minimumDistance: 1)
                 .onChanged { val in
+                    guard !isDismissing else { return }
                     dragOffset = max(0, val.translation.height)
                 }
                 .onEnded { val in
+                    guard !isDismissing else { return }
                     if val.translation.height < 6 {
                         // Kurzes Tippen schließt die Großansicht direkt
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.impactOccurred()
-                        onClose()
-                    } else if val.translation.height > 60 || val.translation.height > 120 || val.predictedEndTranslation.height > 100 {
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
-                        onClose()
+                        triggerDismiss(fullHeight: fullHeight)
+                    } else if val.translation.height > 120 || val.translation.height > 60 || val.predictedEndTranslation.height > 90 {
+                        triggerDismiss(fullHeight: fullHeight)
                     } else {
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             dragOffset = 0
@@ -429,18 +442,14 @@ public struct FullscreenPlayerView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 10)
                 .onChanged { val in
-                    guard isLarge else { return }
+                    guard isLarge, !isDismissing else { return }
                     if abs(val.translation.width) > abs(val.translation.height) {
                         artworkDragOffset = val.translation.width
-                    } else if val.translation.height > 0 {
-                        dragOffset = val.translation.height
                     }
                 }
                 .onEnded { val in
-                    guard isLarge else { return }
-                    let dy = val.translation.height
-                    let velocityY = val.predictedEndTranslation.height - val.translation.height
-                    if abs(val.translation.width) > abs(dy) {
+                    guard isLarge, !isDismissing else { return }
+                    if abs(val.translation.width) > abs(val.translation.height) {
                         let dx = val.translation.width
                         let velocityX = val.predictedEndTranslation.width - val.translation.width
                         if dx < -45 || velocityX < -60 {
@@ -454,14 +463,6 @@ public struct FullscreenPlayerView: View {
                         }
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
                             artworkDragOffset = 0
-                        }
-                    } else if dy > 60 || dy > 120 || velocityY > 100 {
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
-                        onClose()
-                    } else {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                            dragOffset = 0
                         }
                     }
                 }

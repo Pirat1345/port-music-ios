@@ -431,6 +431,108 @@ public struct MainTabView: View {
     }
 }
 
+// MARK: - Refractive Liquid Glass Lens Pill (Auswahl-Linse mit optischer Kantenbrechung)
+private struct LiquidGlassLensPill: View {
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        ZStack {
+            // 1. Echter nativer Blur für den Linsenhintergrund
+            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.22)
+                .clipShape(Capsule())
+
+            // 2. Weicher SwiftUI Material-Frosting Glanz
+            Capsule()
+                .fill(.ultraThinMaterial.opacity(0.60))
+
+            // 3. Diffuser Specular Luminance Gradient
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.28), location: 0.0),
+                            .init(color: Color.white.opacity(0.12), location: 0.45),
+                            .init(color: Color.white.opacity(0.04), location: 0.85),
+                            .init(color: Color.black.opacity(0.08), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            // 4. Optische Kantenbrechung & Caustic-Verzerrung an den abgerundeten Kappen
+            // Erzeugt die charakteristische Wölbung und Lichtverzerrung an den Rundungen
+            HStack(spacing: 0) {
+                // Linke Rundung: Linsenkrümmungs-Schatten
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        Color.black.opacity(0.26),
+                        Color.black.opacity(0.10),
+                        Color.clear
+                    ]),
+                    center: .center,
+                    startRadius: 2,
+                    endRadius: min(height, width) * 0.5
+                )
+                .frame(width: min(height, width) * 0.5)
+
+                Spacer(minLength: 0)
+
+                // Rechte Rundung: Linsenkrümmungs-Schatten
+                RadialGradient(
+                    gradient: Gradient(colors: [
+                        Color.black.opacity(0.26),
+                        Color.black.opacity(0.10),
+                        Color.clear
+                    ]),
+                    center: .center,
+                    startRadius: 2,
+                    endRadius: min(height, width) * 0.5
+                )
+                .frame(width: min(height, width) * 0.5)
+            }
+            .clipShape(Capsule())
+            .blendMode(.multiply)
+
+            // 5. Äußere hochpräzise Lichtkante (Specular Rim)
+            Capsule()
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.85), location: 0.0),
+                            .init(color: Color.white.opacity(0.40), location: 0.30),
+                            .init(color: Color.white.opacity(0.15), location: 0.70),
+                            .init(color: Color.white.opacity(0.35), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1.0
+                )
+
+            // 6. Innere Refraktions-Schattierung für körperliche Glasdicke
+            Capsule()
+                .inset(by: 0.75)
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.black.opacity(0.20), location: 0.0),
+                            .init(color: Color.clear, location: 0.35),
+                            .init(color: Color.black.opacity(0.30), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.75
+                )
+        }
+        .frame(width: width, height: height)
+        .shadow(color: Color.black.opacity(0.28), radius: 8, x: 0, y: 3)
+        .shadow(color: Color.white.opacity(0.08), radius: 2, x: 0, y: -1)
+    }
+}
+
 // MARK: - Interactive Liquid Glass Capsule with Fluid Hover Oval
 private struct InteractiveTabCapsule: View {
     @Binding var activeTab: LiquidTabID
@@ -500,7 +602,7 @@ private struct InteractiveTabCapsule: View {
                     .shadow(color: Color.black.opacity(0.40), radius: 18, x: 0, y: 8)
                     .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
 
-                // Layer 5: Fluid Liquid Glass Selection Oval (Hover & Drag Tracking)
+                // Layer 5: Refractive Liquid Glass Lens (Hover & Drag Tracking)
                 let currentCenterX: CGFloat = {
                     if let dragX = liveDragX {
                         return max(tabWidth * 0.5, min(totalWidth - tabWidth * 0.5, dragX))
@@ -511,26 +613,8 @@ private struct InteractiveTabCapsule: View {
                     }
                 }()
 
-                Capsule()
-                    .fill(Color.white.opacity(0.22))
-                    .overlay(
-                        Capsule()
-                            .stroke(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: Color.white.opacity(0.80), location: 0.0),
-                                        .init(color: Color.white.opacity(0.32), location: 0.45),
-                                        .init(color: Color.white.opacity(0.15), location: 1.0)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.85
-                            )
-                    )
-                    .frame(width: tabWidth - 6, height: 52)
+                LiquidGlassLensPill(width: tabWidth - 6, height: 52)
                     .position(x: currentCenterX, y: geo.size.height / 2)
-                    .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
                     .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: currentCenterX)
 
                 // Layer 6: Tab Items Stack
