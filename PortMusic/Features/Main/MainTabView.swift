@@ -431,24 +431,30 @@ public struct MainTabView: View {
     }
 }
 
-// MARK: - Refractive Liquid Glass Lens Pill (Auswahl-Linse mit nativer Lichtbrechung & 3D-Kantenkrümmung)
+// MARK: - Refractive Squircle Liquid Glass Lens Pill (Shader-Modell: Exponent 6 & rb2-Kaustik-Ring)
 private struct LiquidGlassLensPill: View {
     let width: CGFloat
     let height: CGFloat
 
+    // Berechnet den kontinuierlichen Squircle-Radius (Apple Superellipse p=6 Lame-Kurve)
+    private var squircleRadius: CGFloat {
+        height * 0.44
+    }
+
     var body: some View {
         ZStack {
-            // 1. Echter nativer UIGlassEffect für die Kapsel-Linse (Bricht das Licht des Hintergrunds)
+            // 1. Echter nativer UIGlassEffect / Hardware-Backdrop-Blur als optische Basis
             AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
+                .clipShape(RoundedRectangle(cornerRadius: squircleRadius, style: .continuous))
 
-            // 2. 3D-Linsenbäuchung (Zylindrisch-konvexe Wölbung im Linsenzentrum)
-            Capsule()
+            // 2. Diffuse Linsenoberflaeche mit vertikalem Ambient-Gradienten (entspricht 'gradient' im Shader)
+            RoundedRectangle(cornerRadius: squircleRadius, style: .continuous)
                 .fill(
                     LinearGradient(
                         stops: [
                             .init(color: Color.white.opacity(0.24), location: 0.0),
-                            .init(color: Color.white.opacity(0.08), location: 0.25),
-                            .init(color: Color.clear, location: 0.60),
+                            .init(color: Color.white.opacity(0.08), location: 0.30),
+                            .init(color: Color.clear, location: 0.65),
                             .init(color: Color.white.opacity(0.06), location: 1.0)
                         ],
                         startPoint: .top,
@@ -456,75 +462,16 @@ private struct LiquidGlassLensPill: View {
                     )
                 )
 
-            // 3. Laterale Halbkugel-Wölbungen an den runden Enden (Radial Curvature der Kapselkappen)
-            // Bringt die echte sphärische Lichtkrümmung an die linken und rechten Enden
-            HStack(spacing: 0) {
-                // Linke Kantenkrümmung: Bricht das Licht bogenförmig entlang des linken Halbkreises
-                Circle()
-                    .strokeBorder(
-                        RadialGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.55), location: 0.60),
-                                .init(color: Color.white.opacity(0.18), location: 0.85),
-                                .init(color: Color.clear, location: 1.0)
-                            ],
-                            center: UnitPoint(x: 0.38, y: 0.38),
-                            startRadius: height * 0.15,
-                            endRadius: height * 0.50
-                        ),
-                        lineWidth: 2.2
-                    )
-                    .frame(width: height, height: height)
-                    .blendMode(.plusLighter)
-
-                Spacer(minLength: 0)
-
-                // Rechte Kantenkrümmung: Bricht das Licht bogenförmig entlang des rechten Halbkreises
-                Circle()
-                    .strokeBorder(
-                        RadialGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.40), location: 0.60),
-                                .init(color: Color.white.opacity(0.12), location: 0.85),
-                                .init(color: Color.clear, location: 1.0)
-                            ],
-                            center: UnitPoint(x: 0.62, y: 0.38),
-                            startRadius: height * 0.15,
-                            endRadius: height * 0.50
-                        ),
-                        lineWidth: 2.2
-                    )
-                    .frame(width: height, height: height)
-                    .blendMode(.plusLighter)
-            }
-            .clipShape(Capsule())
-
-            // 4. Primäre 3D-Kantenwölbung / Facettenschliff (Äußerer 1.0pt-Refraktionsrand)
-            Capsule()
+            // 3. Exakter Kanten-Leuchtring 'rb2' aus dem Shader (Lichtintensitaet 0.30 am Woelbungsrand)
+            // Konzentriert die Totalreflexion als praezise Facettenkante der Superellipse
+            RoundedRectangle(cornerRadius: squircleRadius, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color(red: 0.90, green: 0.96, blue: 1.0, opacity: 0.75), location: 0.0), // Zartes spektrales Cyan-Highlight
-                            .init(color: Color.white.opacity(0.35), location: 0.30),
-                            .init(color: Color.white.opacity(0.12), location: 0.70),
-                            .init(color: Color(red: 1.0, green: 0.96, blue: 0.90, opacity: 0.40), location: 1.0)  // Zartes warmes Austrittslicht
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.0
-                )
-
-            // 5. Konzentrische Kantenfase (1.5pt Inset - Tiefenrefraktion der Glaskrümmung)
-            Capsule()
-                .inset(by: 1.5)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(0.30), location: 0.0),
-                            .init(color: Color.clear, location: 0.35),
-                            .init(color: Color.black.opacity(0.20), location: 0.75),
-                            .init(color: Color.black.opacity(0.32), location: 1.0)
+                            .init(color: Color.white.opacity(0.85), location: 0.0),
+                            .init(color: Color.white.opacity(0.42), location: 0.25),
+                            .init(color: Color.white.opacity(0.18), location: 0.70),
+                            .init(color: Color.white.opacity(0.48), location: 1.0)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -532,25 +479,44 @@ private struct LiquidGlassLensPill: View {
                     lineWidth: 1.2
                 )
 
-            // 6. Subtiler innerer Glas-Caustic-Schliff (3.0pt Inset - Lichtsammlung am Boden der Wölbung)
-            Capsule()
+            // 4. Optische Rand-Brechungsfase (Die Kruemmung / Kantenabsenkung aus '1.0 - roundedBox * 5000.0')
+            // Ein 1.5pt Inset-Band fuer die nichtlineare Lichtkruemmung und Tiefenabsorption am Rand
+            RoundedRectangle(cornerRadius: max(0, squircleRadius - 1.5), style: .continuous)
+                .inset(by: 1.5)
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.35), location: 0.0),
+                            .init(color: Color.clear, location: 0.30),
+                            .init(color: Color.black.opacity(0.22), location: 0.75),
+                            .init(color: Color.black.opacity(0.38), location: 1.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+
+            // 5. Innere Linsen-Facettenkante (3.0pt Inset - sanfter Uebergang zum ebenen Linsenzentrum)
+            RoundedRectangle(cornerRadius: max(0, squircleRadius - 3.0), style: .continuous)
                 .inset(by: 3.0)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.16), location: 0.0),
+                            .init(color: Color.white.opacity(0.18), location: 0.0),
                             .init(color: Color.clear, location: 0.50),
                             .init(color: Color.white.opacity(0.12), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.6
+                    lineWidth: 0.75
                 )
         }
         .frame(width: width, height: height)
+        // 6. Aeusserer Uebergang ('transition = smoothstep(0.0, 1.0, rb1 + rb2)' aus dem Shader)
         .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 5)
-        .shadow(color: Color.black.opacity(0.20), radius: 3, x: 0, y: 1)
+        .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
         .shadow(color: Color.white.opacity(0.12), radius: 1, x: 0, y: -1)
     }
 }
@@ -634,17 +600,21 @@ private struct InteractiveTabCapsule: View {
                     .position(x: currentCenterX, y: geo.size.height / 2)
                     .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: currentCenterX)
 
-                // Layer 6: Tab Items Stack mit optischer Linsen-Wölbungsreaktion (Magnification unter Glas)
+                // Layer 6: Tab Items Stack mit nichtlinearer Exponent-6-Linsenvergroesserung (Shader-Formel)
                 HStack(spacing: 0) {
                     ForEach(0..<tabs.count, id: \.self) { idx in
                         let tab = tabs[idx]
                         let isSelected = (activeTab == tab)
                         let tabCenterX = CGFloat(idx) * tabWidth + tabWidth * 0.5
                         let dist = abs(currentCenterX - tabCenterX)
-                        let norm = min(1.0, dist / tabWidth)
-                        let proximity = 1.0 - norm
-                        let dynamicScale = 1.0 + (proximity * 0.07)
-                        let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + proximity * 0.30)
+
+                        // Exakte Shader-Refraktionskurve mit Exponent 6:
+                        // Im Zentrum (dist < 0.6 * tabWidth) flache Vergroesserung, am Rand steiler Abfall
+                        let normDist = min(1.0, dist / (tabWidth * 0.55))
+                        let squircleDistortion = pow(normDist, 6.0)
+                        let lensFactor = max(0.0, 1.0 - squircleDistortion)
+                        let dynamicScale = 1.0 + (lensFactor * 0.08)
+                        let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + lensFactor * 0.35)
 
                         VStack(spacing: 2) {
                             Image(systemName: tab.iconName(isSelected: isSelected))
