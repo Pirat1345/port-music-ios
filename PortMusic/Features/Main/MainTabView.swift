@@ -168,7 +168,7 @@ public struct MainTabView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 54)
+                .padding(.bottom, miniPlayerBottomPadding)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -232,6 +232,17 @@ public struct MainTabView: View {
             await SessionManager.shared.refreshUserProfile()
         }
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
+    }
+
+    // MARK: - Dynamischer vertikaler Abstand fuer den schwebenden MiniPlayer ueber der Tab-Leiste
+    private var miniPlayerBottomPadding: CGFloat {
+        let safeAreaBottom = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 34
+        let baseTabBarHeight: CGFloat = 49
+        let floatingGap: CGFloat = 8
+        return baseTabBarHeight + safeAreaBottom + floatingGap
     }
 
     // MARK: - Navigation Destinations
