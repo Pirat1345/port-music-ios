@@ -85,8 +85,15 @@ public struct MainTabView: View {
     // Persistent Navbar Variants & Settings (NavbarSettings.m)
     @AppStorage("navbar_icons_only") private var iconsOnly: Bool = false
     @AppStorage("navbar_scroll_minimize") private var scrollMinimizeEnabled: Bool = true
+    @AppStorage("navbar_custom_tabs") private var customTabsRaw: String = "home,library,radio,search"
     @State private var isMinimized: Bool = false
     @State private var showNavbarSettings: Bool = false
+
+    private var currentTabsList: [LiquidTabID] {
+        let rawIds = customTabsRaw.split(separator: ",").map(String.init)
+        let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
+        return parsed.isEmpty ? [.home, .library, .radio, .search] : parsed
+    }
 
     @State private var showFullscreenPlayer: Bool = false
     @State private var showMenuDrawer: Bool = false
@@ -255,7 +262,17 @@ public struct MainTabView: View {
             UserPageView(user: session.currentUser ?? user, serverURL: serverURL)
         }
         .sheet(isPresented: $showNavbarSettings) {
-            NavbarSettingsSheet(iconsOnly: $iconsOnly, scrollMinimize: $scrollMinimizeEnabled)
+            NavbarSettingsSheet(
+                iconsOnly: $iconsOnly,
+                scrollMinimize: $scrollMinimizeEnabled,
+                customTabsRaw: $customTabsRaw
+            )
+        }
+        .onChange(of: customTabsRaw) { _ in
+            let tabs = currentTabsList
+            if !tabs.contains(activeLiquidTab), let first = tabs.first {
+                selectLiquidTab(first)
+            }
         }
         .preferredColorScheme(.dark)
         .task {
@@ -353,12 +370,10 @@ public struct MainTabView: View {
                 // MARK: - Vollstaendige Kapsel-Leiste: Ein einziger ovaler Balken mit allen Buttons (inkl. Search)
                 InteractiveTabCapsule(
                     activeTab: $activeLiquidTab,
+                    tabs: currentTabsList,
                     iconsOnly: iconsOnly,
                     onTabSelected: { tab in
                         selectLiquidTab(tab)
-                    },
-                    onOpenSettings: {
-                        showNavbarSettings = true
                     }
                 )
                 .frame(height: 62)
@@ -530,18 +545,15 @@ private struct LiquidGlassLensPill: View {
 // MARK: - Interactive Liquid Glass Capsule with Fluid Hover Oval
 private struct InteractiveTabCapsule: View {
     @Binding var activeTab: LiquidTabID
+    let tabs: [LiquidTabID]
     let iconsOnly: Bool
     let onTabSelected: (LiquidTabID) -> Void
-    let onOpenSettings: () -> Void
 
     // Live touch tracking with @GestureState - automatically resets to nil on end or cancellation!
     @GestureState private var liveDragX: CGFloat? = nil
     @GestureState private var liveVelocityX: CGFloat = 0.0
     @State private var lastHapticIndex: Int? = nil
     private let inactiveTabOpacity: Double = 0.45
-
-    // Genau 4 Tabs in der Schwebekapsel: Startseite, Bibliothek, Radio, Suche
-    private let tabs: [LiquidTabID] = [.home, .library, .radio, .search]
 
     // Strictly uses MainTabItem.allCases to guarantee AST test contracts (T2_F03_2)
     private var allCasesAudit: [MainTabItem] {
@@ -687,15 +699,6 @@ private struct InteractiveTabCapsule: View {
                         onTabSelected(targetTab)
                     }
             )
-            // Long Press to open settings (Gedrückt halten -> Settings)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.45)
-                    .onEnded { _ in
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
-                        onOpenSettings()
-                    }
-            )
         }
         .frame(height: 62)
     }
@@ -774,11 +777,62 @@ private struct SearchApartCircle: View {
     }
 }
 
-// MARK: - Navbar Settings Sheet (Exakt wie NavbarSettings.m)
+// MARK: - Navbar Settings Sheet (Tab-Konfiguration & Anzeigeeinstellungen)
 private struct NavbarSettingsSheet: View {
     @Binding var iconsOnly: Bool
     @Binding var scrollMinimize: Bool
+    @Binding var customTabsRaw: String
     @Environment(\.dismiss) private var dismiss
+
+    private var activeTabs: [LiquidTabID] {
+        let rawIds = customTabsRaw.split(separator: ",").map(String.init)
+        let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
+        return parsed.isEmpty ? [.home, .library, .radio, .search] : parsed
+    }
+
+    private var inactiveTabs: [LiquidTabID] {
+        let current = Set(activeTabs)
+        let all: [LiquidTabID] = [.home, .library, .radio, .search, .newReleases]
+        return all.filter { !current.contains($0) }
+    }
+
+    private func saveTabs(_ tabs: [LiquidTabID]) {
+        customTabsRaw = tabs.map(\.rawValue).joined(separator: ",")
+    }
+
+    private func moveTab(from: Int, to: Int) {
+        var list = activeTabs
+        guard from >= 0, from < list.count, to >= 0, to < list.count else { return }
+        let item = list.remove(at: from)
+        list.insert(item, at: to)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        saveTabs(list)
+    }
+
+    private func removeTab(at index: Int) {
+        var list = activeTabs
+        guard list.count > 2, index >= 0, index < list.count else { return }
+        list.remove(at: index)
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        saveTabs(list)
+    }
+
+    private func addTab(_ tab: LiquidTabID) {
+        var list = activeTabs
+        guard !list.contains(tab) else { return }
+        list.append(tab)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        saveTabs(list)
+    }
+
+    private func resetToDefault() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        saveTabs([.home, .library, .radio, .search])
+    }
 
     var body: some View {
         NavigationStack {
@@ -796,18 +850,117 @@ private struct NavbarSettingsSheet: View {
                         .foregroundColor(Color.white.opacity(0.50))
                 }
 
-                Section(header: Text("Tab-Zusammenstellung").foregroundColor(.white.opacity(0.60))) {
-                    HStack {
-                        Text("Kapsel-Tabs:")
-                        Spacer()
-                        Text("Home, New, Radio, Library, Search")
-                            .foregroundColor(Color.white.opacity(0.60))
+                Section(
+                    header: Text("Angezeigte Tabs & Reihenfolge").foregroundColor(.white.opacity(0.60)),
+                    footer: Text("Pfeile antippen oder Listeneinträge verschieben, um die Reihenfolge in der Leiste festzulegen. Mindestens 2 Tabs bleiben aktiv.").font(.system(size: 12)).foregroundColor(.white.opacity(0.45))
+                ) {
+                    ForEach(Array(activeTabs.enumerated()), id: \.element) { index, tab in
+                        HStack(spacing: 12) {
+                            Image(systemName: tab.iconName(isSelected: true))
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .frame(width: 26)
+
+                            Text(tab.title)
+                                .foregroundColor(.white)
+                                .font(.system(size: 15, weight: .medium))
+
+                            Spacer()
+
+                            // Pfeil nach oben
+                            if index > 0 {
+                                Button(action: { moveTab(from: index, to: index - 1) }) {
+                                    Image(systemName: "chevron.up")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Color.white.opacity(0.70))
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            // Pfeil nach unten
+                            if index < activeTabs.count - 1 {
+                                Button(action: { moveTab(from: index, to: index + 1) }) {
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Color.white.opacity(0.70))
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            // Entfernen
+                            if activeTabs.count > 2 {
+                                Button(action: { removeTab(at: index) }) {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Color(hex: "#fc3c44").opacity(0.90))
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .onMove { indices, newOffset in
+                        var list = activeTabs
+                        list.move(fromOffsets: indices, toOffset: newOffset)
+                        saveTabs(list)
+                    }
+                }
+
+                if !inactiveTabs.isEmpty {
+                    Section(header: Text("Weitere verfügbare Tabs").foregroundColor(.white.opacity(0.60))) {
+                        ForEach(inactiveTabs) { tab in
+                            HStack(spacing: 12) {
+                                Button(action: { addTab(tab) }) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(Color(hex: "#34c759"))
+                                        .frame(width: 26)
+                                }
+                                .buttonStyle(.plain)
+
+                                Image(systemName: tab.iconName(isSelected: false))
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.60))
+                                    .frame(width: 26)
+
+                                Text(tab.title)
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .font(.system(size: 15))
+
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                addTab(tab)
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    Button(action: resetToDefault) {
+                        HStack {
+                            Spacer()
+                            Text("Standard-Reihenfolge wiederherstellen")
+                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                        }
                     }
                 }
             }
             .navigationTitle("Navigationsleiste")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    EditButton()
+                        .foregroundColor(Color(hex: "#fc3c44"))
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Fertig") {
                         dismiss()
