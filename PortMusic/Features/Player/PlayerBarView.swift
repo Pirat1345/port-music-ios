@@ -83,38 +83,20 @@ public struct PlayerBarView: View {
                         ZStack {
                             Capsule()
                                 .fill(.ultraThinMaterial)
-                            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                                .clipShape(Capsule())
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        stops: [
-                                            .init(color: Color.white.opacity(0.18), location: 0.0),
-                                            .init(color: Color.white.opacity(0.04), location: 0.40),
-                                            .init(color: Color.clear, location: 0.70),
-                                            .init(color: Color.white.opacity(0.03), location: 1.0)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
                             Capsule()
                                 .strokeBorder(
                                     LinearGradient(
                                         stops: [
-                                            .init(color: Color.white.opacity(0.55), location: 0.0),
-                                            .init(color: Color.white.opacity(0.20), location: 0.35),
-                                            .init(color: Color.clear, location: 0.70),
-                                            .init(color: Color.white.opacity(0.15), location: 1.0)
+                                            .init(color: Color.white.opacity(0.18), location: 0.0),
+                                            .init(color: Color.white.opacity(0.04), location: 1.0)
                                         ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
+                                        startPoint: .top,
+                                        endPoint: .bottom
                                     ),
-                                    lineWidth: 0.75
+                                    lineWidth: 0.5
                                 )
                         }
-                        .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
-                        .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
+                        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -215,45 +197,22 @@ public struct PlayerBarView: View {
                     .frame(height: 48)
                     .background(
                         ZStack {
-                            // 1. Echte Hardware Liquid Glass Basis (Kapsel)
                             Capsule()
                                 .fill(.ultraThinMaterial)
-                            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                                .clipShape(Capsule())
-
-                            // 2. Subtiler Specular Frost Sheen
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        stops: [
-                                            .init(color: Color.white.opacity(0.18), location: 0.0),
-                                            .init(color: Color.white.opacity(0.04), location: 0.40),
-                                            .init(color: Color.clear, location: 0.70),
-                                            .init(color: Color.white.opacity(0.03), location: 1.0)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-
-                            // 3. Specular Glass Edge (0.75pt Haarlinie der schwebenden Kapsel)
                             Capsule()
                                 .strokeBorder(
                                     LinearGradient(
                                         stops: [
-                                            .init(color: Color.white.opacity(0.55), location: 0.0),
-                                            .init(color: Color.white.opacity(0.20), location: 0.35),
-                                            .init(color: Color.clear, location: 0.70),
-                                            .init(color: Color.white.opacity(0.15), location: 1.0)
+                                            .init(color: Color.white.opacity(0.18), location: 0.0),
+                                            .init(color: Color.white.opacity(0.04), location: 1.0)
                                         ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
+                                        startPoint: .top,
+                                        endPoint: .bottom
                                     ),
-                                    lineWidth: 0.75
+                                    lineWidth: 0.5
                                 )
                         }
-                        .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
-                        .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
+                        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
                     )
                     // Gesten: Wischen nach oben oeffnet Vollbild, Wischen horizontal wechselt Titel
                     .simultaneousGesture(

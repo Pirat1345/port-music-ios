@@ -88,6 +88,7 @@ public struct MainTabView: View {
     @AppStorage("navbar_custom_tabs") private var customTabsRaw: String = "home,library,radio,search"
     @State private var isMinimized: Bool = false
     @State private var showNavbarSettings: Bool = false
+    @State private var dragAccumulator: CGFloat = 0
 
     private var currentTabsList: [LiquidTabID] {
         let rawIds = customTabsRaw.split(separator: ",").map(String.init)
@@ -165,22 +166,34 @@ public struct MainTabView: View {
                 .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
             }
             .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
-            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isMinimized)
+            .animation(.spring(response: 0.36, dampingFraction: 0.84), value: isMinimized)
             // Detektiert vertikale Scroll-Bewegungen für die flüssige Octave-Leistenminimierung
             .simultaneousGesture(
-                DragGesture(minimumDistance: 15)
+                DragGesture(minimumDistance: 10)
                     .onChanged { val in
                         guard scrollMinimizeEnabled else { return }
                         let dy = val.translation.height
-                        if dy < -20 && !isMinimized {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        let absDy = abs(dy)
+                        let absDx = abs(val.translation.width)
+
+                        // Reagiere selektiv auf vertikale Scrollbewegungen (verhindert Fehlauslösung bei horizontalem Swipen)
+                        guard absDy > absDx * 1.3 else { return }
+
+                        let delta = dy - dragAccumulator
+                        if delta < -20 && !isMinimized {
+                            dragAccumulator = dy
+                            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                                 isMinimized = true
                             }
-                        } else if dy > 20 && isMinimized {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        } else if delta > 20 && isMinimized {
+                            dragAccumulator = dy
+                            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                                 isMinimized = false
                             }
                         }
+                    }
+                    .onEnded { _ in
+                        dragAccumulator = 0
                     }
             )
 
@@ -195,8 +208,8 @@ public struct MainTabView: View {
                 .padding(.bottom, miniPlayerBottomPadding)
                 .transition(
                     .asymmetric(
-                        insertion: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom)),
-                        removal: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom))
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity.combined(with: .scale(scale: 0.96))
                     )
                 )
             }
@@ -205,13 +218,7 @@ public struct MainTabView: View {
             if isMinimized {
                 octaveMinimizedBar
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
-                    .transition(
-                        .asymmetric(
-                            insertion: .scale(scale: 0.90).combined(with: .opacity).combined(with: .move(edge: .bottom)),
-                            removal: .scale(scale: 0.90).combined(with: .opacity).combined(with: .move(edge: .bottom))
-                        )
-                    )
+                    .padding(.bottom, minimizedBarBottomPadding)
             }
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
@@ -288,6 +295,14 @@ public struct MainTabView: View {
         return baseTabBarHeight + (safeAreaBottom > 0 ? safeAreaBottom - 8 : 8) + floatingGap
     }
 
+    private var minimizedBarBottomPadding: CGFloat {
+        let safeAreaBottom = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 34
+        return safeAreaBottom > 0 ? safeAreaBottom - 8 : 12
+    }
+
     // MARK: - Dreiteilige Octave-Minimierungsleiste beim Herunterscrollen
     private var octaveMinimizedBar: some View {
         HStack(spacing: 12) {
@@ -298,7 +313,7 @@ public struct MainTabView: View {
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                     if isSearch {
                         selectLiquidTab(previousLiquidTab)
                     }
@@ -308,39 +323,19 @@ public struct MainTabView: View {
                 ZStack {
                     Circle()
                         .fill(.ultraThinMaterial)
-                    AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                        .clipShape(Circle())
                     Circle()
-                        .fill(
+                        .strokeBorder(
                             LinearGradient(
                                 stops: [
                                     .init(color: Color.white.opacity(0.18), location: 0.0),
-                                    .init(color: Color.white.opacity(0.04), location: 0.40),
-                                    .init(color: Color.clear, location: 0.70),
-                                    .init(color: Color.white.opacity(0.03), location: 1.0)
+                                    .init(color: Color.white.opacity(0.04), location: 1.0)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
-                            )
+                            ),
+                            lineWidth: 0.5
                         )
-                        .overlay(
-                            Circle()
-                                .strokeBorder(
-                                    LinearGradient(
-                                        stops: [
-                                            .init(color: Color.white.opacity(0.55), location: 0.0),
-                                            .init(color: Color.white.opacity(0.20), location: 0.35),
-                                            .init(color: Color.clear, location: 0.70),
-                                            .init(color: Color.white.opacity(0.15), location: 1.0)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 0.75
-                                )
-                        )
-                        .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
-                        .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
+                        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
 
                     Image(systemName: leftTab.iconName(isSelected: !isSearch))
                         .font(.system(size: 21, weight: isSearch ? .semibold : .bold))
@@ -349,7 +344,12 @@ public struct MainTabView: View {
                 .frame(width: 62, height: 62)
             }
             .buttonStyle(PlainButtonStyle())
-            .transition(.scale(scale: 0.85).combined(with: .opacity))
+            .transition(
+                .asymmetric(
+                    insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.85)),
+                    removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.85))
+                )
+            )
 
             // 2. Mittig: Kompakte Inline Now-Playing-Kapsel (Exakt zwischen beiden Kreisen eingedockt)
             if player.currentTrack != nil {
@@ -359,7 +359,12 @@ public struct MainTabView: View {
                     }
                 }
                 .frame(height: 62)
-                .transition(.scale(scale: 0.90).combined(with: .opacity))
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
+                        removal: .opacity.combined(with: .scale(scale: 0.95))
+                    )
+                )
             } else {
                 Spacer()
             }
@@ -373,7 +378,12 @@ public struct MainTabView: View {
                     selectLiquidTab(.search)
                 }
             )
-            .transition(.scale(scale: 0.85).combined(with: .opacity))
+            .transition(
+                .asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.85)),
+                    removal: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.85))
+                )
+            )
         }
         .frame(height: 62)
     }
@@ -452,63 +462,23 @@ private struct SearchApartCircle: View {
                 // Base 62pt Glass Circle
                 Circle()
                     .fill(.ultraThinMaterial)
-                AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                    .clipShape(Circle())
                 Circle()
-                    .fill(
+                    .strokeBorder(
                         LinearGradient(
                             stops: [
                                 .init(color: Color.white.opacity(0.18), location: 0.0),
-                                .init(color: Color.white.opacity(0.04), location: 0.40),
-                                .init(color: Color.clear, location: 0.70),
-                                .init(color: Color.white.opacity(0.03), location: 1.0)
+                                .init(color: Color.white.opacity(0.04), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
-                        )
+                        ),
+                        lineWidth: 0.5
                     )
-                    .overlay(
-                        Circle()
-                            .strokeBorder(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: Color.white.opacity(0.55), location: 0.0),
-                                        .init(color: Color.white.opacity(0.20), location: 0.35),
-                                        .init(color: Color.clear, location: 0.70),
-                                        .init(color: Color.white.opacity(0.15), location: 1.0)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 0.75
-                            )
-                    )
-                    .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
-                    .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
-
-                // Active Glass Ring Highlight
-                if isSelected {
-                    Circle()
-                        .fill(Color.white.opacity(0.18))
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.60), Color.white.opacity(0.25)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.75
-                                )
-                        )
-                        .frame(width: 48, height: 48)
-                        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
-                        .transition(.scale(scale: 0.85).combined(with: .opacity))
-                }
+                    .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
 
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: isSelected ? .bold : .medium))
-                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                    .font(.system(size: 21, weight: isSelected ? .bold : .semibold))
+                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.85))
             }
             .frame(width: 62, height: 62)
         }
