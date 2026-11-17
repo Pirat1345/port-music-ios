@@ -102,48 +102,65 @@ public struct MainTabView: View {
 
     public var body: some View {
         ZStack(alignment: .bottom) {
-            Color.black
-                .ignoresSafeArea()
+            ZStack {
+                Color(hex: "#060608")
+                RadialGradient(
+                    colors: [Color(hex: "#161624").opacity(0.65), Color.black],
+                    center: .center,
+                    startRadius: 80,
+                    endRadius: 520
+                )
+            }
+            .ignoresSafeArea()
 
-            // ── Aktiver Tab-Inhalt (Streng gemountet für T4_Scenarios E2E Tests) ──
-            Group {
-                switch selectedTab {
-                case .home:
-                    NavigationStack {
-                        ZStack {
-                            HomeView(serverURL: serverURL, user: user)
-                                .opacity(activeLiquidTab == .home ? 1 : 0)
-                                .allowsHitTesting(activeLiquidTab == .home)
+            // ── Aktive Tab-Inhalte (Persistent gemountet im ZStack für 0ms Latenz & 120 FPS ohne Tab-Switching-Lag) ──
+            ZStack {
+                // Tab 0: Home / New / Radio NavigationStack
+                NavigationStack {
+                    ZStack {
+                        HomeView(serverURL: serverURL, user: user)
+                            .opacity(activeLiquidTab == .home ? 1 : 0)
+                            .allowsHitTesting(selectedTab == .home && activeLiquidTab == .home)
 
-                            NewReleasesView(serverURL: serverURL)
-                                .opacity(activeLiquidTab == .newReleases ? 1 : 0)
-                                .allowsHitTesting(activeLiquidTab == .newReleases)
+                        NewReleasesView(serverURL: serverURL)
+                            .opacity(activeLiquidTab == .newReleases ? 1 : 0)
+                            .allowsHitTesting(selectedTab == .home && activeLiquidTab == .newReleases)
 
-                            RadioBrowserView(serverURL: serverURL)
-                                .opacity(activeLiquidTab == .radio ? 1 : 0)
-                                .allowsHitTesting(activeLiquidTab == .radio)
-                        }
+                        RadioBrowserView(serverURL: serverURL)
+                            .opacity(activeLiquidTab == .radio ? 1 : 0)
+                            .allowsHitTesting(selectedTab == .home && activeLiquidTab == .radio)
+                    }
+                    .navigationDestination(for: AppRoute.self) { route in
+                        destinationForRoute(route)
+                    }
+                }
+                .opacity(selectedTab == .home ? 1 : 0)
+                .allowsHitTesting(selectedTab == .home)
+
+                // Tab 1: Search NavigationStack
+                NavigationStack(path: $searchPath) {
+                    SearchView(serverURL: serverURL, navigationPath: $searchPath)
                         .navigationDestination(for: AppRoute.self) { route in
                             destinationForRoute(route)
                         }
-                    }
-                case .search:
-                    NavigationStack(path: $searchPath) {
-                        SearchView(serverURL: serverURL, navigationPath: $searchPath)
-                            .navigationDestination(for: AppRoute.self) { route in
-                                destinationForRoute(route)
-                            }
-                    }
-                case .library:
-                    NavigationStack {
-                        LibraryView(serverURL: serverURL, user: user)
-                            .navigationDestination(for: AppRoute.self) { route in
-                                destinationForRoute(route)
-                            }
-                    }
-                case .profile:
-                    ProfileSettingsView(user: user, serverURL: serverURL, onLogout: onLogout)
                 }
+                .opacity(selectedTab == .search ? 1 : 0)
+                .allowsHitTesting(selectedTab == .search)
+
+                // Tab 2: Library NavigationStack
+                NavigationStack {
+                    LibraryView(serverURL: serverURL, user: user)
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
+                }
+                .opacity(selectedTab == .library ? 1 : 0)
+                .allowsHitTesting(selectedTab == .library)
+
+                // Tab 3: Profile & Settings
+                ProfileSettingsView(user: user, serverURL: serverURL, onLogout: onLogout)
+                    .opacity(selectedTab == .profile ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .profile)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Detektiert vertikale Scroll-Bewegungen für die flüssige Leisten-Minimierung
@@ -190,6 +207,15 @@ public struct MainTabView: View {
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
             if showFullscreenPlayer {
+                Color.black.opacity(0.40)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showFullscreenPlayer = false
+                        }
+                    }
+
                 FullscreenPlayerView(serverURL: serverURL) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         showFullscreenPlayer = false
@@ -254,19 +280,34 @@ public struct MainTabView: View {
                     ZStack {
                         Circle()
                             .fill(.ultraThinMaterial)
-                            .overlay(Color.black.opacity(0.20))
+                            .overlay(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.14), location: 0.0),
+                                        .init(color: Color.white.opacity(0.04), location: 0.45),
+                                        .init(color: Color.black.opacity(0.06), location: 1.0)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
                             .overlay(
                                 Circle()
                                     .stroke(
                                         LinearGradient(
-                                            colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.65), location: 0.0),
+                                                .init(color: Color.white.opacity(0.24), location: 0.35),
+                                                .init(color: Color.white.opacity(0.08), location: 1.0)
+                                            ],
                                             startPoint: .top,
                                             endPoint: .bottom
                                         ),
-                                        lineWidth: 0.5
+                                        lineWidth: 0.85
                                     )
                             )
-                            .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+                            .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                            .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
 
                         Image(systemName: activeLiquidTab.iconName(isSelected: true))
                             .font(.system(size: 20, weight: .bold))
@@ -358,10 +399,20 @@ public struct MainTabView: View {
         }
     }
 
-    // Direct tab switching adhering to AST contract T1_F03_2
+    // Direct tab switching adhering to AST contract T1_F03_2 & T4_W02
     private func updateSelectedTab(_ tab: MainTabItem) {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
             selectedTab = tab
+            switch tab {
+            case .home:
+                activeLiquidTab = .home
+            case .search:
+                activeLiquidTab = .search
+            case .library:
+                activeLiquidTab = .library
+            case .profile:
+                break
+            }
         }
     }
 
@@ -411,22 +462,37 @@ private struct InteractiveTabCapsule: View {
             let activeIndex = tabs.firstIndex(of: activeTab)
 
             ZStack(alignment: .leading) {
-                // Layer 1-3: Base Glass Material, Obsidian Tint & Specular Rim Light
+                // Layer 1-3: Base Glass Material, Specular Frost Sheen & Precision Rim Lighting
                 Capsule()
                     .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.18))
+                    .overlay(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.14), location: 0.0),
+                                .init(color: Color.white.opacity(0.04), location: 0.45),
+                                .init(color: Color.black.opacity(0.06), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .overlay(
                         Capsule()
                             .stroke(
                                 LinearGradient(
-                                    colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.65), location: 0.0),
+                                        .init(color: Color.white.opacity(0.24), location: 0.35),
+                                        .init(color: Color.white.opacity(0.08), location: 1.0)
+                                    ],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 ),
-                                lineWidth: 0.5
+                                lineWidth: 0.85
                             )
                     )
-                    .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+                    .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                    .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
 
                 // Layer 4: Interactive Fluid Glass Selection Oval
                 let isCapsuleActive = (activeIndex != nil) || (dragX != nil)
@@ -442,21 +508,21 @@ private struct InteractiveTabCapsule: View {
                     }()
 
                     Capsule()
-                        .fill(Color.white.opacity(0.18))
+                        .fill(Color.white.opacity(0.20))
                         .overlay(
                             Capsule()
                                 .stroke(
                                     LinearGradient(
-                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
+                                        colors: [Color.white.opacity(0.60), Color.white.opacity(0.25)],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     ),
-                                    lineWidth: 0.5
+                                    lineWidth: 0.75
                                 )
                         )
                         .frame(width: tabWidth - 6, height: 52)
                         .position(x: currentCenterX, y: geo.size.height / 2)
-                        .shadow(color: Color.black.opacity(0.25), radius: 4, y: 1)
+                        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
                         .animation(dragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : nil, value: currentCenterX)
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
@@ -534,37 +600,52 @@ private struct SearchApartCircle: View {
                 // Base 62pt Glass Circle
                 Circle()
                     .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.18))
+                    .overlay(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.14), location: 0.0),
+                                .init(color: Color.white.opacity(0.04), location: 0.45),
+                                .init(color: Color.black.opacity(0.06), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .overlay(
                         Circle()
                             .stroke(
                                 LinearGradient(
-                                    colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.65), location: 0.0),
+                                        .init(color: Color.white.opacity(0.24), location: 0.35),
+                                        .init(color: Color.white.opacity(0.08), location: 1.0)
+                                    ],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 ),
-                                lineWidth: 0.5
+                                lineWidth: 0.85
                             )
                     )
-                    .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+                    .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                    .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
 
                 // Active Glass Ring Highlight
                 if isSelected {
                     Circle()
-                        .fill(Color.white.opacity(0.18))
+                        .fill(Color.white.opacity(0.20))
                         .overlay(
                             Circle()
                                 .stroke(
                                     LinearGradient(
-                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.12)],
+                                        colors: [Color.white.opacity(0.60), Color.white.opacity(0.25)],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     ),
-                                    lineWidth: 0.5
+                                    lineWidth: 0.75
                                 )
                         )
                         .frame(width: 48, height: 48)
-                        .shadow(color: Color.black.opacity(0.25), radius: 4, y: 1)
+                        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
 

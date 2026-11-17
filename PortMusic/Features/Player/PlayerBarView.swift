@@ -83,19 +83,34 @@ public struct PlayerBarView: View {
                     .background(
                         Capsule()
                             .fill(.ultraThinMaterial)
-                            .overlay(Color.black.opacity(0.20))
+                            .overlay(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.14), location: 0.0),
+                                        .init(color: Color.white.opacity(0.04), location: 0.45),
+                                        .init(color: Color.black.opacity(0.06), location: 1.0)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
                             .overlay(
                                 Capsule()
                                     .stroke(
                                         LinearGradient(
-                                            colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.65), location: 0.0),
+                                                .init(color: Color.white.opacity(0.24), location: 0.35),
+                                                .init(color: Color.white.opacity(0.08), location: 1.0)
+                                            ],
                                             startPoint: .top,
                                             endPoint: .bottom
                                         ),
-                                        lineWidth: 0.5
+                                        lineWidth: 0.85
                                     )
                             )
-                            .shadow(color: Color.black.opacity(0.42), radius: 14, y: 6)
+                            .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                            .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -217,20 +232,35 @@ public struct PlayerBarView: View {
                             .fill(.ultraThinMaterial)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 22)
-                                    .fill(Color.black.opacity(0.20))
+                                    .fill(
+                                        LinearGradient(
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.14), location: 0.0),
+                                                .init(color: Color.white.opacity(0.04), location: 0.45),
+                                                .init(color: Color.black.opacity(0.06), location: 1.0)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 22)
                                     .stroke(
                                         LinearGradient(
-                                            colors: [Color.white.opacity(0.32), Color.white.opacity(0.08)],
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.65), location: 0.0),
+                                                .init(color: Color.white.opacity(0.24), location: 0.35),
+                                                .init(color: Color.white.opacity(0.08), location: 1.0)
+                                            ],
                                             startPoint: .top,
                                             endPoint: .bottom
                                         ),
-                                        lineWidth: 0.5
+                                        lineWidth: 0.85
                                     )
                             )
-                            .shadow(color: Color.black.opacity(0.40), radius: 10, y: 4)
+                            .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                            .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
                     )
                     // Wischgeste horizontal zum Titelwechsel
                     .simultaneousGesture(

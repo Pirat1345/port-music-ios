@@ -80,9 +80,31 @@ public struct FullscreenPlayerView: View {
                 .frame(width: fullWidth)
             }
             .frame(width: fullWidth, height: fullHeight)
-            .clipShape(RoundedRectangle(cornerRadius: dragOffset > 0 ? 44 : (safeTop > 20 ? 42 : 0), style: .continuous))
-            .shadow(color: Color.black.opacity(dragOffset > 0 ? 0.50 : 0.0), radius: 30, y: 15)
+            .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
+            .scaleEffect(max(0.88, 1.0 - (dragOffset / 1400.0)), anchor: .top)
+            .shadow(color: Color.black.opacity(dragOffset > 0 ? 0.60 : 0.35), radius: dragOffset > 0 ? 36 : 24, y: dragOffset > 0 ? 18 : 8)
             .offset(y: max(0, dragOffset))
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10)
+                    .onChanged { val in
+                        if val.translation.height > 0 && abs(val.translation.height) > abs(val.translation.width) {
+                            dragOffset = val.translation.height
+                        }
+                    }
+                    .onEnded { val in
+                        let dy = val.translation.height
+                        let predicted = val.predictedEndTranslation.height
+                        if dy > 60 || dy > 120 || predicted > 90 {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            onClose()
+                        } else {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                dragOffset = 0
+                            }
+                        }
+                    }
+            )
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
             }
@@ -311,43 +333,36 @@ public struct FullscreenPlayerView: View {
             .transition(.opacity.combined(with: .scale(scale: 0.98)))
         } else {
             // Klassischer Vollbild-Player (Big Picture Modus mit großem Cover und Melt Backdrop)
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    // Großes Albumcover mit Weichzeichnungs-Melt-Effekt im Poster-Format
-                    artworkSection(maxSize: min(geo.size.width, 440))
-                        .padding(.top, 2)
+            // Direkt interaktives Layout ohne ScrollView-Widerstand für müheloses Schließen
+            VStack(spacing: min(16, geo.size.height * 0.022)) {
+                Spacer(minLength: 2)
 
-                    // Titel, Interpret & runde Aktionsbuttons (Favorit & Optionen)
-                    trackInfoSection
-                        .frame(width: contentWidth)
+                // Großes Albumcover mit Weichzeichnungs-Melt-Effekt im Poster-Format
+                artworkSection(maxSize: min(contentWidth, geo.size.height * 0.38))
 
-                    // Scrubber mit Qualitäts-Chip ("High") und negativer Restzeit
-                    scrubberContent(fixedWidth: contentWidth)
-                        .frame(width: contentWidth)
+                // Titel, Interpret & runde Aktionsbuttons (Favorit & Optionen)
+                trackInfoSection
+                    .frame(width: contentWidth)
 
-                    // Große Transport-Bedienelemente (Vorheriger, solider weißer Play/Pause-Button, Nächster)
-                    playbackControlsSection
-                        .frame(width: contentWidth)
+                // Scrubber mit Qualitäts-Chip ("High") und negativer Restzeit
+                scrubberContent(fixedWidth: contentWidth)
+                    .frame(width: contentWidth)
 
-                    // Lautstärke-Schieberegler
-                    volumeSliderSection
-                        .frame(width: contentWidth)
-                        .padding(.top, 2)
+                // Große Transport-Bedienelemente (Vorheriger, solider weißer Play/Pause-Button, Nächster)
+                playbackControlsSection
+                    .frame(width: contentWidth)
 
-                    // Untere Aktionszeile (Lyrics, AirPlay, Shuffle, Repeat, Queue)
-                    bottomActionRow
-                        .frame(width: contentWidth)
+                // Lautstärke-Schieberegler
+                volumeSliderSection
+                    .frame(width: contentWidth)
 
-                    // Synchronisierter Songtext auf dem Handy direkt darunter zum nahtlosen Runterscrollen
-                    phoneLyricsSection
-                        .frame(width: contentWidth)
-                        .padding(.top, 8)
+                // Untere Aktionszeile (Lyrics, AirPlay, Shuffle, Repeat, Queue)
+                bottomActionRow
+                    .frame(width: contentWidth)
 
-                    Spacer(minLength: 36)
-                }
-                .frame(width: geo.size.width, alignment: .center)
+                Spacer(minLength: max(geo.safeAreaInsets.bottom, 16))
             }
-            .frame(width: geo.size.width)
+            .frame(width: geo.size.width, alignment: .center)
         }
     }
 
