@@ -96,22 +96,21 @@ public struct FullscreenPlayerView: View {
             }
             .frame(width: fullWidth, height: fullHeight)
             .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
-            .scaleEffect(max(0.88, 1.0 - (dragOffset / 1400.0)), anchor: .top)
-            .shadow(color: Color.black.opacity(dragOffset > 0 ? 0.60 : 0.35), radius: dragOffset > 0 ? 36 : 24, y: dragOffset > 0 ? 18 : 8)
-            .offset(y: max(0, dragOffset))
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10)
+            .gesture(
+                DragGesture(minimumDistance: 2)
                     .onChanged { val in
                         guard !isDismissing else { return }
-                        if val.translation.height > 0 && abs(val.translation.height) > abs(val.translation.width) {
+                        if val.translation.height > 0 {
                             dragOffset = val.translation.height
+                        } else {
+                            dragOffset = val.translation.height * 0.15
                         }
                     }
                     .onEnded { val in
                         guard !isDismissing else { return }
                         let dy = val.translation.height
-                        let predicted = val.predictedEndTranslation.height
-                        if dy > 120 || dy > 60 || predicted > 90 {
+                        let velocityY = val.predictedEndTranslation.height - val.translation.height
+                        if dy > 120 || dy > 60 || velocityY > 90 {
                             triggerDismiss(fullHeight: fullHeight)
                         } else {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -120,6 +119,9 @@ public struct FullscreenPlayerView: View {
                         }
                     }
             )
+            .scaleEffect(max(0.88, 1.0 - (max(0, dragOffset) / 1400.0)), anchor: .top)
+            .shadow(color: Color.black.opacity(dragOffset > 0 ? 0.60 : 0.35), radius: dragOffset > 0 ? 36 : 24, y: dragOffset > 0 ? 18 : 8)
+            .offset(y: max(0, dragOffset))
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
             }
@@ -209,33 +211,18 @@ public struct FullscreenPlayerView: View {
             Color.clear
                 .frame(height: topDistance)
 
-            // Zentrierter Drag-Griff (Pill Handle)
-            pullDownHandle
-                .padding(.top, 6)
-                .padding(.bottom, 12)
+            // Zentrierter Drag-Griff (Pill Handle) - Antippen schließt direkt, Ziehen wird vom Container gesteuert
+            Button(action: {
+                triggerDismiss(fullHeight: fullHeight)
+            }) {
+                pullDownHandle
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 1)
-                .onChanged { val in
-                    guard !isDismissing else { return }
-                    dragOffset = max(0, val.translation.height)
-                }
-                .onEnded { val in
-                    guard !isDismissing else { return }
-                    if val.translation.height < 6 {
-                        // Kurzes Tippen schließt die Großansicht direkt
-                        triggerDismiss(fullHeight: fullHeight)
-                    } else if val.translation.height > 120 || val.translation.height > 60 || val.predictedEndTranslation.height > 90 {
-                        triggerDismiss(fullHeight: fullHeight)
-                    } else {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                            dragOffset = 0
-                        }
-                    }
-                }
-        )
     }
 
     // MARK: - Drag Handle

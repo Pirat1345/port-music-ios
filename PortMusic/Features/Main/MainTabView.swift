@@ -438,23 +438,23 @@ private struct LiquidGlassLensPill: View {
 
     var body: some View {
         ZStack {
-            // 1. Echter nativer Blur für den Linsenhintergrund
-            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.22)
-                .clipShape(Capsule())
-
-            // 2. Weicher SwiftUI Material-Frosting Glanz
+            // 1. Echter nativer Blur für die Linse
             Capsule()
-                .fill(.ultraThinMaterial.opacity(0.60))
+                .fill(.ultraThinMaterial)
 
-            // 3. Diffuser Specular Luminance Gradient
+            // 2. Glänzender, milchiger Frost-Glaskörper (Apple Liquid Glass Platter)
+            Capsule()
+                .fill(Color.white.opacity(0.28))
+
+            // 3. Diffuser Specular Luminance Gradient (Lichtreflexion der Glasoberfläche)
             Capsule()
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.28), location: 0.0),
-                            .init(color: Color.white.opacity(0.12), location: 0.45),
-                            .init(color: Color.white.opacity(0.04), location: 0.85),
-                            .init(color: Color.black.opacity(0.08), location: 1.0)
+                            .init(color: Color.white.opacity(0.42), location: 0.0),
+                            .init(color: Color.white.opacity(0.20), location: 0.40),
+                            .init(color: Color.white.opacity(0.08), location: 0.80),
+                            .init(color: Color.white.opacity(0.22), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -462,74 +462,74 @@ private struct LiquidGlassLensPill: View {
                 )
 
             // 4. Optische Kantenbrechung & Caustic-Verzerrung an den abgerundeten Kappen
-            // Erzeugt die charakteristische Wölbung und Lichtverzerrung an den Rundungen
+            // Erzeugt die charakteristische Linsenwölbung und Lichtverzerrung an den Rundungen (Fresnel Lensing)
             HStack(spacing: 0) {
-                // Linke Rundung: Linsenkrümmungs-Schatten
+                // Linke Rundung: Linsenwölbung & Caustic-Lichtbrechung
                 RadialGradient(
                     gradient: Gradient(colors: [
-                        Color.black.opacity(0.26),
-                        Color.black.opacity(0.10),
+                        Color.white.opacity(0.50),
+                        Color.white.opacity(0.18),
                         Color.clear
                     ]),
-                    center: .center,
-                    startRadius: 2,
-                    endRadius: min(height, width) * 0.5
+                    center: .leading,
+                    startRadius: 0,
+                    endRadius: 24
                 )
-                .frame(width: min(height, width) * 0.5)
+                .frame(width: 26)
 
                 Spacer(minLength: 0)
 
-                // Rechte Rundung: Linsenkrümmungs-Schatten
+                // Rechte Rundung: Linsenwölbung & Caustic-Lichtbrechung
                 RadialGradient(
                     gradient: Gradient(colors: [
-                        Color.black.opacity(0.26),
-                        Color.black.opacity(0.10),
+                        Color.white.opacity(0.50),
+                        Color.white.opacity(0.18),
                         Color.clear
                     ]),
-                    center: .center,
-                    startRadius: 2,
-                    endRadius: min(height, width) * 0.5
+                    center: .trailing,
+                    startRadius: 0,
+                    endRadius: 24
                 )
-                .frame(width: min(height, width) * 0.5)
+                .frame(width: 26)
             }
             .clipShape(Capsule())
-            .blendMode(.multiply)
 
-            // 5. Äußere hochpräzise Lichtkante (Specular Rim)
+            // 5. Äußere hochpräzise Lichtkante (Specular Rim Highlight)
             Capsule()
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.85), location: 0.0),
-                            .init(color: Color.white.opacity(0.40), location: 0.30),
-                            .init(color: Color.white.opacity(0.15), location: 0.70),
-                            .init(color: Color.white.opacity(0.35), location: 1.0)
+                            .init(color: Color.white.opacity(0.95), location: 0.0),
+                            .init(color: Color.white.opacity(0.60), location: 0.25),
+                            .init(color: Color.white.opacity(0.25), location: 0.70),
+                            .init(color: Color.white.opacity(0.65), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 1.0
+                    lineWidth: 1.2
                 )
 
-            // 6. Innere Refraktions-Schattierung für körperliche Glasdicke
+            // 6. Innere Refraktions-Schattierung für körperliche 3D-Glasdicke
             Capsule()
-                .inset(by: 0.75)
+                .inset(by: 1.0)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.black.opacity(0.20), location: 0.0),
-                            .init(color: Color.clear, location: 0.35),
-                            .init(color: Color.black.opacity(0.30), location: 1.0)
+                            .init(color: Color.white.opacity(0.30), location: 0.0),
+                            .init(color: Color.clear, location: 0.40),
+                            .init(color: Color.black.opacity(0.25), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.75
+                    lineWidth: 0.8
                 )
         }
         .frame(width: width, height: height)
-        .shadow(color: Color.black.opacity(0.28), radius: 8, x: 0, y: 3)
-        .shadow(color: Color.white.opacity(0.08), radius: 2, x: 0, y: -1)
+        .shadow(color: Color.black.opacity(0.38), radius: 10, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.20), radius: 3, x: 0, y: 1)
+        .shadow(color: Color.white.opacity(0.20), radius: 2, x: 0, y: -1)
     }
 }
 
