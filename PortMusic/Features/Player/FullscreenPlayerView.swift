@@ -97,7 +97,7 @@ public struct FullscreenPlayerView: View {
             .frame(width: fullWidth, height: fullHeight)
             .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
             .simultaneousGesture(
-                DragGesture(minimumDistance: 4)
+                DragGesture(minimumDistance: 4, coordinateSpace: .global)
                     .onChanged { val in
                         guard !isDismissing else { return }
                         if val.translation.height > 0 {

@@ -431,108 +431,73 @@ public struct MainTabView: View {
     }
 }
 
-// MARK: - Refractive Liquid Glass Lens Pill (Auswahl-Linse mit optischer Kantenbrechung)
+// MARK: - Refractive Liquid Glass Lens Pill (Auswahl-Linse mit nativer Lichtbrechung)
 private struct LiquidGlassLensPill: View {
     let width: CGFloat
     let height: CGFloat
 
     var body: some View {
         ZStack {
-            // 1. Echter nativer Blur & Glass Effect für die Linse
-            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.22, isCapsule: true)
+            // 1. Echter nativer UIGlassEffect / Blur für die Kapsel-Linse (Bricht das Licht des Hintergrunds)
+            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
                 .clipShape(Capsule())
 
+            // 2. SwiftUI UltraThinMaterial für dynamisches OS-Backdrop-Sampling
             Capsule()
                 .fill(.ultraThinMaterial)
+                .opacity(0.85)
 
-            // 2. Glänzender, milchiger Frost-Glaskörper (Apple Liquid Glass Platter)
-            Capsule()
-                .fill(Color.white.opacity(0.24))
-
-            // 3. Diffuser Specular Luminance Gradient (Lichtreflexion der Glasoberfläche)
+            // 3. Diffuser Glanz-Verlauf (Lichtreflexion der Glasoberfläche)
             Capsule()
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.45), location: 0.0),
-                            .init(color: Color.white.opacity(0.20), location: 0.35),
-                            .init(color: Color.white.opacity(0.08), location: 0.75),
-                            .init(color: Color.white.opacity(0.25), location: 1.0)
+                            .init(color: Color.white.opacity(0.28), location: 0.0),
+                            .init(color: Color.white.opacity(0.10), location: 0.35),
+                            .init(color: Color.white.opacity(0.02), location: 0.70),
+                            .init(color: Color.white.opacity(0.14), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
 
-            // 4. Optische Kantenbrechung & Caustic-Verzerrung an den abgerundeten Kappen
-            // Erzeugt die charakteristische Linsenwölbung und Lichtverzerrung an den Rundungen (Fresnel Lensing)
-            HStack(spacing: 0) {
-                // Linke Rundung: Linsenwölbung & Caustic-Lichtbrechung
-                RadialGradient(
-                    gradient: Gradient(colors: [
-                        Color.white.opacity(0.60),
-                        Color.white.opacity(0.22),
-                        Color.clear
-                    ]),
-                    center: .leading,
-                    startRadius: 0,
-                    endRadius: 26
-                )
-                .frame(width: 28)
-
-                Spacer(minLength: 0)
-
-                // Rechte Rundung: Linsenwölbung & Caustic-Lichtbrechung
-                RadialGradient(
-                    gradient: Gradient(colors: [
-                        Color.white.opacity(0.60),
-                        Color.white.opacity(0.22),
-                        Color.clear
-                    ]),
-                    center: .trailing,
-                    startRadius: 0,
-                    endRadius: 26
-                )
-                .frame(width: 28)
-            }
-            .clipShape(Capsule())
-
-            // 5. Äußere hochpräzise Lichtkante (Specular Rim Highlight)
+            // 4. Äußere hochpräzise Specular-Lichtkante (Facettenschliff)
             Capsule()
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.95), location: 0.0),
-                            .init(color: Color.white.opacity(0.65), location: 0.25),
-                            .init(color: Color.white.opacity(0.28), location: 0.70),
-                            .init(color: Color.white.opacity(0.70), location: 1.0)
+                            .init(color: Color.white.opacity(0.85), location: 0.0),
+                            .init(color: Color.white.opacity(0.45), location: 0.25),
+                            .init(color: Color.white.opacity(0.15), location: 0.70),
+                            .init(color: Color.white.opacity(0.45), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 1.2
+                    lineWidth: 1.0
                 )
 
-            // 6. Innere Refraktions-Schattierung für körperliche 3D-Glasdicke
+            // 5. Innere 3D-Glasdicke (Subtile Kantenfase)
             Capsule()
                 .inset(by: 1.0)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.40), location: 0.0),
+                            .init(color: Color.white.opacity(0.25), location: 0.0),
                             .init(color: Color.clear, location: 0.40),
-                            .init(color: Color.black.opacity(0.25), location: 1.0)
+                            .init(color: Color.black.opacity(0.20), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.8
+                    lineWidth: 0.75
                 )
         }
         .frame(width: width, height: height)
         .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
         .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
-        .shadow(color: Color.white.opacity(0.25), radius: 2, x: 0, y: -1)
+        .shadow(color: Color.white.opacity(0.15), radius: 1, x: 0, y: -1)
     }
 }
 
