@@ -19,12 +19,15 @@ using namespace metal;
     float2 m2 = (position - center) / halfSize;
     float x2 = m2.x * m2.x;
     float y2 = m2.y * m2.y;
-    // Exponent 6 superellipse squircle distance function
+    // Exponent 6 superellipse squircle distance function: x^6 + y^6
     float roundedBox = (x2 * x2 * x2) + (y2 * y2 * y2);
 
     if (roundedBox < 1.0f) {
         // Nichtlineare optische Brechung zum Linsenzentrum (Kantenkruemmung)
-        float factor = 1.0f - roundedBox * 0.48f;
+        // Am Rand (0.75 bis 1.0) zieht die Verzerrung exponentiell an,
+        // waehrend das Linsenzentrum (0 bis 0.6) klar und verzerrungsfrei bleibt
+        float edgeDamping = smoothstep(1.0f, 0.70f, roundedBox);
+        float factor = 1.0f - (roundedBox * 0.45f * edgeDamping);
         return center + (position - center) * factor;
     }
     return position;

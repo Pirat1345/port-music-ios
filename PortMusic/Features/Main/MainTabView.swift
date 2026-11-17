@@ -521,6 +521,24 @@ private struct LiquidGlassLensPill: View {
     }
 }
 
+// MARK: - Metal Stitchable Squircle Distortion Modifier
+extension View {
+    @ViewBuilder
+    fileprivate func liquidSquircleDistortion(center: CGPoint, size: CGSize, isEnabled: Bool = true) -> some View {
+        if #available(iOS 17.0, *), isEnabled {
+            self.distortionEffect(
+                ShaderLibrary.default.liquidGlassSquircleDistort(
+                    .float2(Float(center.x), Float(center.y)),
+                    .float2(Float(size.width), Float(size.height))
+                ),
+                maxSampleOffset: CGSize(width: 30, height: 30)
+            )
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - Interactive Liquid Glass Capsule with Fluid Hover Oval
 private struct InteractiveTabCapsule: View {
     @Binding var activeTab: LiquidTabID
@@ -530,6 +548,7 @@ private struct InteractiveTabCapsule: View {
 
     // Live touch tracking with @GestureState - automatically resets to nil on end or cancellation!
     @GestureState private var liveDragX: CGFloat? = nil
+    @GestureState private var liveVelocityX: CGFloat = 0.0
     @State private var lastHapticIndex: Int? = nil
     private let inactiveTabOpacity: Double = 0.45
 
@@ -548,9 +567,26 @@ private struct InteractiveTabCapsule: View {
             let tabWidth = totalWidth / tabCount
             let activeIndex = tabs.firstIndex(of: activeTab)
 
+            // Linsenzentrum mit flüssigem Velocity-Stretch
+            let currentCenterX: CGFloat = {
+                if let dragX = liveDragX {
+                    return max(tabWidth * 0.5, min(totalWidth - tabWidth * 0.5, dragX))
+                } else if let idx = activeIndex {
+                    return CGFloat(idx) * tabWidth + tabWidth * 0.5
+                } else {
+                    return tabWidth * 0.5
+                }
+            }()
+
+            // Dynamischer fluessiger Stretch der Glaslinse bei Drag (visuelle Traegheit wie im Apple Segmented Control Video)
+            let dynamicStretch = min(18.0, max(-18.0, liveVelocityX * 0.08))
+            let pillWidth = (tabWidth - 6) + abs(dynamicStretch)
+            let pillCenterX = currentCenterX + (dynamicStretch * 0.35)
+
             ZStack(alignment: .leading) {
-                // Layer 1: Native Apple Liquid Glass View mit echter Frost-Luminanz
+                // Layer 1: Native Apple Liquid Glass View mit echter Frost-Luminanz & optischer Brechung
                 AppleLiquidGlassView(style: .systemUltraThinMaterialDark, tintAlpha: 0.22, isCapsule: true)
+                    .liquidSquircleDistortion(center: CGPoint(x: pillCenterX, y: geo.size.height / 2), size: CGSize(width: pillWidth, height: 52))
 
                 // Layer 2: Subtiler Specular Frost Sheen
                 Capsule()
@@ -585,22 +621,13 @@ private struct InteractiveTabCapsule: View {
                     .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 7)
                     .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
 
-                // Layer 5: Refractive Liquid Glass Lens (Hover & Drag Tracking)
-                let currentCenterX: CGFloat = {
-                    if let dragX = liveDragX {
-                        return max(tabWidth * 0.5, min(totalWidth - tabWidth * 0.5, dragX))
-                    } else if let idx = activeIndex {
-                        return CGFloat(idx) * tabWidth + tabWidth * 0.5
-                    } else {
-                        return tabWidth * 0.5
-                    }
-                }()
+                // Layer 5: Refractive Liquid Glass Lens mit dynamischer Dehnung (Fluid Morphing)
+                LiquidGlassLensPill(width: pillWidth, height: 52)
+                    .position(x: pillCenterX, y: geo.size.height / 2)
+                    .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: pillCenterX)
+                    .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.70), value: pillWidth)
 
-                LiquidGlassLensPill(width: tabWidth - 6, height: 52)
-                    .position(x: currentCenterX, y: geo.size.height / 2)
-                    .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: currentCenterX)
-
-                // Layer 6: Tab Items Stack mit nichtlinearer Exponent-6-Linsenvergroesserung (Shader-Formel)
+                // Layer 6: Tab Items Stack mit optischer Linsenverzerrung (Metal Shader) & Linsenvergroesserung
                 HStack(spacing: 0) {
                     ForEach(0..<tabs.count, id: \.self) { idx in
                         let tab = tabs[idx]
@@ -636,6 +663,7 @@ private struct InteractiveTabCapsule: View {
                         .contentShape(Rectangle())
                     }
                 }
+                .liquidSquircleDistortion(center: CGPoint(x: pillCenterX, y: geo.size.height / 2), size: CGSize(width: pillWidth, height: 52))
             }
             // Direct hover & drag tracking with 0ms touch latency
             .gesture(
@@ -650,6 +678,9 @@ private struct InteractiveTabCapsule: View {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.impactOccurred()
                         }
+                    }
+                    .updating($liveVelocityX) { value, state, _ in
+                        state = value.predictedEndLocation.x - value.location.x
                     }
                     .onEnded { value in
                         lastHapticIndex = nil
