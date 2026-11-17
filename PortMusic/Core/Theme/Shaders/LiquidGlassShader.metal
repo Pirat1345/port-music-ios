@@ -4,30 +4,37 @@
 #endif
 using namespace metal;
 
-// MARK: - Liquid Glass Exponent-6 Squircle Lens Distortion Shader
-// Exakte Brechung nach Snellius am gekruemmten Linsenrand (Apple HIG Liquid Glass Lens)
+// MARK: - Liquid Glass Capsule Lens Distortion Shader
+// Exakte Kapsel-SDF (Signed Distance Field) mit kontinuierlicher Meniskus-Lichtbrechung (Apple HIG)
 #if __has_include(<SwiftUI/SwiftUI.h>)
 [[stitchable]] float2 liquidGlassSquircleDistort(float2 position, float2 center, float2 size) {
     float2 halfSize = size * 0.5f;
-    if (halfSize.x <= 0.5f || halfSize.y <= 0.5f) {
+    float radius = halfSize.y;
+    if (radius <= 0.5f || halfSize.x <= radius) {
         return position;
     }
-    float2 normCoord = (position - center) / halfSize;
-    float x2 = normCoord.x * normCoord.x;
-    float y2 = normCoord.y * normCoord.y;
-    // Exponent 6 superellipse squircle distance: x^6 + y^6
-    float roundedBox = (x2 * x2 * x2) + (y2 * y2 * y2);
 
-    if (roundedBox < 1.0f) {
-        float rBox = clamp(roundedBox, 0.0f, 1.0f);
-        // Weicher Rand-Uebergang am aeussersten Perimeter (0.90 bis 1.0) zur Vermeidung von Kantenrissen
-        float edgeBlend = 1.0f - smoothstep(0.90f, 1.0f, rBox);
-        // Exponentielle Randkruemmung: rBox^2.2 steigt an den Raendern progressiv an und biegt Pixel radial
-        float rimRefract = pow(rBox, 2.2f) * 0.44f;
-        // Im Linsenzentrum (rBox = 0): 0.92f = 1.087x Vergroesserung
-        // An den Linsenraendern (rBox ~ 0.88): 0.92 - 0.44 = 0.48f = starke Meniskus-Lichtbrechung
-        float lensFactor = (0.92f - rimRefract) * edgeBlend + (1.0f - edgeBlend);
-        return center + (position - center) * lensFactor;
+    // Gerades Segment in der Kapselmitte (zwischen linkem und rechtem Halbkreis)
+    float capSegment = halfSize.x - radius;
+    float2 d = abs(position - center);
+    // Euklidischer Abstand zur Kapsel-Mittellinie (Rotationssymmetrie an den Kappen)
+    float2 clampedD = float2(max(0.0f, d.x - capSegment), d.y);
+    float dist = length(clampedD);
+
+    if (dist < radius) {
+        // Normalisierter Abstand [0, 1] von Mittellinie zum Kapselrand
+        float normDist = dist / radius;
+
+        // Stetige, weiche Linsenkruemmung ohne Gradientensprung (verhindert Moire und Riffelung):
+        // Im Linsenzentrum (normDist = 0): sanfte 1.05x Lupenvergroesserung
+        // An den Raendern: Seidenglatter Meniskus-Bogen mit stetiger Ableitung < 1.0
+        float edgeSmooth = smoothstep(0.65f, 1.0f, normDist);
+        float meniscus = sin(normDist * 3.14159265f) * 0.08f;
+        
+        // Kontinuierlicher Uebergang von Zentrum (0.952) sanft zu 1.0 am exakten Rand
+        float factor = mix(0.952f, 1.0f, edgeSmooth) - (meniscus * (1.0f - edgeSmooth));
+
+        return center + (position - center) * factor;
     }
     return position;
 }

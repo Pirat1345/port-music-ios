@@ -449,10 +449,11 @@ extension View {
     }
 }
 
-// MARK: - Refractive Squircle Liquid Glass Lens Pill (Apple HIG Liquid Glass Lens)
+// MARK: - Refractive Capsule Liquid Glass Lens Pill (Apple HIG Liquid Glass Lens)
 private struct LiquidGlassLensPill: View {
     let width: CGFloat
     let height: CGFloat
+    let isInteracting: Bool
 
     var body: some View {
         ZStack {
@@ -466,25 +467,25 @@ private struct LiquidGlassLensPill: View {
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.20), location: 0.0),
-                            .init(color: Color.white.opacity(0.05), location: 0.35),
+                            .init(color: Color.white.opacity(isInteracting ? 0.20 : 0.15), location: 0.0),
+                            .init(color: Color.white.opacity(0.04), location: 0.35),
                             .init(color: Color.clear, location: 0.70),
-                            .init(color: Color.white.opacity(0.04), location: 1.0)
+                            .init(color: Color.white.opacity(0.03), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
 
-            // 3. Laterale Kappen-Kruemmung (Dreidimensionale Woelbung an den abgerundeten Enden der Kapsel)
+            // 3. Laterale Kappen-Woelbung an den Kapsel-Enden (subtile raeumliche Tiefe)
             Capsule()
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.black.opacity(0.12), location: 0.0),
-                            .init(color: Color.clear, location: 0.15),
-                            .init(color: Color.clear, location: 0.85),
-                            .init(color: Color.black.opacity(0.12), location: 1.0)
+                            .init(color: Color.black.opacity(isInteracting ? 0.10 : 0.05), location: 0.0),
+                            .init(color: Color.clear, location: 0.14),
+                            .init(color: Color.clear, location: 0.86),
+                            .init(color: Color.black.opacity(isInteracting ? 0.10 : 0.05), location: 1.0)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
@@ -496,53 +497,40 @@ private struct LiquidGlassLensPill: View {
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.85), location: 0.0),
-                            .init(color: Color.white.opacity(0.40), location: 0.25),
-                            .init(color: Color.white.opacity(0.10), location: 0.70),
-                            .init(color: Color.white.opacity(0.42), location: 1.0)
+                            .init(color: Color.white.opacity(isInteracting ? 0.85 : 0.70), location: 0.0),
+                            .init(color: Color.white.opacity(isInteracting ? 0.38 : 0.28), location: 0.25),
+                            .init(color: Color.white.opacity(0.08), location: 0.70),
+                            .init(color: Color.white.opacity(isInteracting ? 0.40 : 0.25), location: 1.0)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    lineWidth: 0.85
+                    lineWidth: 0.75
                 )
 
-            // 5. Physikalische Meniskus-Fase (Die Rand-Linsenkruemmung zur Lichtbrechung am Kapselrand)
-            Capsule()
-                .inset(by: 0.85)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(0.32), location: 0.0),
-                            .init(color: Color.clear, location: 0.35),
-                            .init(color: Color.black.opacity(0.20), location: 0.75),
-                            .init(color: Color.black.opacity(0.38), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 1.4
-                )
-
-            // 6. Subtile innere Kaustik-Kante (Sanfter Uebergang zum ebenen Linsenzentrum)
-            Capsule()
-                .inset(by: 2.25)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(0.18), location: 0.0),
-                            .init(color: Color.clear, location: 0.45),
-                            .init(color: Color.white.opacity(0.12), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 0.65
-                )
+            // 5. Physikalische Meniskus-Fase waehrend der Interaktion (Weiche Kantenbrechung)
+            if isInteracting {
+                Capsule()
+                    .inset(by: 0.75)
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.24), location: 0.0),
+                                .init(color: Color.clear, location: 0.35),
+                                .init(color: Color.black.opacity(0.16), location: 0.75),
+                                .init(color: Color.black.opacity(0.28), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1.0
+                    )
+                    .transition(.opacity)
+            }
         }
         .frame(width: width, height: height)
-        .shadow(color: Color.black.opacity(0.28), radius: 8, x: 0, y: 4)
-        .shadow(color: Color.black.opacity(0.14), radius: 2, x: 0, y: 1)
+        .shadow(color: Color.black.opacity(isInteracting ? 0.32 : 0.24), radius: isInteracting ? 10 : 7, x: 0, y: isInteracting ? 5 : 3)
+        .shadow(color: Color.black.opacity(0.12), radius: 2, x: 0, y: 1)
     }
 }
 
@@ -573,6 +561,7 @@ private struct InteractiveTabCapsule: View {
             let tabCount = CGFloat(tabs.count)
             let tabWidth = totalWidth / tabCount
             let activeIndex = tabs.firstIndex(of: activeTab)
+            let isInteracting = (liveDragX != nil)
 
             // Linsenzentrum mit fluessigem Velocity-Stretch
             let currentCenterX: CGFloat = {
@@ -586,7 +575,7 @@ private struct InteractiveTabCapsule: View {
             }()
 
             // Dynamischer fluessiger Stretch der Glaslinse bei Drag (visuelle Traegheit wie im Apple Segmented Control Video)
-            let dynamicStretch = min(16.0, max(-16.0, liveVelocityX * 0.07))
+            let dynamicStretch = isInteracting ? min(14.0, max(-14.0, liveVelocityX * 0.06)) : 0.0
             let pillWidth = (tabWidth - 6) + abs(dynamicStretch)
             let pillCenterX = currentCenterX + (dynamicStretch * 0.30)
             let pillHeight = max(48.0, 52.0 - abs(dynamicStretch) * 0.12)
@@ -629,7 +618,7 @@ private struct InteractiveTabCapsule: View {
                     .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
 
                 // Layer 4: Refraktive Liquid Glass Lens mit dynamischer Dehnung (Fluid Morphing)
-                LiquidGlassLensPill(width: pillWidth, height: pillHeight)
+                LiquidGlassLensPill(width: pillWidth, height: pillHeight, isInteracting: isInteracting)
                     .position(x: pillCenterX, y: geo.size.height / 2)
                     .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: pillCenterX)
                     .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.70), value: pillWidth)
@@ -642,16 +631,15 @@ private struct InteractiveTabCapsule: View {
                         let tabCenterX = CGFloat(idx) * tabWidth + tabWidth * 0.5
                         let dist = abs(currentCenterX - tabCenterX)
 
-                        // Nichtlineare Linsenbrechung:
-                        // Im Zentrum (normDist nah bei 0) volle Vergroesserung, am Rand steiler Abfall
+                        // Nichtlineare Linsenbrechung: Nur bei aktiver Interaktion (beim Ziehen)
                         let normDist = min(1.0, dist / (tabWidth * 0.65))
                         let squircleFactor = max(0.0, 1.0 - pow(normDist, 4.0))
-                        let dynamicScaleX = 1.0 + (squircleFactor * 0.10)
-                        let dynamicScaleY = 1.0 + (squircleFactor * 0.08)
+                        let dynamicScaleX = isInteracting ? (1.0 + (squircleFactor * 0.08)) : 1.0
+                        let dynamicScaleY = isInteracting ? (1.0 + (squircleFactor * 0.06)) : 1.0
 
                         // Seitliche Lichtbrechung (optischer Versatz an den gekruemmten Linsenkanten):
                         let deltaX = tabCenterX - currentCenterX
-                        let lateralRefraction = (deltaX / (tabWidth * 0.65)) * squircleFactor * 2.8
+                        let lateralRefraction = isInteracting ? ((deltaX / (tabWidth * 0.65)) * squircleFactor * 1.8) : 0.0
 
                         let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + squircleFactor * 0.45)
 
@@ -679,7 +667,8 @@ private struct InteractiveTabCapsule: View {
                 }
                 .liquidSquircleDistortion(
                     center: CGPoint(x: pillCenterX, y: geo.size.height / 2),
-                    size: CGSize(width: pillWidth, height: pillHeight)
+                    size: CGSize(width: pillWidth, height: pillHeight),
+                    isEnabled: isInteracting
                 )
             }
             // Direct hover & drag tracking with 0ms touch latency
