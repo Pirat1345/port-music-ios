@@ -12,7 +12,7 @@ public struct FullscreenPlayerView: View {
     @State private var showQueueSheet: Bool = false
     @State private var isFavorite: Bool = false
     @State private var showLyrics: Bool = false
-    @State private var sidePanelMode: SidePanelMode = .lyrics
+    @State private var sidePanelMode: SidePanelMode = .none
     @GestureState private var gestureDragOffset: CGFloat = 0.0
     @State private var dragOffset: CGFloat = 0.0
     @State private var isDismissing: Bool = false
@@ -25,6 +25,7 @@ public struct FullscreenPlayerView: View {
     @State private var lyricsSizeScale: CGFloat = 1.0
 
     public enum SidePanelMode: Equatable {
+        case none
         case lyrics
         case queue
     }
@@ -74,9 +75,14 @@ public struct FullscreenPlayerView: View {
     public var body: some View {
         GeometryReader { geo in
             let safeTop = geo.safeAreaInsets.top
-            let isTablet = (UIDevice.current.userInterfaceIdiom == .pad) || (geo.size.width >= 700)
+            let isTablet = (UIDevice.current.userInterfaceIdiom == .pad) && (geo.size.width >= 768)
             let fullWidth = geo.size.width
             let fullHeight = geo.size.height
+
+            // Dynamischer Eckenradius: Im Ruhezustand 0 (vollflächig bis an den Displayrand ohne schwarze Lücken),
+            // beim Herunterziehen (effectiveDragOffset > 0) blendet sich die 44pt-Kartenabrundung ein:
+            let pullProgress = min(1.0, max(0.0, effectiveDragOffset / 120.0))
+            let dynamicCornerRadius: CGFloat = effectiveDragOffset > 0 ? (pullProgress * 44.0) : 0.0
 
             // ── GESAMTER MODAL-CONTAINER (Hintergrund + Inhalt wandern gemeinsam) ──
             // Exakt auf fullWidth x fullHeight begrenzt und geclippt.
@@ -92,18 +98,21 @@ public struct FullscreenPlayerView: View {
                     // Kopfleiste mit Drag-Griff
                     topBarSection(safeTop: safeTop, fullHeight: fullHeight)
 
-                    if isTablet {
-                        // Tablet / iPad Split 2-Spalten-Layout (Exakt wie im Web-App Screenshot)
+                    if isTablet && sidePanelMode != .none {
+                        // Tablet / iPad Split 2-Spalten-Layout (Exakt wie in Apple Music auf dem iPad bei aktivem Side-Panel)
                         tabletSplitLayout(geo: geo)
+                    } else if !isTablet && showLyrics {
+                        // Smartphone Vollbild-Songtext-Modus (Mit Live-Karaoke-Scroll)
+                        phoneLyricsLayout(geo: geo)
                     } else {
-                        // Smartphone Portrait-Layout (Perfekt zentriert, kein Rechts-Versatz, Lyrics zum Runterscrollen)
-                        phoneScrollLayout(geo: geo)
+                        // Zentrierter Vollbild-Player (Big Picture Modus sowohl für Smartphone als auch für iPad)
+                        centeredPlayerLayout(geo: geo, isTablet: isTablet)
                     }
                 }
                 .frame(width: fullWidth)
             }
             .frame(width: fullWidth, height: fullHeight)
-            .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: dynamicCornerRadius, style: .continuous))
             .simultaneousGesture(
                 DragGesture(minimumDistance: 4, coordinateSpace: .global)
                     .updating($gestureDragOffset) { val, state, _ in
@@ -128,7 +137,11 @@ public struct FullscreenPlayerView: View {
                     }
             )
             .scaleEffect(max(0.88, 1.0 - (max(0, effectiveDragOffset) / 1400.0)), anchor: .top)
-            .shadow(color: Color.black.opacity(effectiveDragOffset > 0 ? 0.60 : 0.35), radius: effectiveDragOffset > 0 ? 36 : 24, y: effectiveDragOffset > 0 ? 18 : 8)
+            .shadow(
+                color: Color.black.opacity(effectiveDragOffset > 0 ? (pullProgress * 0.60) : 0.0),
+                radius: effectiveDragOffset > 0 ? (pullProgress * 36) : 0,
+                y: effectiveDragOffset > 0 ? (pullProgress * 18) : 0
+            )
             .offset(y: max(0, effectiveDragOffset))
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
@@ -239,15 +252,15 @@ public struct FullscreenPlayerView: View {
             .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1)
     }
 
-    // MARK: - TABLET / IPAD 2-SPALTEN LAYOUT (Exakt wie im Web-App Screenshot)
+    // MARK: - TABLET / IPAD 2-SPALTEN LAYOUT (Wenn Lyrics oder Warteschlange aktiv)
     private func tabletSplitLayout(geo: GeometryProxy) -> some View {
         HStack(alignment: .center, spacing: min(56, geo.size.width * 0.06)) {
             // LINKE SPALTE: Cover-Artwork & Bedienelemente
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 Spacer(minLength: 6)
 
-                // Großes Albumcover mit Feder-Animation
-                artworkSection(maxSize: min(geo.size.height * 0.44, 460))
+                // Großes Albumcover im 1:1 Apple Music Format
+                artworkSection(maxSize: min(geo.size.height * 0.44, 420))
 
                 // Titel, Interpret & Favorit
                 trackInfoSection
@@ -266,13 +279,13 @@ public struct FullscreenPlayerView: View {
 
                 Spacer(minLength: 12)
             }
-            .frame(width: min(geo.size.width * 0.44, 480))
+            .frame(width: min(geo.size.width * 0.44, 460))
 
-            // RECHTE SPALTE: Synchronisierte Karaoke Lyrics (oder Queue)
+            // RECHTE SPALTE: Synchronisierte Karaoke Lyrics oder Warteschlange
             VStack(alignment: .leading, spacing: 0) {
-                if sidePanelMode == .lyrics || showLyrics {
+                if sidePanelMode == .lyrics {
                     tabletLyricsColumn
-                } else {
+                } else if sidePanelMode == .queue {
                     tabletQueueColumn
                 }
             }
@@ -281,118 +294,121 @@ public struct FullscreenPlayerView: View {
         .padding(.horizontal, min(48, geo.size.width * 0.05))
         .padding(.bottom, 24)
         .frame(width: geo.size.width)
+        .transition(.opacity.combined(with: .scale(scale: 0.98)))
     }
 
-    // MARK: - PHONE PORTRAIT LAYOUT (Großes Cover, 1:1 Layout)
-    @ViewBuilder
-    private func phoneScrollLayout(geo: GeometryProxy) -> some View {
+    // MARK: - PHONE PORTRAIT LYRICS MODUS (Synchronisierter Songtext über den gesamten Bildschirm)
+    private func phoneLyricsLayout(geo: GeometryProxy) -> some View {
         let contentWidth = min(geo.size.width - 44, 420)
-        let artworkSize = min(contentWidth, geo.size.height * 0.44)
 
-        if showLyrics {
-            // Vollbild-Songtext-Modus auf dem Smartphone mit Live-Scroll
-            VStack(spacing: 12) {
-                // Kompakte Kopfzeile mit Mini-Cover & Song-Info
-                HStack(spacing: 12) {
-                    artworkSection(maxSize: 52)
+        return VStack(spacing: 12) {
+            // Kompakte Kopfzeile mit Mini-Cover, Song-Info und Schließen-Button
+            HStack(spacing: 12) {
+                artworkSection(maxSize: 52)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(player.currentTrack?.title ?? "Kein Titel")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                        Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.65))
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    Button(action: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            showLyrics = false
-                        }
-                    }) {
-                        Image(systemName: "quote.bubble.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(Color(hex: "#fc3c44"))
-                            .frame(width: 44, height: 44)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.currentTrack?.title ?? "Kein Titel")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.65))
+                        .lineLimit(1)
                 }
-                .frame(width: contentWidth)
-                .padding(.top, 4)
 
-                // Synchronisierter Karaoke-Songtext mit dynamischem Auto-Scroll
-                tabletLyricsColumn
-                    .frame(width: contentWidth)
+                Spacer()
 
-                // Scrubber & Transport-Leiste unten
-                VStack(spacing: 8) {
-                    scrubberContent(fixedWidth: contentWidth)
-                    playbackControlsSection
-                        .frame(width: contentWidth)
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showLyrics = false
+                    }
+                }) {
+                    Image(systemName: "quote.bubble.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .frame(width: 44, height: 44)
                 }
-                .padding(.bottom, max(geo.safeAreaInsets.bottom, 20))
             }
-            .frame(width: geo.size.width)
-            .transition(.opacity.combined(with: .scale(scale: 0.98)))
-        } else {
-            // Klassischer Vollbild-Player (Big Picture Modus mit großem Cover und Melt Backdrop)
-            // Direkt interaktives Layout ohne ScrollView-Widerstand für müheloses Schließen
-            VStack(spacing: min(16, geo.size.height * 0.022)) {
-                Spacer(minLength: 2)
+            .frame(width: contentWidth)
+            .padding(.top, 4)
 
-                // Großes Albumcover mit Weichzeichnungs-Melt-Effekt im Poster-Format
-                artworkSection(maxSize: min(contentWidth, geo.size.height * 0.38))
+            // Synchronisierter Karaoke-Songtext mit dynamischem Auto-Scroll
+            tabletLyricsColumn
+                .frame(width: contentWidth)
 
-                // Titel, Interpret & runde Aktionsbuttons (Favorit & Optionen)
-                trackInfoSection
-                    .frame(width: contentWidth)
-
-                // Scrubber mit Qualitäts-Chip ("High") und negativer Restzeit
+            // Scrubber, Transport-Leiste & Aktionen unten
+            VStack(spacing: 8) {
                 scrubberContent(fixedWidth: contentWidth)
-                    .frame(width: contentWidth)
-
-                // Große Transport-Bedienelemente (Vorheriger, solider weißer Play/Pause-Button, Nächster)
                 playbackControlsSection
                     .frame(width: contentWidth)
-
-                // Lautstärke-Schieberegler
-                volumeSliderSection
-                    .frame(width: contentWidth)
-
-                // Untere Aktionszeile (Lyrics, AirPlay, Shuffle, Repeat, Queue)
                 bottomActionRow
                     .frame(width: contentWidth)
-
-                Spacer(minLength: max(geo.safeAreaInsets.bottom, 16))
             }
-            .frame(width: geo.size.width, alignment: .center)
+            .padding(.bottom, max(geo.safeAreaInsets.bottom, 20))
         }
+        .frame(width: geo.size.width)
+        .transition(.opacity.combined(with: .scale(scale: 0.98)))
     }
 
-    // MARK: - Album Cover mit Feder-Animation & Weichzeichnungs-Übergang (Melt Backdrop)
+    // MARK: - ZENTRIERTER VOLLBILD PLAYER (Big Picture Modus sowohl für Phone als auch für iPad)
+    private func centeredPlayerLayout(geo: GeometryProxy, isTablet: Bool) -> some View {
+        let contentWidth = min(geo.size.width - (isTablet ? 96 : 44), isTablet ? 500 : 420)
+        let artworkMax = isTablet ? min(contentWidth, geo.size.height * 0.44) : min(contentWidth, geo.size.height * 0.38)
+
+        return VStack(spacing: min(16, geo.size.height * 0.022)) {
+            Spacer(minLength: 2)
+
+            // Großes Albumcover im 1:1 Apple Music Format
+            artworkSection(maxSize: artworkMax)
+
+            // Titel, Interpret & runde Aktionsbuttons (Favorit & Optionen)
+            trackInfoSection
+                .frame(width: contentWidth)
+
+            // Scrubber mit Qualitäts-Chip ("High") und negativer Restzeit
+            scrubberContent(fixedWidth: contentWidth)
+                .frame(width: contentWidth)
+
+            // Große Transport-Bedienelemente (Vorheriger, solider weißer Play/Pause-Button, Nächster)
+            playbackControlsSection
+                .frame(width: contentWidth)
+
+            // Lautstärke-Schieberegler
+            volumeSliderSection
+                .frame(width: contentWidth)
+
+            // Untere Aktionszeile (Lyrics, AirPlay, Shuffle, Repeat, Queue)
+            bottomActionRow
+                .frame(width: contentWidth)
+
+            Spacer(minLength: max(geo.safeAreaInsets.bottom, 16))
+        }
+        .frame(width: geo.size.width, alignment: .center)
+        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+    }
+
+    // MARK: - Album Cover mit Feder-Animation & 1:1 Format (Apple Music Standard)
     private func artworkSection(maxSize: CGFloat) -> some View {
         let isLarge = maxSize > 100
-        let posterHeight = isLarge ? min(maxSize * 1.08, 410) : maxSize
-        return ZStack(alignment: .bottom) {
+        let cornerRadius: CGFloat = isLarge ? 14 : 8
+        return ZStack(alignment: .center) {
             if let artwork = player.nowPlayingArtwork {
                 Image(uiImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: maxSize, maxHeight: posterHeight)
+                    .frame(width: maxSize, height: maxSize)
                     .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             } else {
                 let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: maxSize, maxHeight: posterHeight)
+                        .frame(width: maxSize, height: maxSize)
                         .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 } placeholder: {
                     ZStack {
                         Color.white.opacity(0.08)
@@ -400,36 +416,22 @@ public struct FullscreenPlayerView: View {
                             .font(.system(size: isLarge ? 48 : 20))
                             .foregroundColor(Color.white.opacity(0.35))
                     }
-                    .frame(maxWidth: maxSize, maxHeight: posterHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous))
+                    .frame(width: maxSize, height: maxSize)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 }
             }
-
-            // Weicher Farbübergang (Melt Backdrop Overlay) an der Unterkante des Covers
-            if isLarge {
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.40),
-                        .init(color: Color.black.opacity(0.35), location: 0.72),
-                        .init(color: Color.black.opacity(0.85), location: 1.0)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            }
         }
-        .frame(maxWidth: maxSize, maxHeight: posterHeight)
+        .frame(width: maxSize, height: maxSize)
         .overlay(
-            RoundedRectangle(cornerRadius: isLarge ? 28 : 8, style: .continuous)
-                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
         )
         .shadow(
-            color: Color.black.opacity(player.isPlaying ? 0.65 : 0.35),
-            radius: isLarge ? (player.isPlaying ? 30 : 14) : 4,
-            y: isLarge ? (player.isPlaying ? 15 : 6) : 2
+            color: Color.black.opacity(player.isPlaying ? 0.45 : 0.20),
+            radius: isLarge ? (player.isPlaying ? 24 : 10) : 4,
+            y: isLarge ? (player.isPlaying ? 12 : 5) : 2
         )
-        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.85) : 1.0)
+        .scaleEffect(isLarge ? (player.isPlaying ? 1.0 : 0.88) : 1.0)
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
         .offset(x: isLarge ? artworkDragOffset : 0)
         .simultaneousGesture(
@@ -687,19 +689,25 @@ public struct FullscreenPlayerView: View {
 
     // MARK: - Untere Aktionsleiste (Lyrics, AirPlay, Shuffle, Repeat, Queue)
     public var bottomActionRow: some View {
-        HStack(spacing: 0) {
+        let isLyricsActive = (showLyrics || sidePanelMode == .lyrics)
+        let isQueueActive = (sidePanelMode == .queue)
+
+        return HStack(spacing: 0) {
             // 1. Lyrics Toggle (quote.bubble)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    showLyrics.toggle()
-                    sidePanelMode = (sidePanelMode == .lyrics && !showLyrics) ? .queue : .lyrics
+                    if (UIDevice.current.userInterfaceIdiom == .pad) {
+                        sidePanelMode = (sidePanelMode == .lyrics) ? .none : .lyrics
+                    } else {
+                        showLyrics.toggle()
+                    }
                 }
             }) {
-                Image(systemName: (sidePanelMode == .lyrics || showLyrics) ? "quote.bubble.fill" : "quote.bubble")
+                Image(systemName: isLyricsActive ? "quote.bubble.fill" : "quote.bubble")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor((sidePanelMode == .lyrics || showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
+                    .foregroundColor(isLyricsActive ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
@@ -748,7 +756,7 @@ public struct FullscreenPlayerView: View {
                 generator.impactOccurred()
                 if (UIDevice.current.userInterfaceIdiom == .pad) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        sidePanelMode = (sidePanelMode == .queue) ? .lyrics : .queue
+                        sidePanelMode = (sidePanelMode == .queue) ? .none : .queue
                     }
                 } else {
                     showQueueSheet = true
@@ -756,7 +764,7 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: "list.bullet")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor((sidePanelMode == .queue && !showLyrics) ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
+                    .foregroundColor(isQueueActive ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
