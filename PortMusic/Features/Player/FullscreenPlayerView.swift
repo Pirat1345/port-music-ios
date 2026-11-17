@@ -13,6 +13,7 @@ public struct FullscreenPlayerView: View {
     @State private var isFavorite: Bool = false
     @State private var showLyrics: Bool = false
     @State private var sidePanelMode: SidePanelMode = .lyrics
+    @GestureState private var gestureDragOffset: CGFloat = 0.0
     @State private var dragOffset: CGFloat = 0.0
     @State private var isDismissing: Bool = false
     @State private var volume: Float = 0.7
@@ -31,6 +32,13 @@ public struct FullscreenPlayerView: View {
     public init(serverURL: String, onClose: @escaping () -> Void) {
         self.serverURL = serverURL
         self.onClose = onClose
+    }
+
+    private var effectiveDragOffset: CGFloat {
+        if isDismissing {
+            return dragOffset
+        }
+        return gestureDragOffset
     }
 
     private func triggerDismiss(fullHeight: CGFloat) {
@@ -98,12 +106,12 @@ public struct FullscreenPlayerView: View {
             .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
             .simultaneousGesture(
                 DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                    .onChanged { val in
+                    .updating($gestureDragOffset) { val, state, _ in
                         guard !isDismissing else { return }
                         if val.translation.height > 0 {
-                            dragOffset = val.translation.height
+                            state = val.translation.height
                         } else {
-                            dragOffset = val.translation.height * 0.15
+                            state = val.translation.height * 0.15
                         }
                     }
                     .onEnded { val in
@@ -119,9 +127,9 @@ public struct FullscreenPlayerView: View {
                         }
                     }
             )
-            .scaleEffect(max(0.88, 1.0 - (max(0, dragOffset) / 1400.0)), anchor: .top)
-            .shadow(color: Color.black.opacity(dragOffset > 0 ? 0.60 : 0.35), radius: dragOffset > 0 ? 36 : 24, y: dragOffset > 0 ? 18 : 8)
-            .offset(y: max(0, dragOffset))
+            .scaleEffect(max(0.88, 1.0 - (max(0, effectiveDragOffset) / 1400.0)), anchor: .top)
+            .shadow(color: Color.black.opacity(effectiveDragOffset > 0 ? 0.60 : 0.35), radius: effectiveDragOffset > 0 ? 36 : 24, y: effectiveDragOffset > 0 ? 18 : 8)
+            .offset(y: max(0, effectiveDragOffset))
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
             }
@@ -425,16 +433,16 @@ public struct FullscreenPlayerView: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.72), value: player.isPlaying)
         .offset(x: isLarge ? artworkDragOffset : 0)
         .simultaneousGesture(
-            DragGesture(minimumDistance: 10)
+            DragGesture(minimumDistance: 12)
                 .onChanged { val in
                     guard isLarge, !isDismissing else { return }
-                    if abs(val.translation.width) > abs(val.translation.height) {
+                    if abs(val.translation.width) > abs(val.translation.height) * 1.5 {
                         artworkDragOffset = val.translation.width
                     }
                 }
                 .onEnded { val in
                     guard isLarge, !isDismissing else { return }
-                    if abs(val.translation.width) > abs(val.translation.height) {
+                    if abs(val.translation.width) > abs(val.translation.height) * 1.5 {
                         let dx = val.translation.width
                         let velocityX = val.predictedEndTranslation.width - val.translation.width
                         if dx < -45 || velocityX < -60 {
@@ -446,9 +454,9 @@ public struct FullscreenPlayerView: View {
                             generator.impactOccurred()
                             player.previous(serverURL: serverURL)
                         }
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                            artworkDragOffset = 0
-                        }
+                    }
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                        artworkDragOffset = 0
                     }
                 }
         )

@@ -431,111 +431,99 @@ public struct MainTabView: View {
     }
 }
 
-// MARK: - Refractive Squircle Liquid Glass Lens Pill (Shader-Modell: Exponent 6 & rb2-Kaustik-Ring)
+// MARK: - Refractive Squircle Liquid Glass Lens Pill (Apple HIG Liquid Glass Lens)
 private struct LiquidGlassLensPill: View {
     let width: CGFloat
     let height: CGFloat
 
-    // Berechnet den kontinuierlichen Squircle-Radius (Apple Superellipse p=6 Lame-Kurve)
-    private var squircleRadius: CGFloat {
-        height * 0.44
-    }
-
     var body: some View {
         ZStack {
-            // 1. Echter nativer UIGlassEffect / Hardware-Backdrop-Blur als optische Basis
+            // 1. Echter nativer Hardware-Backdrop-Blur als optische Basis (isCapsule: true)
             AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                .clipShape(RoundedRectangle(cornerRadius: squircleRadius, style: .continuous))
+                .clipShape(Capsule())
 
-            // 2. Diffuse Linsenoberflaeche mit vertikalem Ambient-Gradienten (entspricht 'gradient' im Shader)
-            RoundedRectangle(cornerRadius: squircleRadius, style: .continuous)
+            // 2. Diffuse Linsenoberflaeche mit vertikalem Ambient-Gradienten (Ambient Sheen)
+            Capsule()
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.24), location: 0.0),
-                            .init(color: Color.white.opacity(0.08), location: 0.30),
-                            .init(color: Color.clear, location: 0.65),
-                            .init(color: Color.white.opacity(0.06), location: 1.0)
+                            .init(color: Color.white.opacity(0.18), location: 0.0),
+                            .init(color: Color.white.opacity(0.04), location: 0.35),
+                            .init(color: Color.clear, location: 0.70),
+                            .init(color: Color.white.opacity(0.03), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
 
-            // 3. Exakter Kanten-Leuchtring 'rb2' aus dem Shader (Lichtintensitaet 0.30 am Woelbungsrand)
-            // Konzentriert die Totalreflexion als praezise Facettenkante der Superellipse
-            RoundedRectangle(cornerRadius: squircleRadius, style: .continuous)
+            // 3. Laterale Kappen-Kruemmung (Dreidimensionale Woelbung an den abgerundeten Enden der Kapsel)
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.black.opacity(0.10), location: 0.0),
+                            .init(color: Color.clear, location: 0.14),
+                            .init(color: Color.clear, location: 0.86),
+                            .init(color: Color.black.opacity(0.10), location: 1.0)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+
+            // 4. Feine Lichtkante (0.75pt Fresnel-Haarlinie mit Lichtquelle von links oben)
+            Capsule()
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.85), location: 0.0),
-                            .init(color: Color.white.opacity(0.42), location: 0.25),
-                            .init(color: Color.white.opacity(0.18), location: 0.70),
-                            .init(color: Color.white.opacity(0.48), location: 1.0)
+                            .init(color: Color.white.opacity(0.80), location: 0.0),
+                            .init(color: Color.white.opacity(0.35), location: 0.30),
+                            .init(color: Color.white.opacity(0.08), location: 0.70),
+                            .init(color: Color.white.opacity(0.32), location: 1.0)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    lineWidth: 1.2
+                    lineWidth: 0.75
                 )
 
-            // 4. Optische Rand-Brechungsfase (Die Kruemmung / Kantenabsenkung aus '1.0 - roundedBox * 5000.0')
-            // Ein 1.5pt Inset-Band fuer die nichtlineare Lichtkruemmung und Tiefenabsorption am Rand
-            RoundedRectangle(cornerRadius: max(0, squircleRadius - 1.5), style: .continuous)
-                .inset(by: 1.5)
+            // 5. Physikalische Meniskus-Fase (Die Rand-Linsenkruemmung zur Lichtbrechung am Kapselrand)
+            Capsule()
+                .inset(by: 0.75)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.35), location: 0.0),
-                            .init(color: Color.clear, location: 0.30),
-                            .init(color: Color.black.opacity(0.22), location: 0.75),
-                            .init(color: Color.black.opacity(0.38), location: 1.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
-                )
-
-            // 5. Innere Linsen-Facettenkante (3.0pt Inset - sanfter Uebergang zum ebenen Linsenzentrum)
-            RoundedRectangle(cornerRadius: max(0, squircleRadius - 3.0), style: .continuous)
-                .inset(by: 3.0)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(0.18), location: 0.0),
-                            .init(color: Color.clear, location: 0.50),
-                            .init(color: Color.white.opacity(0.12), location: 1.0)
+                            .init(color: Color.white.opacity(0.26), location: 0.0),
+                            .init(color: Color.clear, location: 0.35),
+                            .init(color: Color.black.opacity(0.18), location: 0.75),
+                            .init(color: Color.black.opacity(0.32), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.75
+                    lineWidth: 1.2
+                )
+
+            // 6. Subtile innere Kaustik-Kante (Sanfter Uebergang zum ebenen Linsenzentrum)
+            Capsule()
+                .inset(by: 2.0)
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.14), location: 0.0),
+                            .init(color: Color.clear, location: 0.45),
+                            .init(color: Color.white.opacity(0.08), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.5
                 )
         }
         .frame(width: width, height: height)
-        // 6. Aeusserer Uebergang ('transition = smoothstep(0.0, 1.0, rb1 + rb2)' aus dem Shader)
-        .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 5)
-        .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
-        .shadow(color: Color.white.opacity(0.12), radius: 1, x: 0, y: -1)
-    }
-}
-
-// MARK: - Metal Stitchable Squircle Distortion Modifier
-extension View {
-    @ViewBuilder
-    fileprivate func liquidSquircleDistortion(center: CGPoint, size: CGSize, isEnabled: Bool = true) -> some View {
-        if #available(iOS 17.0, *), isEnabled {
-            self.distortionEffect(
-                ShaderLibrary.default.liquidGlassSquircleDistort(
-                    .float2(Float(center.x), Float(center.y)),
-                    .float2(Float(size.width), Float(size.height))
-                ),
-                maxSampleOffset: CGSize(width: 30, height: 30)
-            )
-        } else {
-            self
-        }
+        .shadow(color: Color.black.opacity(0.28), radius: 8, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.14), radius: 2, x: 0, y: 1)
     }
 }
 
@@ -567,7 +555,7 @@ private struct InteractiveTabCapsule: View {
             let tabWidth = totalWidth / tabCount
             let activeIndex = tabs.firstIndex(of: activeTab)
 
-            // Linsenzentrum mit flüssigem Velocity-Stretch
+            // Linsenzentrum mit fluessigem Velocity-Stretch
             let currentCenterX: CGFloat = {
                 if let dragX = liveDragX {
                     return max(tabWidth * 0.5, min(totalWidth - tabWidth * 0.5, dragX))
@@ -579,55 +567,55 @@ private struct InteractiveTabCapsule: View {
             }()
 
             // Dynamischer fluessiger Stretch der Glaslinse bei Drag (visuelle Traegheit wie im Apple Segmented Control Video)
-            let dynamicStretch = min(18.0, max(-18.0, liveVelocityX * 0.08))
+            let dynamicStretch = min(16.0, max(-16.0, liveVelocityX * 0.07))
             let pillWidth = (tabWidth - 6) + abs(dynamicStretch)
-            let pillCenterX = currentCenterX + (dynamicStretch * 0.35)
+            let pillCenterX = currentCenterX + (dynamicStretch * 0.30)
+            let pillHeight = max(48.0, 52.0 - abs(dynamicStretch) * 0.12)
 
             ZStack(alignment: .leading) {
-                // Layer 1: Native Apple Liquid Glass View mit echter Frost-Luminanz & optischer Brechung
+                // Layer 1: Native Apple Liquid Glass View mit echter Hardware-Transparenz (Kein Shader, keine Artefakte)
                 AppleLiquidGlassView(style: .systemUltraThinMaterialDark, tintAlpha: 0.22, isCapsule: true)
-                    .liquidSquircleDistortion(center: CGPoint(x: pillCenterX, y: geo.size.height / 2), size: CGSize(width: pillWidth, height: 52))
 
                 // Layer 2: Subtiler Specular Frost Sheen
                 Capsule()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.14), location: 0.0),
-                                .init(color: Color.white.opacity(0.04), location: 0.35),
+                                .init(color: Color.white.opacity(0.12), location: 0.0),
+                                .init(color: Color.white.opacity(0.03), location: 0.40),
                                 .init(color: Color.clear, location: 0.70),
-                                .init(color: Color.black.opacity(0.08), location: 1.0)
+                                .init(color: Color.black.opacity(0.10), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
 
-                // Layer 3: Specular Glass Edge (Lichtkante)
+                // Layer 3: Specular Glass Edge (Haarlinie der schwebenden Kapselleiste)
                 Capsule()
-                    .stroke(
+                    .strokeBorder(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.50), location: 0.0),
-                                .init(color: Color.white.opacity(0.20), location: 0.25),
-                                .init(color: Color.white.opacity(0.08), location: 0.70),
-                                .init(color: Color.white.opacity(0.18), location: 1.0)
+                                .init(color: Color.white.opacity(0.38), location: 0.0),
+                                .init(color: Color.white.opacity(0.14), location: 0.35),
+                                .init(color: Color.white.opacity(0.04), location: 0.75),
+                                .init(color: Color.white.opacity(0.16), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
-                        lineWidth: 0.85
+                        lineWidth: 0.75
                     )
-                    .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 7)
+                    .shadow(color: Color.black.opacity(0.38), radius: 18, x: 0, y: 8)
                     .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
 
-                // Layer 5: Refractive Liquid Glass Lens mit dynamischer Dehnung (Fluid Morphing)
-                LiquidGlassLensPill(width: pillWidth, height: 52)
+                // Layer 4: Refraktive Liquid Glass Lens mit dynamischer Dehnung (Fluid Morphing)
+                LiquidGlassLensPill(width: pillWidth, height: pillHeight)
                     .position(x: pillCenterX, y: geo.size.height / 2)
                     .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: pillCenterX)
                     .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.70), value: pillWidth)
 
-                // Layer 6: Tab Items Stack mit optischer Linsenverzerrung (Metal Shader) & Linsenvergroesserung
+                // Layer 5: Tab Items Stack mit optischer Linsenvergroesserung und Kantenbrechung
                 HStack(spacing: 0) {
                     ForEach(0..<tabs.count, id: \.self) { idx in
                         let tab = tabs[idx]
@@ -635,13 +623,18 @@ private struct InteractiveTabCapsule: View {
                         let tabCenterX = CGFloat(idx) * tabWidth + tabWidth * 0.5
                         let dist = abs(currentCenterX - tabCenterX)
 
-                        // Exakte Shader-Refraktionskurve mit Exponent 6:
-                        // Im Zentrum (dist < 0.6 * tabWidth) flache Vergroesserung, am Rand steiler Abfall
-                        let normDist = min(1.0, dist / (tabWidth * 0.55))
-                        let squircleDistortion = pow(normDist, 6.0)
-                        let lensFactor = max(0.0, 1.0 - squircleDistortion)
-                        let dynamicScale = 1.0 + (lensFactor * 0.08)
-                        let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + lensFactor * 0.35)
+                        // Nichtlineare Linsenbrechung:
+                        // Im Zentrum (normDist nah bei 0) volle Vergroesserung, am Rand steiler Abfall
+                        let normDist = min(1.0, dist / (tabWidth * 0.65))
+                        let squircleFactor = max(0.0, 1.0 - pow(normDist, 4.0))
+                        let dynamicScaleX = 1.0 + (squircleFactor * 0.10)
+                        let dynamicScaleY = 1.0 + (squircleFactor * 0.08)
+
+                        // Seitliche Lichtbrechung (optischer Versatz an den gekruemmten Linsenkanten):
+                        let deltaX = tabCenterX - currentCenterX
+                        let lateralRefraction = (deltaX / (tabWidth * 0.65)) * squircleFactor * 2.2
+
+                        let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + squircleFactor * 0.45)
 
                         VStack(spacing: 2) {
                             Image(systemName: tab.iconName(isSelected: isSelected))
@@ -657,13 +650,14 @@ private struct InteractiveTabCapsule: View {
                                     .lineLimit(1)
                             }
                         }
-                        .scaleEffect(dynamicScale)
-                        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: dynamicScale)
+                        .scaleEffect(x: dynamicScaleX, y: dynamicScaleY)
+                        .offset(x: lateralRefraction)
+                        .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.82), value: dynamicScaleX)
+                        .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.82), value: lateralRefraction)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                     }
                 }
-                .liquidSquircleDistortion(center: CGPoint(x: pillCenterX, y: geo.size.height / 2), size: CGSize(width: pillWidth, height: 52))
             }
             // Direct hover & drag tracking with 0ms touch latency
             .gesture(
