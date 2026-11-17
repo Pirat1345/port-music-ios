@@ -197,28 +197,88 @@ public struct MainTabView: View {
                     }
             )
 
-            // ── Normalmodus: Schwebender MiniPlayer bündig über der nativen Apple Tab-Leiste ──
-            if player.currentTrack != nil && !isMinimized {
-                PlayerBarView(serverURL: serverURL, isInline: false) {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                        showFullscreenPlayer = true
+            // ── Dynamische Steuerelement-Leiste (Organischer, fließender Übergang zwischen Vollmodus & Minimiertem Modus) ──
+            if isMinimized || player.currentTrack != nil {
+                HStack(spacing: 12) {
+                    // 1. Linker 62x62 Kreis: Aktiver Tab (Gleitet beim Scrollen nach unten von links herein)
+                    if isMinimized {
+                        let isSearch = (activeLiquidTab == .search)
+                        let leftTab = isSearch ? previousLiquidTab : activeLiquidTab
+
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+                                if isSearch {
+                                    selectLiquidTab(previousLiquidTab)
+                                }
+                                isMinimized = false
+                            }
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                Circle()
+                                    .strokeBorder(
+                                        LinearGradient(
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.18), location: 0.0),
+                                                .init(color: Color.white.opacity(0.04), location: 1.0)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 0.5
+                                    )
+                                    .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+
+                                Image(systemName: leftTab.iconName(isSelected: !isSearch))
+                                    .font(.system(size: 21, weight: isSearch ? .semibold : .bold))
+                                    .foregroundColor(isSearch ? Color.white.opacity(0.85) : Color(hex: "#fc3c44"))
+                            }
+                            .frame(width: 62, height: 62)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
+                                removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.75))
+                            )
+                        )
+                    }
+
+                    // 2. Mittiger Player (Morpht vertikal, horizontal und in der Höhe nahtlos durch)
+                    if player.currentTrack != nil {
+                        PlayerBarView(serverURL: serverURL, isInline: isMinimized) {
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                                showFullscreenPlayer = true
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else if isMinimized {
+                        Spacer()
+                    }
+
+                    // 3. Rechter 62x62 Kreis: Die Suche (Gleitet beim Scrollen nach unten von rechts herein)
+                    if isMinimized {
+                        SearchApartCircle(
+                            isSelected: activeLiquidTab == .search,
+                            onTap: {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                                selectLiquidTab(.search)
+                            }
+                        )
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
+                                removal: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.75))
+                            )
+                        )
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, miniPlayerBottomPadding)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                        removal: .opacity.combined(with: .scale(scale: 0.96))
-                    )
-                )
-            }
-
-            // ── Minimierter Zustand: Dreiteilige Octave-Minimierungsleiste beim Herunterscrollen ──
-            if isMinimized {
-                octaveMinimizedBar
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, minimizedBarBottomPadding)
+                .padding(.bottom, isMinimized ? minimizedBarBottomPadding : miniPlayerBottomPadding)
             }
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
@@ -303,90 +363,6 @@ public struct MainTabView: View {
         return safeAreaBottom > 0 ? safeAreaBottom - 8 : 12
     }
 
-    // MARK: - Dreiteilige Octave-Minimierungsleiste beim Herunterscrollen
-    private var octaveMinimizedBar: some View {
-        HStack(spacing: 12) {
-            // 1. Linker 62x62 Kreis: Aktiver Tab (Antippen stellt die durchgehende Leiste sofort wieder her)
-            let isSearch = (activeLiquidTab == .search)
-            let leftTab = isSearch ? previousLiquidTab : activeLiquidTab
-
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                    if isSearch {
-                        selectLiquidTab(previousLiquidTab)
-                    }
-                    isMinimized = false
-                }
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(0.18), location: 0.0),
-                                    .init(color: Color.white.opacity(0.04), location: 1.0)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.5
-                        )
-                        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
-
-                    Image(systemName: leftTab.iconName(isSelected: !isSearch))
-                        .font(.system(size: 21, weight: isSearch ? .semibold : .bold))
-                        .foregroundColor(isSearch ? Color.white.opacity(0.85) : Color(hex: "#fc3c44"))
-                }
-                .frame(width: 62, height: 62)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .transition(
-                .asymmetric(
-                    insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.85)),
-                    removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.85))
-                )
-            )
-
-            // 2. Mittig: Kompakte Inline Now-Playing-Kapsel (Exakt zwischen beiden Kreisen eingedockt)
-            if player.currentTrack != nil {
-                PlayerBarView(serverURL: serverURL, isInline: true) {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                        showFullscreenPlayer = true
-                    }
-                }
-                .frame(height: 62)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.95)),
-                        removal: .opacity.combined(with: .scale(scale: 0.95))
-                    )
-                )
-            } else {
-                Spacer()
-            }
-
-            // 3. Rechter 62x62 Kreis: Die Suche als eigenständiger Kreis mit Lupe
-            SearchApartCircle(
-                isSelected: activeLiquidTab == .search,
-                onTap: {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    selectLiquidTab(.search)
-                }
-            )
-            .transition(
-                .asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.85)),
-                    removal: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.85))
-                )
-            )
-        }
-        .frame(height: 62)
-    }
 
     private func selectLiquidTab(_ tab: LiquidTabID) {
         let generator = UIImpactFeedbackGenerator(style: .light)
