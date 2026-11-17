@@ -79,6 +79,7 @@ public struct MainTabView: View {
     // Core stateful selection binding strictly adhering to AST tests (T2_F03_1, T3_C01)
     @State private var selectedTab: MainTabItem = .home
     @State private var activeLiquidTab: LiquidTabID = .home
+    @State private var previousLiquidTab: LiquidTabID = .home
     @State private var previousTab: MainTabItem = .home
 
     // Persistent Navbar Variants & Settings (NavbarSettings.m)
@@ -269,11 +270,17 @@ public struct MainTabView: View {
         HStack(spacing: 12) {
             if isMinimized {
                 // MARK: - Minimierte Leiste (TabBarMinimize.x)
-                // Linker 62x62 Kreis mit dem Icon des aktiven Tabs
+                // Option 1: Wenn auf der Suche, zeigt der linke Kreis den vorherigen Tab (z. B. Startseite/Mediathek)
+                let isSearch = (activeLiquidTab == .search)
+                let leftTab = isSearch ? previousLiquidTab : activeLiquidTab
+
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+                        if isSearch {
+                            selectLiquidTab(previousLiquidTab)
+                        }
                         isMinimized = false
                     }
                 }) {
@@ -312,9 +319,9 @@ public struct MainTabView: View {
                             .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
                             .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
 
-                        Image(systemName: activeLiquidTab.iconName(isSelected: true))
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(Color(hex: "#fc3c44"))
+                        Image(systemName: leftTab.iconName(isSelected: !isSearch))
+                            .font(.system(size: 20, weight: isSearch ? .semibold : .bold))
+                            .foregroundColor(isSearch ? Color.white.opacity(0.85) : Color(hex: "#fc3c44"))
                     }
                     .frame(width: 62, height: 62)
                 }
@@ -378,6 +385,9 @@ public struct MainTabView: View {
         generator.impactOccurred()
 
         withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+            if activeLiquidTab != .search && tab == .search {
+                previousLiquidTab = activeLiquidTab
+            }
             activeLiquidTab = tab
             let targetItem: MainTabItem
             switch tab {
@@ -402,6 +412,9 @@ public struct MainTabView: View {
             case .home:
                 activeLiquidTab = .home
             case .search:
+                if activeLiquidTab != .search {
+                    previousLiquidTab = activeLiquidTab
+                }
                 activeLiquidTab = .search
             case .library:
                 activeLiquidTab = .library
@@ -492,41 +505,21 @@ private struct LiquidGlassLensPill: View {
                     )
                 )
 
-            // 4. Feine Lichtkante (0.75pt Fresnel-Haarlinie mit Lichtquelle von links oben)
+            // 4. Feine Lichtkante (Apple Liquid Glass Fresnel-Haarlinie mit Lichtquelle von links oben)
             Capsule()
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(isInteracting ? 0.85 : 0.70), location: 0.0),
-                            .init(color: Color.white.opacity(isInteracting ? 0.38 : 0.28), location: 0.25),
-                            .init(color: Color.white.opacity(0.08), location: 0.70),
-                            .init(color: Color.white.opacity(isInteracting ? 0.40 : 0.25), location: 1.0)
+                            .init(color: Color.white.opacity(isInteracting ? 0.75 : 0.55), location: 0.0),
+                            .init(color: Color.white.opacity(isInteracting ? 0.35 : 0.22), location: 0.30),
+                            .init(color: Color.clear, location: 0.65),
+                            .init(color: Color.white.opacity(isInteracting ? 0.25 : 0.15), location: 1.0)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
                     lineWidth: 0.75
                 )
-
-            // 5. Physikalische Meniskus-Fase waehrend der Interaktion (Weiche Kantenbrechung)
-            if isInteracting {
-                Capsule()
-                    .inset(by: 0.75)
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.24), location: 0.0),
-                                .init(color: Color.clear, location: 0.35),
-                                .init(color: Color.black.opacity(0.16), location: 0.75),
-                                .init(color: Color.black.opacity(0.28), location: 1.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1.0
-                    )
-                    .transition(.opacity)
-            }
         }
         .frame(width: width, height: height)
         .shadow(color: Color.black.opacity(isInteracting ? 0.32 : 0.24), radius: isInteracting ? 10 : 7, x: 0, y: isInteracting ? 5 : 3)
@@ -631,15 +624,11 @@ private struct InteractiveTabCapsule: View {
                         let tabCenterX = CGFloat(idx) * tabWidth + tabWidth * 0.5
                         let dist = abs(currentCenterX - tabCenterX)
 
-                        // Nichtlineare Linsenbrechung: Nur bei aktiver Interaktion (beim Ziehen)
+                        // Subtile Linsengroesse: Nur bei aktiver Interaktion (beim Ziehen)
                         let normDist = min(1.0, dist / (tabWidth * 0.65))
                         let squircleFactor = max(0.0, 1.0 - pow(normDist, 4.0))
-                        let dynamicScaleX = isInteracting ? (1.0 + (squircleFactor * 0.08)) : 1.0
-                        let dynamicScaleY = isInteracting ? (1.0 + (squircleFactor * 0.06)) : 1.0
-
-                        // Seitliche Lichtbrechung (optischer Versatz an den gekruemmten Linsenkanten):
-                        let deltaX = tabCenterX - currentCenterX
-                        let lateralRefraction = isInteracting ? ((deltaX / (tabWidth * 0.65)) * squircleFactor * 1.8) : 0.0
+                        let dynamicScaleX = isInteracting ? (1.0 + (squircleFactor * 0.05)) : 1.0
+                        let dynamicScaleY = isInteracting ? (1.0 + (squircleFactor * 0.05)) : 1.0
 
                         let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + squircleFactor * 0.45)
 
@@ -658,9 +647,7 @@ private struct InteractiveTabCapsule: View {
                             }
                         }
                         .scaleEffect(x: dynamicScaleX, y: dynamicScaleY)
-                        .offset(x: lateralRefraction)
                         .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.82), value: dynamicScaleX)
-                        .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.82), value: lateralRefraction)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                     }
