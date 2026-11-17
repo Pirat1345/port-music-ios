@@ -84,7 +84,6 @@ public struct MainTabView: View {
     // Persistent Navbar Variants & Settings (NavbarSettings.m)
     @AppStorage("navbar_icons_only") private var iconsOnly: Bool = false
     @AppStorage("navbar_scroll_minimize") private var scrollMinimizeEnabled: Bool = true
-    @AppStorage("navbar_use_apple_dock") private var useAppleDock: Bool = true
     @State private var isMinimized: Bool = false
     @State private var showNavbarSettings: Bool = false
 
@@ -182,11 +181,11 @@ public struct MainTabView: View {
                     }
             )
 
-            // ── Unterer Bereich: MiniPlayer + Custom Liquid Glass TabBar ──
+            // ── Unterer Schwebender Bereich: MiniPlayer + Custom Liquid Glass TabBar ──
             VStack(spacing: 8) {
                 // Wenn minimiert: MiniPlayer sitzt direkt inline in der Leiste zwischen den beiden Kreisen!
-                // Wenn expandiert: Schwebende Minibar über der TabBar
-                if player.currentTrack != nil && (!isMinimized || useAppleDock) {
+                // Wenn expandiert: Schwebende Minibar über der Kapselleiste
+                if player.currentTrack != nil && !isMinimized {
                     PlayerBarView(serverURL: serverURL, isInline: false) {
                         withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
                             showFullscreenPlayer = true
@@ -201,10 +200,10 @@ public struct MainTabView: View {
                     )
                 }
 
-                // Custom Liquid Glass TabBar (Apple Music Dock oder Floating Split Bar)
+                // Custom Liquid Glass Floating Split TabBar
                 glassTabBar
             }
-            .padding(.bottom, useAppleDock ? 0 : 6)
+            .padding(.bottom, 6)
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
             if showFullscreenPlayer {
@@ -255,7 +254,7 @@ public struct MainTabView: View {
             UserPageView(user: session.currentUser ?? user, serverURL: serverURL)
         }
         .sheet(isPresented: $showNavbarSettings) {
-            NavbarSettingsSheet(iconsOnly: $iconsOnly, scrollMinimize: $scrollMinimizeEnabled, useAppleDock: $useAppleDock)
+            NavbarSettingsSheet(iconsOnly: $iconsOnly, scrollMinimize: $scrollMinimizeEnabled)
         }
         .preferredColorScheme(.dark)
         .task {
@@ -265,147 +264,122 @@ public struct MainTabView: View {
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    // MARK: - Native Liquid Glass TabBar (Apple Music Dock oder Floating Split Bar)
-    @ViewBuilder
+    // MARK: - Native Liquid Glass Floating Split TabBar
     private var glassTabBar: some View {
-        if useAppleDock {
-            AppleDockTabBar(
-                activeTab: $activeLiquidTab,
-                iconsOnly: iconsOnly,
-                onTabSelected: { tab in
-                    selectLiquidTab(tab)
+        HStack(spacing: 12) {
+            if isMinimized {
+                // MARK: - Minimierte Leiste (TabBarMinimize.x)
+                // Linker 62x62 Kreis mit dem Icon des aktiven Tabs
+                Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+                        isMinimized = false
+                    }
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                        AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.40)
+                            .clipShape(Circle())
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.14), location: 0.0),
+                                        .init(color: Color.white.opacity(0.04), location: 0.45),
+                                        .init(color: Color.black.opacity(0.06), location: 1.0)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(
+                                        LinearGradient(
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.65), location: 0.0),
+                                                .init(color: Color.white.opacity(0.24), location: 0.35),
+                                                .init(color: Color.white.opacity(0.08), location: 1.0)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 0.85
+                                    )
+                            )
+                            .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                            .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+
+                        Image(systemName: activeLiquidTab.iconName(isSelected: true))
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Color(hex: "#fc3c44"))
+                    }
+                    .frame(width: 62, height: 62)
                 }
-            )
-            .contextMenu {
-                Button(action: { iconsOnly.toggle() }) {
-                    Label(iconsOnly ? "Namen einblenden" : "Nur Icons anzeigen", systemImage: iconsOnly ? "text.bubble" : "circle.circle")
+                .buttonStyle(PlainButtonStyle())
+
+                // Mittig: Kompakte MiniPlayer-Kapsel wenn ein Song laeuft
+                if player.currentTrack != nil {
+                    PlayerBarView(serverURL: serverURL, isInline: true) {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                            showFullscreenPlayer = true
+                        }
+                    }
+                    .transition(.scale(scale: 0.90).combined(with: .opacity))
+                } else {
+                    Spacer()
                 }
-                Button(action: { useAppleDock.toggle() }) {
-                    Label(useAppleDock ? "Zu Schwebender Kapsel wechseln" : "Zu Apple Music Dock wechseln", systemImage: "dock.rectangle")
-                }
-                Button(action: { showNavbarSettings = true }) {
-                    Label("Leisten-Einstellungen...", systemImage: "gearshape")
-                }
-            }
-        } else {
-            HStack(spacing: 12) {
-                if isMinimized {
-                    // MARK: - Minimierte Leiste (TabBarMinimize.x)
-                    // Linker 62x62 Kreis mit dem Icon des aktiven Tabs
-                    Button(action: {
+
+                // Rechter 62x62 Kreis mit der Lupe
+                SearchApartCircle(
+                    isSelected: activeLiquidTab == .search,
+                    onTap: {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
-                            isMinimized = false
-                        }
-                    }) {
-                        ZStack {
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                            AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.40)
-                                .clipShape(Circle())
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        stops: [
-                                            .init(color: Color.white.opacity(0.14), location: 0.0),
-                                            .init(color: Color.white.opacity(0.04), location: 0.45),
-                                            .init(color: Color.black.opacity(0.06), location: 1.0)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                                .overlay(
-                                    Circle()
-                                        .stroke(
-                                            LinearGradient(
-                                                stops: [
-                                                    .init(color: Color.white.opacity(0.65), location: 0.0),
-                                                    .init(color: Color.white.opacity(0.24), location: 0.35),
-                                                    .init(color: Color.white.opacity(0.08), location: 1.0)
-                                                ],
-                                                startPoint: .top,
-                                                endPoint: .bottom
-                                            ),
-                                            lineWidth: 0.85
-                                        )
-                                )
-                                .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
-                                .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
-
-                            Image(systemName: activeLiquidTab.iconName(isSelected: true))
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(Color(hex: "#fc3c44"))
-                        }
-                        .frame(width: 62, height: 62)
+                        selectLiquidTab(.search)
+                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
                     }
-                    .buttonStyle(PlainButtonStyle())
-
-                    // Mittig: Kompakte MiniPlayer-Kapsel wenn ein Song laeuft
-                    if player.currentTrack != nil {
-                        PlayerBarView(serverURL: serverURL, isInline: true) {
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                                showFullscreenPlayer = true
-                            }
-                        }
-                        .transition(.scale(scale: 0.90).combined(with: .opacity))
-                    } else {
-                        Spacer()
+                )
+            } else {
+                // MARK: - Vollstaendige Kapsel-Leiste (62pt Kapsel + 62pt Suchkreis)
+                // 1. Linke Primaere Kapsel: Home, New, Radio, Library
+                InteractiveTabCapsule(
+                    activeTab: $activeLiquidTab,
+                    iconsOnly: iconsOnly,
+                    onTabSelected: { tab in
+                        selectLiquidTab(tab)
                     }
-
-                    // Rechter 62x62 Kreis mit der Lupe
-                    SearchApartCircle(
-                        isSelected: activeLiquidTab == .search,
-                        onTap: {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.impactOccurred()
-                            selectLiquidTab(.search)
-                            NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
-                        }
-                    )
-                } else {
-                    // MARK: - Vollstaendige Kapsel-Leiste
-                    // 1. Linke Primaere Kapsel: Home, New, Radio, Library
-                    InteractiveTabCapsule(
-                        activeTab: $activeLiquidTab,
-                        iconsOnly: iconsOnly,
-                        onTabSelected: { tab in
-                            selectLiquidTab(tab)
-                        }
-                    )
-                    .frame(height: 62)
-                    .contextMenu {
-                        Button(action: { iconsOnly.toggle() }) {
-                            Label(iconsOnly ? "Namen einblenden" : "Nur Icons anzeigen", systemImage: iconsOnly ? "text.bubble" : "circle.circle")
-                        }
-                        Button(action: { useAppleDock.toggle() }) {
-                            Label(useAppleDock ? "Zu Schwebender Kapsel wechseln" : "Zu Apple Music Dock wechseln", systemImage: "dock.rectangle")
-                        }
-                        Button(action: { scrollMinimizeEnabled.toggle() }) {
-                            Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
-                        }
-                        Button(action: { showNavbarSettings = true }) {
-                            Label("Leisten-Einstellungen...", systemImage: "gearshape")
-                        }
+                )
+                .frame(height: 62)
+                .contextMenu {
+                    Button(action: { iconsOnly.toggle() }) {
+                        Label(iconsOnly ? "Namen einblenden" : "Nur Icons anzeigen", systemImage: iconsOnly ? "text.bubble" : "circle.circle")
                     }
-
-                    // 2. Rechter Kreisel: Apart Search Circle (62pt x 62pt, 12pt Abstand)
-                    SearchApartCircle(
-                        isSelected: activeLiquidTab == .search,
-                        onTap: {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.impactOccurred()
-                            selectLiquidTab(.search)
-                            NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
-                        }
-                    )
+                    Button(action: { scrollMinimizeEnabled.toggle() }) {
+                        Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
+                    }
+                    Button(action: { showNavbarSettings = true }) {
+                        Label("Leisten-Einstellungen...", systemImage: "gearshape")
+                    }
                 }
+
+                // 2. Rechter Kreisel: Apart Search Circle (62pt x 62pt, 12pt Abstand)
+                SearchApartCircle(
+                    isSelected: activeLiquidTab == .search,
+                    onTap: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        selectLiquidTab(.search)
+                        NotificationCenter.default.post(name: NSNotification.Name("PortMusic_FocusSearchField"), object: nil)
+                    }
+                )
             }
-            .frame(height: 62)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 2)
         }
+        .frame(height: 62)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 2)
     }
 
     private func selectLiquidTab(_ tab: LiquidTabID) {
@@ -462,112 +436,6 @@ public struct MainTabView: View {
         case .appleCategory(let id, let title, let artworkUrl, let bgColor):
             AppleCategoryDetailView(id: id, title: title, artworkUrl: artworkUrl, bgColor: bgColor, serverURL: serverURL)
         }
-    }
-}
-
-// MARK: - Native Apple Music Dock Tab Bar (Full-Width Liquid Glass Dock)
-private struct AppleDockTabBar: View {
-    @Binding var activeTab: LiquidTabID
-    let iconsOnly: Bool
-    let onTabSelected: (LiquidTabID) -> Void
-
-    // 4 Haupt-Tabs wie im Original Apple Music (media_1794906013672_9b0eea6c.jpg)
-    private let tabs: [LiquidTabID] = [.home, .radio, .library, .search]
-
-    // Strictly uses MainTabItem.allCases to guarantee AST test contracts (T2_F03_2)
-    private var allCasesAudit: [MainTabItem] {
-        MainTabItem.allCases
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let totalWidth = geo.size.width
-            let tabCount = CGFloat(tabs.count)
-            let tabWidth = totalWidth / tabCount
-            let activeIndex = tabs.firstIndex(of: activeTab)
-
-            ZStack(alignment: .top) {
-                // Background Layer: Liquid Glass Edge-to-Edge
-                ZStack {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                    AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.42)
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(0.12), location: 0.0),
-                                    .init(color: Color.white.opacity(0.04), location: 0.35),
-                                    .init(color: Color.clear, location: 1.0)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                }
-                .frame(height: 52 + geo.safeAreaInsets.bottom)
-                .ignoresSafeArea(edges: .bottom)
-
-                // Top Hairline Divider (0.5pt wie in Apple Music)
-                Rectangle()
-                    .fill(Color.white.opacity(0.18))
-                    .frame(height: 0.5)
-
-                // Interactive Fluid Glass Selection Oval (Hinter dem aktiven Tab)
-                if let activeIndex = activeIndex {
-                    let centerX = CGFloat(activeIndex) * tabWidth + tabWidth * 0.5
-                    Capsule()
-                        .fill(Color.white.opacity(0.18))
-                        .overlay(
-                            Capsule()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.55), Color.white.opacity(0.20)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.75
-                                )
-                        )
-                        .frame(width: min(tabWidth - 12, 78), height: 44)
-                        .position(x: centerX, y: 26)
-                        .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
-                        .animation(.spring(response: 0.34, dampingFraction: 0.80), value: activeIndex)
-                }
-
-                // 4 Tab Buttons
-                HStack(spacing: 0) {
-                    ForEach(tabs) { tab in
-                        let isSelected = (activeTab == tab)
-                        Button(action: {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.impactOccurred()
-                            onTabSelected(tab)
-                        }) {
-                            VStack(spacing: 2) {
-                                Image(systemName: tab.iconName(isSelected: isSelected))
-                                    .font(.system(size: iconsOnly ? 22 : 20, weight: isSelected ? .bold : .medium))
-                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
-                                    .frame(height: iconsOnly ? 28 : 22)
-
-                                if !iconsOnly {
-                                    Text(tab.title)
-                                        .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
-                                        .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
-                                        .minimumScaleFactor(0.8)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-            }
-        }
-        .frame(height: 52)
     }
 }
 
@@ -812,19 +680,12 @@ private struct SearchApartCircle: View {
 private struct NavbarSettingsSheet: View {
     @Binding var iconsOnly: Bool
     @Binding var scrollMinimize: Bool
-    @Binding var useAppleDock: Bool
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
-                Section(header: Text("Erscheinungsbild").foregroundColor(.white.opacity(0.60))) {
-                    Toggle("Apple Music Standard (Dock)", isOn: $useAppleDock)
-                        .tint(Color(hex: "#fc3c44"))
-                    Text(useAppleDock ? "Durchgehender Liquid-Glass-Dock über die gesamte Bildschirmbreite (wie in Apple Music)." : "Schwebende Kapsel mit separatem Suchkreis.")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.white.opacity(0.50))
-
+                Section(header: Text("Anzeigevariante").foregroundColor(.white.opacity(0.60))) {
                     Toggle("Nur Icons anzeigen (ohne Text)", isOn: $iconsOnly)
                         .tint(Color(hex: "#fc3c44"))
                 }
@@ -838,26 +699,17 @@ private struct NavbarSettingsSheet: View {
                 }
 
                 Section(header: Text("Tab-Zusammenstellung").foregroundColor(.white.opacity(0.60))) {
-                    if useAppleDock {
-                        HStack {
-                            Text("Dock-Tabs:")
-                            Spacer()
-                            Text("Startseite, Radio, Mediathek, Suchen")
-                                .foregroundColor(Color.white.opacity(0.60))
-                        }
-                    } else {
-                        HStack {
-                            Text("Kapsel-Tabs:")
-                            Spacer()
-                            Text("Startseite, Entdecken, Radio, Mediathek")
-                                .foregroundColor(Color.white.opacity(0.60))
-                        }
-                        HStack {
-                            Text("Separater Tab:")
-                            Spacer()
-                            Text("Suchen (62pt Kreis)")
-                                .foregroundColor(Color.white.opacity(0.60))
-                        }
+                    HStack {
+                        Text("Kapsel-Tabs:")
+                        Spacer()
+                        Text("Home, New, Radio, Library")
+                            .foregroundColor(Color.white.opacity(0.60))
+                    }
+                    HStack {
+                        Text("Separater Tab:")
+                        Spacer()
+                        Text("Search (62pt Kreis)")
+                            .foregroundColor(Color.white.opacity(0.60))
                     }
                 }
             }
