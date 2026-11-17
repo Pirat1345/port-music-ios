@@ -118,7 +118,7 @@ public struct PlayerBarView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
-                // MARK: - Vollwertige Schwebende Minibar (Offizielles Apple Music Design)
+                // MARK: - Vollwertige Schwebende Minibar (Natives Apple Music Design)
                 ZStack(alignment: .bottom) {
                     HStack(spacing: 12) {
                         // Linker Bereich: Cover + Titel (Antippen oeffnet Vollbild)

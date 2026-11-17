@@ -112,44 +112,52 @@ public struct MainTabView: View {
         ZStack(alignment: .bottom) {
             TabView(selection: $activeLiquidTab) {
                 // Tab 1: Startseite
-                Tab("Startseite", systemImage: activeLiquidTab == .home ? "house.fill" : "house", value: LiquidTabID.home) {
-                    NavigationStack {
-                        HomeView(serverURL: serverURL, user: user)
-                            .navigationDestination(for: AppRoute.self) { route in
-                                destinationForRoute(route)
-                            }
-                    }
+                NavigationStack {
+                    HomeView(serverURL: serverURL, user: user)
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
                 }
+                .tabItem {
+                    Label("Startseite", systemImage: activeLiquidTab == .home ? "house.fill" : "house")
+                }
+                .tag(LiquidTabID.home)
 
                 // Tab 2: Bibliothek
-                Tab("Bibliothek", systemImage: "music.note.list", value: LiquidTabID.library) {
-                    NavigationStack {
-                        LibraryView(serverURL: serverURL, user: user)
-                            .navigationDestination(for: AppRoute.self) { route in
-                                destinationForRoute(route)
-                            }
-                    }
+                NavigationStack {
+                    LibraryView(serverURL: serverURL, user: user)
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
                 }
+                .tabItem {
+                    Label("Bibliothek", systemImage: "music.note.list")
+                }
+                .tag(LiquidTabID.library)
 
                 // Tab 3: Radio
-                Tab("Radio", systemImage: "dot.radiowaves.left.and.right", value: LiquidTabID.radio) {
-                    NavigationStack {
-                        RadioBrowserView(serverURL: serverURL)
-                            .navigationDestination(for: AppRoute.self) { route in
-                                destinationForRoute(route)
-                            }
-                    }
+                NavigationStack {
+                    RadioBrowserView(serverURL: serverURL)
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
                 }
+                .tabItem {
+                    Label("Radio", systemImage: "dot.radiowaves.left.and.right")
+                }
+                .tag(LiquidTabID.radio)
 
-                // Tab 4: Suche (Offizieller iOS 18 Search Tab mit role: .search)
-                Tab("Suche", systemImage: "magnifyingglass", value: LiquidTabID.search, role: .search) {
-                    NavigationStack(path: $searchPath) {
-                        SearchView(serverURL: serverURL, navigationPath: $searchPath)
-                            .navigationDestination(for: AppRoute.self) { route in
-                                destinationForRoute(route)
-                            }
-                    }
+                // Tab 4: Suche
+                NavigationStack(path: $searchPath) {
+                    SearchView(serverURL: serverURL, navigationPath: $searchPath)
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
                 }
+                .tabItem {
+                    Label("Suche", systemImage: "magnifyingglass")
+                }
+                .tag(LiquidTabID.search)
             }
 
             // ── Schwebender Now-Playing MiniPlayer ueber der nativen iOS Tab-Leiste ──
@@ -159,8 +167,8 @@ public struct MainTabView: View {
                         showFullscreenPlayer = true
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 50)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 54)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
