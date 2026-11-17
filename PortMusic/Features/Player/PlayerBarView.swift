@@ -118,7 +118,7 @@ public struct PlayerBarView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
-                // MARK: - Vollwertige Schwebende Minibar (Standard über der TabBar)
+                // MARK: - Vollwertige Schwebende Minibar (Offizielles Apple Music Design)
                 ZStack(alignment: .bottom) {
                     HStack(spacing: 12) {
                         // Linker Bereich: Cover + Titel (Antippen oeffnet Vollbild)
@@ -128,18 +128,18 @@ public struct PlayerBarView: View {
                             onOpenFullscreen()
                         }) {
                             HStack(spacing: 12) {
-                                // Cover-Artwork (44x44, 8pt Radius)
+                                // Cover-Artwork (42x42, 8pt Radius)
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 8)
                                         .fill(Color.white.opacity(0.08))
-                                        .frame(width: 44, height: 44)
+                                        .frame(width: 42, height: 42)
 
                                     let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
                                     PortCachedAsyncImage(url: resolved) { image in
                                         image
                                             .resizable()
                                             .aspectRatio(contentMode: .fill)
-                                            .frame(width: 44, height: 44)
+                                            .frame(width: 42, height: 42)
                                             .clipShape(RoundedRectangle(cornerRadius: 8))
                                     } placeholder: {
                                         Image(systemName: "music.note")
@@ -147,7 +147,7 @@ public struct PlayerBarView: View {
                                             .foregroundColor(Color.white.opacity(0.5))
                                     }
                                 }
-                                .frame(width: 44, height: 44)
+                                .frame(width: 42, height: 42)
                                 .shadow(color: Color.black.opacity(0.35), radius: 4, y: 2)
 
                                 // Titel und Interpret
@@ -161,69 +161,50 @@ public struct PlayerBarView: View {
                                         .lineLimit(1)
 
                                     Text(displayArtist)
-                                        .font(.system(size: 13, weight: .medium))
+                                        .font(.system(size: 13, weight: .regular))
                                         .foregroundColor(Color.white.opacity(0.65))
                                         .lineLimit(1)
                                 }
+
+                                Spacer(minLength: 4)
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
                         .offset(x: horizontalDragOffset)
 
-                        Spacer(minLength: 4)
-
-                        // Rechter Bereich: Transport-Buttons (Zurueck, Play/Pause, Weiter)
+                        // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
                         HStack(spacing: 12) {
-                            // Vorheriger Titel (|◀)
-                            Button(action: {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.impactOccurred()
-                                player.previous(serverURL: serverURL)
-                            }) {
-                                Image(systemName: "backward.end.fill")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(Color.white.opacity(0.85))
-                                    .frame(width: 32, height: 32)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            // Play/Pause Button
+                            // Play/Pause Button (Reines, klares Apple Symbol ohne Deck-Kreis)
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.impactOccurred()
                                 player.togglePlayPause()
                             }) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 38, height: 38)
-                                        .shadow(color: Color.black.opacity(0.30), radius: 4, y: 1)
-
-                                    if player.isBuffering {
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                                            .scaleEffect(0.85)
-                                    } else {
-                                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                            .font(.system(size: 16, weight: .bold))
-                                            .foregroundColor(.black)
-                                            .offset(x: player.isPlaying ? 0 : 1.2)
-                                    }
+                                if player.isBuffering {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(0.9)
+                                        .frame(width: 34, height: 34)
+                                } else {
+                                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 34, height: 34)
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())
 
-                            // Naechster Titel (▶|)
+                            // Naechster Titel (Apple Music Style: forward.fill)
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.impactOccurred()
                                 player.next(serverURL: serverURL)
                             }) {
-                                Image(systemName: "forward.end.fill")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(Color.white.opacity(0.85))
-                                    .frame(width: 32, height: 32)
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 19, weight: .bold))
+                                    .foregroundColor(Color.white.opacity(0.90))
+                                    .frame(width: 34, height: 34)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -232,38 +213,26 @@ public struct PlayerBarView: View {
                     .padding(.vertical, 8)
                     .background(
                         ZStack {
-                            RoundedRectangle(cornerRadius: 22)
+                            RoundedRectangle(cornerRadius: 14)
                                 .fill(.ultraThinMaterial)
-                            AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.38)
-                                .clipShape(RoundedRectangle(cornerRadius: 22))
-                            RoundedRectangle(cornerRadius: 22)
-                                .fill(
-                                    LinearGradient(
-                                        stops: [
-                                            .init(color: Color.white.opacity(0.16), location: 0.0),
-                                            .init(color: Color.white.opacity(0.06), location: 0.45),
-                                            .init(color: Color.clear, location: 1.0)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                            RoundedRectangle(cornerRadius: 22)
+                            AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.35)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                            RoundedRectangle(cornerRadius: 14)
                                 .stroke(
                                     LinearGradient(
                                         stops: [
-                                            .init(color: Color.white.opacity(0.65), location: 0.0),
-                                            .init(color: Color.white.opacity(0.24), location: 0.35),
-                                            .init(color: Color.white.opacity(0.08), location: 1.0)
+                                            .init(color: Color.white.opacity(0.35), location: 0.0),
+                                            .init(color: Color.white.opacity(0.12), location: 0.45),
+                                            .init(color: Color.white.opacity(0.04), location: 1.0)
                                         ],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     ),
-                                    lineWidth: 0.85
+                                    lineWidth: 0.75
                                 )
                         }
-                        .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
-                        .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+                        .shadow(color: Color.black.opacity(0.35), radius: 14, x: 0, y: 6)
+                        .shadow(color: Color.black.opacity(0.15), radius: 3, x: 0, y: 1)
                     )
                     // Wischgeste horizontal zum Titelwechsel
                     .simultaneousGesture(
