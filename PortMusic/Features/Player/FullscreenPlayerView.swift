@@ -96,8 +96,8 @@ public struct FullscreenPlayerView: View {
             }
             .frame(width: fullWidth, height: fullHeight)
             .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
-            .gesture(
-                DragGesture(minimumDistance: 2)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 4)
                     .onChanged { val in
                         guard !isDismissing else { return }
                         if val.translation.height > 0 {
@@ -110,7 +110,7 @@ public struct FullscreenPlayerView: View {
                         guard !isDismissing else { return }
                         let dy = val.translation.height
                         let velocityY = val.predictedEndTranslation.height - val.translation.height
-                        if dy > 120 || dy > 60 || velocityY > 90 {
+                        if dy > 120 || (dy > 80 && velocityY > 160) {
                             triggerDismiss(fullHeight: fullHeight)
                         } else {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -205,24 +205,22 @@ public struct FullscreenPlayerView: View {
     // MARK: - Obere Kopfleiste (Drag-Griff zentriert zum Herunterziehen)
     private func topBarSection(safeTop: CGFloat, fullHeight: CGFloat) -> some View {
         let effectiveSafeTop = max(safeTop, deviceSafeTop)
-        let topDistance = effectiveSafeTop + 10
+        let topDistance = effectiveSafeTop + 8
 
         return VStack(spacing: 0) {
             Color.clear
                 .frame(height: topDistance)
 
-            // Zentrierter Drag-Griff (Pill Handle) - Antippen schließt direkt, Ziehen wird vom Container gesteuert
-            Button(action: {
-                triggerDismiss(fullHeight: fullHeight)
-            }) {
-                pullDownHandle
-                    .padding(.top, 6)
-                    .padding(.bottom, 12)
-            }
-            .buttonStyle(PlainButtonStyle())
+            // Zentrierter Drag-Griff (Pill Handle) - Antippen schließt, Ziehen folgt flüssig der Hand
+            pullDownHandle
+                .padding(.top, 4)
+                .padding(.bottom, 14)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    triggerDismiss(fullHeight: fullHeight)
+                }
         }
         .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
     }
 
     // MARK: - Drag Handle

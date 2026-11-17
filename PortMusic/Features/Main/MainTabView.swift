@@ -438,23 +438,26 @@ private struct LiquidGlassLensPill: View {
 
     var body: some View {
         ZStack {
-            // 1. Echter nativer Blur für die Linse
+            // 1. Echter nativer Blur & Glass Effect für die Linse
+            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.22, isCapsule: true)
+                .clipShape(Capsule())
+
             Capsule()
                 .fill(.ultraThinMaterial)
 
             // 2. Glänzender, milchiger Frost-Glaskörper (Apple Liquid Glass Platter)
             Capsule()
-                .fill(Color.white.opacity(0.28))
+                .fill(Color.white.opacity(0.24))
 
             // 3. Diffuser Specular Luminance Gradient (Lichtreflexion der Glasoberfläche)
             Capsule()
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.42), location: 0.0),
-                            .init(color: Color.white.opacity(0.20), location: 0.40),
-                            .init(color: Color.white.opacity(0.08), location: 0.80),
-                            .init(color: Color.white.opacity(0.22), location: 1.0)
+                            .init(color: Color.white.opacity(0.45), location: 0.0),
+                            .init(color: Color.white.opacity(0.20), location: 0.35),
+                            .init(color: Color.white.opacity(0.08), location: 0.75),
+                            .init(color: Color.white.opacity(0.25), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -467,30 +470,30 @@ private struct LiquidGlassLensPill: View {
                 // Linke Rundung: Linsenwölbung & Caustic-Lichtbrechung
                 RadialGradient(
                     gradient: Gradient(colors: [
-                        Color.white.opacity(0.50),
-                        Color.white.opacity(0.18),
+                        Color.white.opacity(0.60),
+                        Color.white.opacity(0.22),
                         Color.clear
                     ]),
                     center: .leading,
                     startRadius: 0,
-                    endRadius: 24
+                    endRadius: 26
                 )
-                .frame(width: 26)
+                .frame(width: 28)
 
                 Spacer(minLength: 0)
 
                 // Rechte Rundung: Linsenwölbung & Caustic-Lichtbrechung
                 RadialGradient(
                     gradient: Gradient(colors: [
-                        Color.white.opacity(0.50),
-                        Color.white.opacity(0.18),
+                        Color.white.opacity(0.60),
+                        Color.white.opacity(0.22),
                         Color.clear
                     ]),
                     center: .trailing,
                     startRadius: 0,
-                    endRadius: 24
+                    endRadius: 26
                 )
-                .frame(width: 26)
+                .frame(width: 28)
             }
             .clipShape(Capsule())
 
@@ -500,9 +503,9 @@ private struct LiquidGlassLensPill: View {
                     LinearGradient(
                         stops: [
                             .init(color: Color.white.opacity(0.95), location: 0.0),
-                            .init(color: Color.white.opacity(0.60), location: 0.25),
-                            .init(color: Color.white.opacity(0.25), location: 0.70),
-                            .init(color: Color.white.opacity(0.65), location: 1.0)
+                            .init(color: Color.white.opacity(0.65), location: 0.25),
+                            .init(color: Color.white.opacity(0.28), location: 0.70),
+                            .init(color: Color.white.opacity(0.70), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -516,7 +519,7 @@ private struct LiquidGlassLensPill: View {
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.30), location: 0.0),
+                            .init(color: Color.white.opacity(0.40), location: 0.0),
                             .init(color: Color.clear, location: 0.40),
                             .init(color: Color.black.opacity(0.25), location: 1.0)
                         ],
@@ -527,9 +530,9 @@ private struct LiquidGlassLensPill: View {
                 )
         }
         .frame(width: width, height: height)
-        .shadow(color: Color.black.opacity(0.38), radius: 10, x: 0, y: 4)
-        .shadow(color: Color.black.opacity(0.20), radius: 3, x: 0, y: 1)
-        .shadow(color: Color.white.opacity(0.20), radius: 2, x: 0, y: -1)
+        .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
+        .shadow(color: Color.white.opacity(0.25), radius: 2, x: 0, y: -1)
     }
 }
 
@@ -561,23 +564,23 @@ private struct InteractiveTabCapsule: View {
             let activeIndex = tabs.firstIndex(of: activeTab)
 
             ZStack(alignment: .leading) {
-                // Layer 1: Native Apple Liquid Glass View
-                AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.38)
+                // Layer 1: Native Apple Liquid Glass View mit echter Frost-Luminanz
+                AppleLiquidGlassView(style: .systemUltraThinMaterialDark, tintAlpha: 0.22, isCapsule: true)
                     .clipShape(Capsule())
 
                 // Layer 2: SwiftUI Material for dynamic OS blending
                 Capsule()
                     .fill(.ultraThinMaterial)
 
-                // Layer 3: Specular Frost Sheen
+                // Layer 3: Subtiler Specular Frost Sheen
                 Capsule()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.24), location: 0.0),
-                                .init(color: Color.white.opacity(0.08), location: 0.30),
-                                .init(color: Color.white.opacity(0.02), location: 0.65),
-                                .init(color: Color.black.opacity(0.08), location: 1.0)
+                                .init(color: Color.white.opacity(0.18), location: 0.0),
+                                .init(color: Color.white.opacity(0.06), location: 0.35),
+                                .init(color: Color.clear, location: 0.70),
+                                .init(color: Color.black.opacity(0.10), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -589,18 +592,18 @@ private struct InteractiveTabCapsule: View {
                     .stroke(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.75), location: 0.0),
-                                .init(color: Color.white.opacity(0.35), location: 0.25),
-                                .init(color: Color.white.opacity(0.12), location: 0.70),
-                                .init(color: Color.white.opacity(0.25), location: 1.0)
+                                .init(color: Color.white.opacity(0.65), location: 0.0),
+                                .init(color: Color.white.opacity(0.28), location: 0.25),
+                                .init(color: Color.white.opacity(0.10), location: 0.70),
+                                .init(color: Color.white.opacity(0.22), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
                         lineWidth: 1.0
                     )
-                    .shadow(color: Color.black.opacity(0.40), radius: 18, x: 0, y: 8)
-                    .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+                    .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 7)
+                    .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
 
                 // Layer 5: Refractive Liquid Glass Lens (Hover & Drag Tracking)
                 let currentCenterX: CGFloat = {
