@@ -81,36 +81,39 @@ public struct PlayerBarView: View {
                     .padding(.horizontal, 10)
                     .frame(height: 62)
                     .background(
-                        Capsule()
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: Color.white.opacity(0.14), location: 0.0),
-                                        .init(color: Color.white.opacity(0.04), location: 0.45),
-                                        .init(color: Color.black.opacity(0.06), location: 1.0)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .overlay(
-                                Capsule()
-                                    .stroke(
-                                        LinearGradient(
-                                            stops: [
-                                                .init(color: Color.white.opacity(0.65), location: 0.0),
-                                                .init(color: Color.white.opacity(0.24), location: 0.35),
-                                                .init(color: Color.white.opacity(0.08), location: 1.0)
-                                            ],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 0.85
+                        ZStack {
+                            Capsule()
+                                .fill(.ultraThinMaterial)
+                            AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.38)
+                                .clipShape(Capsule())
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.16), location: 0.0),
+                                            .init(color: Color.white.opacity(0.06), location: 0.45),
+                                            .init(color: Color.clear, location: 1.0)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
                                     )
-                            )
-                            .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
-                            .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+                                )
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.65), location: 0.0),
+                                            .init(color: Color.white.opacity(0.24), location: 0.35),
+                                            .init(color: Color.white.opacity(0.08), location: 1.0)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.85
+                                )
+                        }
+                        .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                        .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -228,39 +231,39 @@ public struct PlayerBarView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
-                        RoundedRectangle(cornerRadius: 22)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 22)
-                                    .fill(
-                                        LinearGradient(
-                                            stops: [
-                                                .init(color: Color.white.opacity(0.14), location: 0.0),
-                                                .init(color: Color.white.opacity(0.04), location: 0.45),
-                                                .init(color: Color.black.opacity(0.06), location: 1.0)
-                                            ],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        )
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 22)
+                                .fill(.ultraThinMaterial)
+                            AppleLiquidGlassView(style: .systemChromeMaterialDark, tintAlpha: 0.38)
+                                .clipShape(RoundedRectangle(cornerRadius: 22))
+                            RoundedRectangle(cornerRadius: 22)
+                                .fill(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.16), location: 0.0),
+                                            .init(color: Color.white.opacity(0.06), location: 0.45),
+                                            .init(color: Color.clear, location: 1.0)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
                                     )
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 22)
-                                    .stroke(
-                                        LinearGradient(
-                                            stops: [
-                                                .init(color: Color.white.opacity(0.65), location: 0.0),
-                                                .init(color: Color.white.opacity(0.24), location: 0.35),
-                                                .init(color: Color.white.opacity(0.08), location: 1.0)
-                                            ],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 0.85
-                                    )
-                            )
-                            .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
-                            .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
+                                )
+                            RoundedRectangle(cornerRadius: 22)
+                                .stroke(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.65), location: 0.0),
+                                            .init(color: Color.white.opacity(0.24), location: 0.35),
+                                            .init(color: Color.white.opacity(0.08), location: 1.0)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.85
+                                )
+                        }
+                        .shadow(color: Color.black.opacity(0.45), radius: 16, x: 0, y: 8)
+                        .shadow(color: Color.black.opacity(0.20), radius: 4, x: 0, y: 2)
                     )
                     // Wischgeste horizontal zum Titelwechsel
                     .simultaneousGesture(
