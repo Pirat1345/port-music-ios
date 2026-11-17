@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 // MARK: - MainTabItem (Maintained strictly for AST E2E Test Contracts: T1_F03_1, T2_F03_4)
 public enum MainTabItem: Int, CaseIterable {
@@ -778,37 +777,6 @@ private struct SearchApartCircle: View {
     }
 }
 
-// MARK: - Tab Reordering Drop Delegate for Native Drag & Drop
-private struct TabDropDelegate: DropDelegate {
-    let item: LiquidTabID
-    @Binding var tabs: [LiquidTabID]
-    @Binding var draggedItem: LiquidTabID?
-    let onCommit: () -> Void
-
-    func dropEntered(info: DropInfo) {
-        guard let dragged = draggedItem,
-              dragged != item,
-              let from = tabs.firstIndex(of: dragged),
-              let to = tabs.firstIndex(of: item) else { return }
-
-        if tabs[to] != dragged {
-            withAnimation(.default) {
-                tabs.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-            }
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggedItem = nil
-        onCommit()
-        return true
-    }
-}
-
 // MARK: - Navbar Settings Sheet (Tab-Konfiguration & Anzeigeeinstellungen)
 private struct NavbarSettingsSheet: View {
     @Binding var iconsOnly: Bool
@@ -817,8 +785,7 @@ private struct NavbarSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var activeTabs: [LiquidTabID] = []
-    @State private var isEditing: Bool = false
-    @State private var draggedItem: LiquidTabID? = nil
+    @State private var editMode: EditMode = .inactive
 
     private var inactiveTabs: [LiquidTabID] {
         let current = Set(activeTabs)
@@ -885,10 +852,10 @@ private struct NavbarSettingsSheet: View {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.impactOccurred()
                                 withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                                    isEditing.toggle()
+                                    editMode = (editMode == .active ? .inactive : .active)
                                 }
                             }) {
-                                Text(isEditing ? "Fertig" : "Bearbeiten")
+                                Text(editMode == .active ? "Fertig" : "Bearbeiten")
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(Color(hex: "#fc3c44"))
                                     .textCase(nil)
@@ -896,8 +863,8 @@ private struct NavbarSettingsSheet: View {
                         },
                     footer:
                         Group {
-                            if isEditing {
-                                Text("Mit den drei Strichen links per Drag & Drop sortieren. Rechts den Haken zum An- oder Abwählen tippen. Mindestens 2 Tabs bleiben aktiv.")
+                            if editMode == .active {
+                                Text("Am Griff rechts anfassen, um die Position sofort zu verschieben. Den Haken tippen, um Tabs an- oder abzuwählen.")
                                     .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.45))
                             }
@@ -905,29 +872,21 @@ private struct NavbarSettingsSheet: View {
                 ) {
                     ForEach(activeTabs) { tab in
                         HStack(spacing: 12) {
-                            if isEditing {
-                                // 1. Linke Seite: 3 Striche vor dem Icon zum Verschieben per Drag & Drop
-                                Image(systemName: "line.3.horizontal")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(Color.white.opacity(0.45))
-                                    .frame(width: 24)
-                            }
-
-                            // 2. Tab Icon
+                            // 1. Tab Icon
                             Image(systemName: tab.iconName(isSelected: true))
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(Color(hex: "#fc3c44"))
                                 .frame(width: 26)
 
-                            // 3. Tab Titel
+                            // 2. Tab Titel
                             Text(tab.title)
                                 .foregroundColor(.white)
                                 .font(.system(size: 15, weight: .medium))
 
                             Spacer()
 
-                            if isEditing {
-                                // 4. Rechte Seite: Haken zum An- und Abwählen
+                            if editMode == .active {
+                                // 3. Haken zum An- und Abwählen
                                 Button(action: { toggleTab(tab) }) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 22))
@@ -939,29 +898,23 @@ private struct NavbarSettingsSheet: View {
                             }
                         }
                         .padding(.vertical, 2)
-                        .onDrag {
-                            guard isEditing else { return NSItemProvider() }
-                            self.draggedItem = tab
-                            return NSItemProvider(object: tab.rawValue as NSString)
-                        }
-                        .onDrop(of: [UTType.text], delegate: TabDropDelegate(item: tab, tabs: $activeTabs, draggedItem: $draggedItem, onCommit: {
-                            saveTabs(activeTabs)
-                        }))
+                    }
+                    .onMove { indices, newOffset in
+                        var list = activeTabs
+                        list.move(fromOffsets: indices, toOffset: newOffset)
+                        activeTabs = list
+                        saveTabs(list)
                     }
                 }
 
                 // Sektion "Weitere Optionen" wird NUR angezeigt, wenn Bearbeiten aktiv ist und inaktive Tabs vorhanden sind
-                if isEditing && !inactiveTabs.isEmpty {
+                if editMode == .active && !inactiveTabs.isEmpty {
                     Section(
                         header: Text("Weitere Optionen").foregroundColor(.white.opacity(0.60)),
                         footer: Text("Tippe auf den Kreis rechts, um einen Tab wieder unten in der Leiste anzuzeigen.").font(.system(size: 12)).foregroundColor(.white.opacity(0.45))
                     ) {
                         ForEach(inactiveTabs) { tab in
                             HStack(spacing: 12) {
-                                // Platzhalter links fuer exakte Ausrichtung mit den 3 Strichen
-                                Color.clear
-                                    .frame(width: 24, height: 24)
-
                                 Image(systemName: tab.iconName(isSelected: false))
                                     .font(.system(size: 16))
                                     .foregroundColor(.white.opacity(0.60))
@@ -992,7 +945,7 @@ private struct NavbarSettingsSheet: View {
                     }
                 }
 
-                if isEditing {
+                if editMode == .active {
                     Section {
                         Button(action: resetToDefault) {
                             HStack {
@@ -1006,6 +959,7 @@ private struct NavbarSettingsSheet: View {
                     }
                 }
             }
+            .environment(\.editMode, $editMode)
             .navigationTitle("Navigationsleiste")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
