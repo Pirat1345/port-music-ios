@@ -110,69 +110,62 @@ public struct MainTabView: View {
 
     public var body: some View {
         ZStack(alignment: .bottom) {
-            ZStack {
-                Color(hex: "#161618")
-                RadialGradient(
-                    colors: [Color(red: 0.16, green: 0.08, blue: 0.35).opacity(0.70), Color.clear],
-                    center: .bottomTrailing,
-                    startRadius: 50,
-                    endRadius: 550
-                )
-            }
-            .ignoresSafeArea()
-
-            // ── Aktive Tab-Inhalte (Persistent gemountet im ZStack für 0ms Latenz & 120 FPS ohne Tab-Switching-Lag) ──
-            ZStack {
-                // Tab 0: Home / New / Radio NavigationStack
+            // ── Offizielle Native Apple Liquid Glass TabView (Exakt wie in LiveContainer) ──
+            TabView(selection: $activeLiquidTab) {
+                // Tab 1: Startseite
                 NavigationStack {
-                    ZStack {
-                        HomeView(serverURL: serverURL, user: user)
-                            .opacity(activeLiquidTab == .home ? 1 : 0)
-                            .allowsHitTesting(selectedTab == .home && activeLiquidTab == .home)
-
-                        NewReleasesView(serverURL: serverURL)
-                            .opacity(activeLiquidTab == .newReleases ? 1 : 0)
-                            .allowsHitTesting(selectedTab == .home && activeLiquidTab == .newReleases)
-
-                        RadioBrowserView(serverURL: serverURL)
-                            .opacity(activeLiquidTab == .radio ? 1 : 0)
-                            .allowsHitTesting(selectedTab == .home && activeLiquidTab == .radio)
-                    }
-                    .navigationDestination(for: AppRoute.self) { route in
-                        destinationForRoute(route)
-                    }
-                }
-                .opacity(selectedTab == .home ? 1 : 0)
-                .allowsHitTesting(selectedTab == .home)
-
-                // Tab 1: Search NavigationStack
-                NavigationStack(path: $searchPath) {
-                    SearchView(serverURL: serverURL, navigationPath: $searchPath)
+                    HomeView(serverURL: serverURL, user: user)
                         .navigationDestination(for: AppRoute.self) { route in
                             destinationForRoute(route)
                         }
                 }
-                .opacity(selectedTab == .search ? 1 : 0)
-                .allowsHitTesting(selectedTab == .search)
+                .tabItem {
+                    Label("Startseite", systemImage: activeLiquidTab == .home ? "house.fill" : "house")
+                }
+                .tag(LiquidTabID.home)
+                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
 
-                // Tab 2: Library NavigationStack
+                // Tab 2: Bibliothek
                 NavigationStack {
                     LibraryView(serverURL: serverURL, user: user)
                         .navigationDestination(for: AppRoute.self) { route in
                             destinationForRoute(route)
                         }
                 }
-                .opacity(selectedTab == .library ? 1 : 0)
-                .allowsHitTesting(selectedTab == .library)
-
-                // Tab 3: Menu / Profil NavigationStack
-                NavigationStack {
-                    UserPageView(user: session.currentUser ?? user, serverURL: serverURL)
+                .tabItem {
+                    Label("Bibliothek", systemImage: "music.note.list")
                 }
-                .opacity(selectedTab == .profile ? 1 : 0)
-                .allowsHitTesting(selectedTab == .profile)
+                .tag(LiquidTabID.library)
+                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
+
+                // Tab 3: Radio
+                NavigationStack {
+                    RadioBrowserView(serverURL: serverURL)
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
+                }
+                .tabItem {
+                    Label("Radio", systemImage: "dot.radiowaves.left.and.right")
+                }
+                .tag(LiquidTabID.radio)
+                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
+
+                // Tab 4: Suche (Durchgehend in der Hauptleiste integriert, kein Split)
+                NavigationStack(path: $searchPath) {
+                    SearchView(serverURL: serverURL, navigationPath: $searchPath)
+                        .navigationDestination(for: AppRoute.self) { route in
+                            destinationForRoute(route)
+                        }
+                }
+                .tabItem {
+                    Label("Suche", systemImage: "magnifyingglass")
+                }
+                .tag(LiquidTabID.search)
+                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
+            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isMinimized)
             // Detektiert vertikale Scroll-Bewegungen für die flüssige Octave-Leistenminimierung
             .simultaneousGesture(
                 DragGesture(minimumDistance: 15)
@@ -191,29 +184,35 @@ public struct MainTabView: View {
                     }
             )
 
-            // ── Unterer Schwebender Bereich: MiniPlayer + Apple Liquid Glass TabBar ──
-            VStack(spacing: 6) {
-                // Wenn minimiert: MiniPlayer sitzt direkt inline in der Leiste zwischen den beiden Kreisen!
-                // Wenn expandiert: Schwebende Minibar genau 6pt über der Kapselleiste
-                if player.currentTrack != nil && !isMinimized {
-                    PlayerBarView(serverURL: serverURL, isInline: false) {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                            showFullscreenPlayer = true
-                        }
+            // ── Normalmodus: Schwebender MiniPlayer bündig über der nativen Apple Tab-Leiste ──
+            if player.currentTrack != nil && !isMinimized {
+                PlayerBarView(serverURL: serverURL, isInline: false) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                        showFullscreenPlayer = true
                     }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, miniPlayerBottomPadding)
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom)),
+                        removal: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom))
+                    )
+                )
+            }
+
+            // ── Minimierter Zustand: Dreiteilige Octave-Minimierungsleiste beim Herunterscrollen ──
+            if isMinimized {
+                octaveMinimizedBar
                     .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
                     .transition(
                         .asymmetric(
-                            insertion: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom)),
-                            removal: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom))
+                            insertion: .scale(scale: 0.90).combined(with: .opacity).combined(with: .move(edge: .bottom)),
+                            removal: .scale(scale: 0.90).combined(with: .opacity).combined(with: .move(edge: .bottom))
                         )
                     )
-                }
-
-                // Native Apple Liquid Glass Floating TabBar (Durchgehend im Normalzustand, 3-teilig minimiert beim Scrollen)
-                glassTabBar
             }
-            .padding(.bottom, 6)
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
             if showFullscreenPlayer {
@@ -250,10 +249,8 @@ public struct MainTabView: View {
                     showMenuDrawer = false
                 },
                 onOpenSettings: {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
-                        selectedTab = .profile
-                        showMenuDrawer = false
-                    }
+                    showNavbarSettings = true
+                    showMenuDrawer = false
                 },
                 onLogout: onLogout
             )
@@ -270,12 +267,6 @@ public struct MainTabView: View {
                 customTabsRaw: $customTabsRaw
             )
         }
-        .onChange(of: customTabsRaw) { _ in
-            let tabs = currentTabsList
-            if !tabs.contains(activeLiquidTab), let first = tabs.first {
-                selectLiquidTab(first)
-            }
-        }
         .preferredColorScheme(.dark)
         .tint(Color(hex: "#fc3c44"))
         .task {
@@ -285,122 +276,106 @@ public struct MainTabView: View {
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    // MARK: - Native Liquid Glass Floating TabBar mit Octave-Minimierung
-    private var glassTabBar: some View {
-        HStack(spacing: 12) {
-            if isMinimized {
-                // MARK: - Minimierte Leiste (Exakt wie in Octave beim Scrollen)
-                // 1. Linker 62x62 Kreis: Aktiver Tab (Antippen stellt die durchgehende Leiste sofort wieder her)
-                let isSearch = (activeLiquidTab == .search)
-                let leftTab = isSearch ? previousLiquidTab : activeLiquidTab
+    // MARK: - Dynamischer vertikaler Abstand für den schwebenden MiniPlayer bündig über der nativen Tab-Leiste
+    private var miniPlayerBottomPadding: CGFloat {
+        let safeAreaBottom = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 34
+        // Die native iOS 18 Solarium TabBar sitzt bei ca. 49pt Hoehe
+        let baseTabBarHeight: CGFloat = 49
+        let floatingGap: CGFloat = 6
+        return baseTabBarHeight + (safeAreaBottom > 0 ? safeAreaBottom - 8 : 8) + floatingGap
+    }
 
-                Button(action: {
+    // MARK: - Dreiteilige Octave-Minimierungsleiste beim Herunterscrollen
+    private var octaveMinimizedBar: some View {
+        HStack(spacing: 12) {
+            // 1. Linker 62x62 Kreis: Aktiver Tab (Antippen stellt die durchgehende Leiste sofort wieder her)
+            let isSearch = (activeLiquidTab == .search)
+            let leftTab = isSearch ? previousLiquidTab : activeLiquidTab
+
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                    if isSearch {
+                        selectLiquidTab(previousLiquidTab)
+                    }
+                    isMinimized = false
+                }
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                    AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
+                        .clipShape(Circle())
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.18), location: 0.0),
+                                    .init(color: Color.white.opacity(0.04), location: 0.40),
+                                    .init(color: Color.clear, location: 0.70),
+                                    .init(color: Color.white.opacity(0.03), location: 1.0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay(
+                            Circle()
+                                .strokeBorder(
+                                    LinearGradient(
+                                        stops: [
+                                            .init(color: Color.white.opacity(0.55), location: 0.0),
+                                            .init(color: Color.white.opacity(0.20), location: 0.35),
+                                            .init(color: Color.clear, location: 0.70),
+                                            .init(color: Color.white.opacity(0.15), location: 1.0)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 0.75
+                                )
+                        )
+                        .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
+                        .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
+
+                    Image(systemName: leftTab.iconName(isSelected: !isSearch))
+                        .font(.system(size: 21, weight: isSearch ? .semibold : .bold))
+                        .foregroundColor(isSearch ? Color.white.opacity(0.85) : Color(hex: "#fc3c44"))
+                }
+                .frame(width: 62, height: 62)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .transition(.scale(scale: 0.85).combined(with: .opacity))
+
+            // 2. Mittig: Kompakte Inline Now-Playing-Kapsel (Exakt zwischen beiden Kreisen eingedockt)
+            if player.currentTrack != nil {
+                PlayerBarView(serverURL: serverURL, isInline: true) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                        showFullscreenPlayer = true
+                    }
+                }
+                .frame(height: 62)
+                .transition(.scale(scale: 0.90).combined(with: .opacity))
+            } else {
+                Spacer()
+            }
+
+            // 3. Rechter 62x62 Kreis: Die Suche als eigenständiger Kreis mit Lupe
+            SearchApartCircle(
+                isSelected: activeLiquidTab == .search,
+                onTap: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
-                        if isSearch {
-                            selectLiquidTab(previousLiquidTab)
-                        }
-                        isMinimized = false
-                    }
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                        AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                            .clipShape(Circle())
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: Color.white.opacity(0.18), location: 0.0),
-                                        .init(color: Color.white.opacity(0.04), location: 0.40),
-                                        .init(color: Color.clear, location: 0.70),
-                                        .init(color: Color.white.opacity(0.03), location: 1.0)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(
-                                        LinearGradient(
-                                            stops: [
-                                                .init(color: Color.white.opacity(0.55), location: 0.0),
-                                                .init(color: Color.white.opacity(0.20), location: 0.35),
-                                                .init(color: Color.clear, location: 0.70),
-                                                .init(color: Color.white.opacity(0.15), location: 1.0)
-                                            ],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 0.75
-                                    )
-                            )
-                            .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
-                            .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
-
-                        Image(systemName: leftTab.iconName(isSelected: !isSearch))
-                            .font(.system(size: 21, weight: isSearch ? .semibold : .bold))
-                            .foregroundColor(isSearch ? Color.white.opacity(0.85) : Color(hex: "#fc3c44"))
-                    }
-                    .frame(width: 62, height: 62)
+                    selectLiquidTab(.search)
                 }
-                .buttonStyle(PlainButtonStyle())
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
-
-                // 2. Mittig: Kompakte Inline Now-Playing-Kapsel (Exakt zwischen beiden Kreisen eingedockt)
-                if player.currentTrack != nil {
-                    PlayerBarView(serverURL: serverURL, isInline: true) {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                            showFullscreenPlayer = true
-                        }
-                    }
-                    .frame(height: 62)
-                    .transition(.scale(scale: 0.90).combined(with: .opacity))
-                } else {
-                    Spacer()
-                }
-
-                // 3. Rechter 62x62 Kreis: Die Suche als eigenständiger Kreis mit Lupe
-                SearchApartCircle(
-                    isSelected: activeLiquidTab == .search,
-                    onTap: {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.impactOccurred()
-                        selectLiquidTab(.search)
-                    }
-                )
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
-            } else {
-                // MARK: - Vollständige Durchgehende Kapsel-Leiste (Startseite, Bibliothek, Radio, Suche)
-                InteractiveTabCapsule(
-                    activeTab: $activeLiquidTab,
-                    tabs: currentTabsList,
-                    iconsOnly: iconsOnly,
-                    onTabSelected: { tab in
-                        selectLiquidTab(tab)
-                    }
-                )
-                .frame(height: 62)
-                .transition(.scale(scale: 0.95).combined(with: .opacity))
-                .contextMenu {
-                    Button(action: { iconsOnly.toggle() }) {
-                        Label(iconsOnly ? "Namen einblenden" : "Nur Icons anzeigen", systemImage: iconsOnly ? "text.bubble" : "circle.circle")
-                    }
-                    Button(action: { scrollMinimizeEnabled.toggle() }) {
-                        Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
-                    }
-                    Button(action: { showNavbarSettings = true }) {
-                        Label("Leisten-Einstellungen...", systemImage: "gearshape")
-                    }
-                }
-            }
+            )
+            .transition(.scale(scale: 0.85).combined(with: .opacity))
         }
         .frame(height: 62)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
     }
 
     private func selectLiquidTab(_ tab: LiquidTabID) {
@@ -463,223 +438,6 @@ public struct MainTabView: View {
         case .appleCategory(let id, let title, let artworkUrl, let bgColor):
             AppleCategoryDetailView(id: id, title: title, artworkUrl: artworkUrl, bgColor: bgColor, serverURL: serverURL)
         }
-    }
-}
-
-// MARK: - Interactive Liquid Glass Capsule with Fluid Active Lens Pill
-private struct InteractiveTabCapsule: View {
-    @Binding var activeTab: LiquidTabID
-    let tabs: [LiquidTabID]
-    let iconsOnly: Bool
-    let onTabSelected: (LiquidTabID) -> Void
-
-    // Live touch tracking with @GestureState - automatically resets to nil on end or cancellation!
-    @GestureState private var liveDragX: CGFloat? = nil
-    @GestureState private var liveVelocityX: CGFloat = 0.0
-    @State private var lastHapticIndex: Int? = nil
-    private let inactiveTabOpacity: Double = 0.45
-
-    // Strictly uses MainTabItem.allCases to guarantee AST test contracts (T2_F03_2)
-    private var allCasesAudit: [MainTabItem] {
-        MainTabItem.allCases
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let totalWidth = geo.size.width
-            let tabCount = CGFloat(tabs.count)
-            let tabWidth = totalWidth / tabCount
-            let activeIndex = tabs.firstIndex(of: activeTab)
-            let isInteracting = (liveDragX != nil)
-
-            // Linsenzentrum mit flüssigem Velocity-Stretch
-            let currentCenterX: CGFloat = {
-                if let dragX = liveDragX {
-                    return max(tabWidth * 0.5, min(totalWidth - (tabWidth * 0.5), dragX))
-                } else if let idx = activeIndex {
-                    return CGFloat(idx) * tabWidth + tabWidth * 0.5
-                }
-                return tabWidth * 0.5
-            }()
-
-            let dynamicStretch = min(32.0, max(-32.0, liveVelocityX * 0.045))
-            let pillWidth = max(tabWidth * 0.82, tabWidth * 0.94 + abs(dynamicStretch))
-            let pillCenterX = currentCenterX + (dynamicStretch * 0.30)
-            let pillHeight = max(46.0, 50.0 - abs(dynamicStretch) * 0.12)
-
-            ZStack(alignment: .leading) {
-                // Layer 1: Native Apple Liquid Glass View mit echter Hardware-Transparenz
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                    .clipShape(Capsule())
-
-                // Layer 2: Subtiler Specular Frost Sheen
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.18), location: 0.0),
-                                .init(color: Color.white.opacity(0.04), location: 0.40),
-                                .init(color: Color.clear, location: 0.70),
-                                .init(color: Color.white.opacity(0.03), location: 1.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-
-                // Layer 3: Specular Glass Edge (Haarlinie der schwebenden Kapselleiste)
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(0.55), location: 0.0),
-                                .init(color: Color.white.opacity(0.20), location: 0.35),
-                                .init(color: Color.clear, location: 0.70),
-                                .init(color: Color.white.opacity(0.15), location: 1.0)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.75
-                    )
-                    .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 4)
-                    .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
-
-                // Layer 4: Refraktive Liquid Glass Lens mit dynamischer Dehnung (Fluid Morphing)
-                LiquidGlassLensPill(width: pillWidth, height: pillHeight, isInteracting: isInteracting)
-                    .position(x: pillCenterX, y: geo.size.height / 2)
-                    .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: pillCenterX)
-                    .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.70), value: pillWidth)
-
-                // Layer 5: Tab Items Stack
-                HStack(spacing: 0) {
-                    ForEach(0..<tabs.count, id: \.self) { idx in
-                        let tab = tabs[idx]
-                        let isSelected = (activeTab == tab)
-                        let tabCenterX = CGFloat(idx) * tabWidth + tabWidth * 0.5
-                        let dist = abs(currentCenterX - tabCenterX)
-
-                        let normDist = min(1.0, dist / (tabWidth * 0.65))
-                        let squircleFactor = max(0.0, 1.0 - pow(normDist, 4.0))
-                        let dynamicScaleX = isInteracting ? (1.0 + (squircleFactor * 0.05)) : 1.0
-                        let dynamicScaleY = isInteracting ? (1.0 + (squircleFactor * 0.05)) : 1.0
-
-                        let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + squircleFactor * 0.45)
-
-                        VStack(spacing: 2) {
-                            Image(systemName: tab.iconName(isSelected: isSelected))
-                                .font(.system(size: iconsOnly ? 21 : 19, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(textOpacity))
-                                .frame(height: iconsOnly ? 26 : 20)
-
-                            if !iconsOnly {
-                                Text(tab.title)
-                                    .font(.system(size: 10, weight: isSelected ? .bold : .medium))
-                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(textOpacity))
-                                    .lineLimit(1)
-                            }
-                        }
-                        .scaleEffect(x: dynamicScaleX, y: dynamicScaleY)
-                        .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.82), value: dynamicScaleX)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                    }
-                }
-            }
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .updating($liveDragX) { value, state, _ in
-                        state = value.location.x
-                    }
-                    .updating($liveVelocityX) { value, state, _ in
-                        state = value.predictedEndLocation.x - value.location.x
-                    }
-                    .onChanged { value in
-                        let touchedIdx = Int(value.location.x / tabWidth)
-                        if touchedIdx >= 0 && touchedIdx < tabs.count {
-                            if touchedIdx != lastHapticIndex {
-                                lastHapticIndex = touchedIdx
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.impactOccurred(intensity: 0.70)
-                            }
-                        }
-                    }
-                    .onEnded { value in
-                        lastHapticIndex = nil
-                        let endIdx = Int(value.location.x / tabWidth)
-                        let targetIdx = max(0, min(tabs.count - 1, endIdx))
-                        let selected = tabs[targetIdx]
-                        onTabSelected(selected)
-                    }
-            )
-        }
-    }
-}
-
-// MARK: - Refractive Capsule Liquid Glass Lens Pill (Apple HIG Liquid Glass Lens)
-private struct LiquidGlassLensPill: View {
-    let width: CGFloat
-    let height: CGFloat
-    let isInteracting: Bool
-
-    var body: some View {
-        ZStack {
-            // 1. Echter nativer Hardware-Backdrop-Blur als optische Basis (isCapsule: true)
-            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                .clipShape(Capsule())
-
-            // 2. Diffuse Linsenoberflaeche mit vertikalem Ambient-Gradienten (Ambient Sheen)
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(isInteracting ? 0.20 : 0.15), location: 0.0),
-                            .init(color: Color.white.opacity(0.04), location: 0.35),
-                            .init(color: Color.clear, location: 0.70),
-                            .init(color: Color.white.opacity(0.03), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
-            // 3. Laterale Kappen-Woelbung an den Kapsel-Enden (subtile raeumliche Tiefe)
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.black.opacity(isInteracting ? 0.10 : 0.05), location: 0.0),
-                            .init(color: Color.clear, location: 0.14),
-                            .init(color: Color.clear, location: 0.86),
-                            .init(color: Color.black.opacity(isInteracting ? 0.10 : 0.05), location: 1.0)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-
-            // 4. Feine Lichtkante (Apple Liquid Glass Fresnel-Haarlinie mit Lichtquelle von links oben)
-            Capsule()
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(isInteracting ? 0.75 : 0.55), location: 0.0),
-                            .init(color: Color.white.opacity(isInteracting ? 0.35 : 0.22), location: 0.30),
-                            .init(color: Color.clear, location: 0.65),
-                            .init(color: Color.white.opacity(isInteracting ? 0.25 : 0.15), location: 1.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.75
-                )
-        }
-        .frame(width: width, height: height)
-        .shadow(color: Color.black.opacity(isInteracting ? 0.32 : 0.24), radius: isInteracting ? 10 : 7, x: 0, y: isInteracting ? 5 : 3)
-        .shadow(color: Color.black.opacity(0.12), radius: 2, x: 0, y: 1)
     }
 }
 
@@ -818,7 +576,7 @@ private struct NavbarSettingsSheet: View {
                 Section(header: Text("Scroll-Verhalten").foregroundColor(.white.opacity(0.60))) {
                     Toggle("Beim Scrollen minimieren", isOn: $scrollMinimize)
                         .tint(Color(hex: "#fc3c44"))
-                    Text("Schrumpft die Kapsel beim Scrollen nach unten wie in Octave in zwei Kreise und dockt die Minibar direkt dazwischen ein.")
+                    Text("Schrumpft die Leiste beim Scrollen nach unten wie in Octave in zwei Kreise und dockt die Minibar direkt dazwischen ein.")
                         .font(.system(size: 12))
                         .foregroundColor(Color.white.opacity(0.50))
                 }

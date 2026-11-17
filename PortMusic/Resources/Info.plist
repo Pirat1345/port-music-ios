@@ -24,6 +24,8 @@
 	<true/>
 	<key>UIDesignRequiresCompatibility</key>
 	<false/>
+	<key>com.apple.SwiftUI.IgnoreSolariumLinkedOnCheck</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
