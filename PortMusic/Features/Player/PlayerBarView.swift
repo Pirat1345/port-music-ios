@@ -34,52 +34,51 @@ public struct PlayerBarView: View {
     public var body: some View {
         if let track = player.currentTrack {
             if isInline {
-                // MARK: - Inline Minibar (Kompakter Modus für minimierte Liquid Glass TabBar)
-                // Sitzt exakt zwischen den beiden 58x58 Kreisen (Aktiver Tab links, Suche rechts)
+                // MARK: - Inline Minibar (Exakt wie in Octave: Sitzt im minimierten Zustand zwischen linkem und rechtem 62pt-Kreis)
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
                     onOpenFullscreen()
                 }) {
-                    HStack(spacing: 8) {
-                        // Mini Cover Artwork (34x34)
+                    HStack(spacing: 10) {
+                        // Mini Cover Artwork (38x38, 8pt Radius)
                         let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
                         PortCachedAsyncImage(url: resolved) { image in
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 34, height: 34)
-                                .clipShape(RoundedRectangle(cornerRadius: 7))
+                                .frame(width: 38, height: 38)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         } placeholder: {
-                            RoundedRectangle(cornerRadius: 7)
+                            RoundedRectangle(cornerRadius: 8)
                                 .fill(Color.white.opacity(0.12))
-                                .frame(width: 34, height: 34)
+                                .frame(width: 38, height: 38)
                         }
                         .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
 
                         // Titel
                         Text(track.title)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 13.5, weight: .semibold))
                             .foregroundColor(.white)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Play / Pause Button
+                        // Play / Pause Button (32x32 runder Glasbutton)
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.impactOccurred()
                             player.togglePlayPause()
                         }) {
                             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.white)
-                                .frame(width: 30, height: 30)
+                                .frame(width: 32, height: 32)
                                 .background(Circle().fill(Color.white.opacity(0.18)))
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(.horizontal, 10)
-                    .frame(height: 58)
+                    .padding(.horizontal, 12)
+                    .frame(height: 62)
                     .background(
                         ZStack {
                             Capsule()
@@ -120,8 +119,8 @@ public struct PlayerBarView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
-                // MARK: - Vollwertige Schwebende Minibar (Authentisches Apple Liquid Glass Design)
-                // Exakt wie in Apple Music: Flache 48pt Kapsel, identische Randrundung wie die TabBar-Kapsel
+                // MARK: - Vollwertige Schwebende Minibar (Im Ruhezustand über der durchgehenden Leiste)
+                // Flache 48pt Kapsel, vollrunde Halbkreis-Enden links und rechts passend zur Kapselform der Leiste
                 ZStack(alignment: .bottom) {
                     HStack(spacing: 10) {
                         // Linker Bereich: Cover + Titel + Interpret (Antippen oeffnet Vollbild)
@@ -178,7 +177,7 @@ public struct PlayerBarView: View {
 
                         // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
                         HStack(spacing: 8) {
-                            // Play/Pause Button (Reines, randloses Apple Symbol)
+                            // Play/Pause Button
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.impactOccurred()
@@ -216,7 +215,7 @@ public struct PlayerBarView: View {
                     .frame(height: 48)
                     .background(
                         ZStack {
-                            // 1. Echte Hardware Liquid Glass Basis
+                            // 1. Echte Hardware Liquid Glass Basis (Kapsel)
                             Capsule()
                                 .fill(.ultraThinMaterial)
                             AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)

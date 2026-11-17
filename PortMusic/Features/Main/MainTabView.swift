@@ -173,18 +173,18 @@ public struct MainTabView: View {
                 .allowsHitTesting(selectedTab == .profile)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Detektiert vertikale Scroll-Bewegungen für die flüssige Leisten-Minimierung & Fusion
+            // Detektiert vertikale Scroll-Bewegungen für die flüssige Octave-Leistenminimierung
             .simultaneousGesture(
-                DragGesture(minimumDistance: 20)
-                    .onEnded { val in
+                DragGesture(minimumDistance: 15)
+                    .onChanged { val in
                         guard scrollMinimizeEnabled else { return }
                         let dy = val.translation.height
-                        if dy < -30 && !isMinimized {
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.85)) {
+                        if dy < -20 && !isMinimized {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                 isMinimized = true
                             }
-                        } else if dy > 30 && isMinimized {
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.85)) {
+                        } else if dy > 20 && isMinimized {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                 isMinimized = false
                             }
                         }
@@ -204,13 +204,13 @@ public struct MainTabView: View {
                     .padding(.horizontal, 16)
                     .transition(
                         .asymmetric(
-                            insertion: .scale(scale: 0.94).combined(with: .opacity).combined(with: .move(edge: .bottom)),
-                            removal: .scale(scale: 0.94).combined(with: .opacity).combined(with: .move(edge: .bottom))
+                            insertion: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom)),
+                            removal: .scale(scale: 0.92).combined(with: .opacity).combined(with: .move(edge: .bottom))
                         )
                     )
                 }
 
-                // Native Apple Liquid Glass Floating TabBar
+                // Native Apple Liquid Glass Floating TabBar (Durchgehend im Normalzustand, 3-teilig minimiert beim Scrollen)
                 glassTabBar
             }
             .padding(.bottom, 6)
@@ -285,19 +285,19 @@ public struct MainTabView: View {
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
-    // MARK: - Native Liquid Glass Floating TabBar mit Minimierung & Fusion
+    // MARK: - Native Liquid Glass Floating TabBar mit Octave-Minimierung
     private var glassTabBar: some View {
         HStack(spacing: 12) {
             if isMinimized {
-                // MARK: - Minimierte Leiste (Fusionierter Modus)
-                // Linker 58x58 Kreis: Aktiver Tab (Antippen expandiert die Leiste sofort wieder)
+                // MARK: - Minimierte Leiste (Exakt wie in Octave beim Scrollen)
+                // 1. Linker 62x62 Kreis: Aktiver Tab (Antippen stellt die durchgehende Leiste sofort wieder her)
                 let isSearch = (activeLiquidTab == .search)
                 let leftTab = isSearch ? previousLiquidTab : activeLiquidTab
 
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.impactOccurred()
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.80)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
                         if isSearch {
                             selectLiquidTab(previousLiquidTab)
                         }
@@ -324,7 +324,7 @@ public struct MainTabView: View {
                             )
                             .overlay(
                                 Circle()
-                                    .stroke(
+                                    .strokeBorder(
                                         LinearGradient(
                                             stops: [
                                                 .init(color: Color.white.opacity(0.55), location: 0.0),
@@ -342,26 +342,28 @@ public struct MainTabView: View {
                             .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
 
                         Image(systemName: leftTab.iconName(isSelected: !isSearch))
-                            .font(.system(size: 20, weight: isSearch ? .semibold : .bold))
+                            .font(.system(size: 21, weight: isSearch ? .semibold : .bold))
                             .foregroundColor(isSearch ? Color.white.opacity(0.85) : Color(hex: "#fc3c44"))
                     }
-                    .frame(width: 58, height: 58)
+                    .frame(width: 62, height: 62)
                 }
                 .buttonStyle(PlainButtonStyle())
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
 
-                // Mittig: Kompakte MiniPlayer-Kapsel wenn ein Song laeuft (FUSIONIERT DIREKT IN DIE LEISTE!)
+                // 2. Mittig: Kompakte Inline Now-Playing-Kapsel (Exakt zwischen beiden Kreisen eingedockt)
                 if player.currentTrack != nil {
                     PlayerBarView(serverURL: serverURL, isInline: true) {
                         withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
                             showFullscreenPlayer = true
                         }
                     }
+                    .frame(height: 62)
                     .transition(.scale(scale: 0.90).combined(with: .opacity))
                 } else {
                     Spacer()
                 }
 
-                // Rechter 58x58 Kreis mit der Lupe
+                // 3. Rechter 62x62 Kreis: Die Suche als eigenständiger Kreis mit Lupe
                 SearchApartCircle(
                     isSelected: activeLiquidTab == .search,
                     onTap: {
@@ -370,8 +372,9 @@ public struct MainTabView: View {
                         selectLiquidTab(.search)
                     }
                 )
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
             } else {
-                // MARK: - Vollstaendige Kapsel-Leiste: Ein einziger zusammenhaengender Balken mit allen 4 Tabs
+                // MARK: - Vollständige Durchgehende Kapsel-Leiste (Startseite, Bibliothek, Radio, Suche)
                 InteractiveTabCapsule(
                     activeTab: $activeLiquidTab,
                     tabs: currentTabsList,
@@ -380,7 +383,8 @@ public struct MainTabView: View {
                         selectLiquidTab(tab)
                     }
                 )
-                .frame(height: 58)
+                .frame(height: 62)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
                 .contextMenu {
                     Button(action: { iconsOnly.toggle() }) {
                         Label(iconsOnly ? "Namen einblenden" : "Nur Icons anzeigen", systemImage: iconsOnly ? "text.bubble" : "circle.circle")
@@ -394,9 +398,9 @@ public struct MainTabView: View {
                 }
             }
         }
-        .frame(height: 58)
+        .frame(height: 62)
         .padding(.horizontal, 16)
-        .padding(.bottom, 2)
+        .padding(.bottom, 6)
     }
 
     private func selectLiquidTab(_ tab: LiquidTabID) {
@@ -501,7 +505,7 @@ private struct InteractiveTabCapsule: View {
             let dynamicStretch = min(32.0, max(-32.0, liveVelocityX * 0.045))
             let pillWidth = max(tabWidth * 0.82, tabWidth * 0.94 + abs(dynamicStretch))
             let pillCenterX = currentCenterX + (dynamicStretch * 0.30)
-            let pillHeight = max(44.0, 48.0 - abs(dynamicStretch) * 0.12)
+            let pillHeight = max(46.0, 50.0 - abs(dynamicStretch) * 0.12)
 
             ZStack(alignment: .leading) {
                 // Layer 1: Native Apple Liquid Glass View mit echter Hardware-Transparenz
@@ -679,7 +683,7 @@ private struct LiquidGlassLensPill: View {
     }
 }
 
-// MARK: - Apart Search Circular Platter (Right 58pt Circle)
+// MARK: - Apart Search Circular Platter (Right 62pt Circle)
 private struct SearchApartCircle: View {
     let isSelected: Bool
     let onTap: () -> Void
@@ -687,7 +691,7 @@ private struct SearchApartCircle: View {
     var body: some View {
         Button(action: onTap) {
             ZStack {
-                // Base 58pt Glass Circle
+                // Base 62pt Glass Circle
                 Circle()
                     .fill(.ultraThinMaterial)
                 AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
@@ -707,7 +711,7 @@ private struct SearchApartCircle: View {
                     )
                     .overlay(
                         Circle()
-                            .stroke(
+                            .strokeBorder(
                                 LinearGradient(
                                     stops: [
                                         .init(color: Color.white.opacity(0.55), location: 0.0),
@@ -739,16 +743,16 @@ private struct SearchApartCircle: View {
                                     lineWidth: 0.75
                                 )
                         )
-                        .frame(width: 44, height: 44)
+                        .frame(width: 48, height: 48)
                         .shadow(color: Color.black.opacity(0.25), radius: 6, y: 2)
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
 
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 19, weight: isSelected ? .bold : .medium))
+                    .font(.system(size: 20, weight: isSelected ? .bold : .medium))
                     .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
             }
-            .frame(width: 58, height: 58)
+            .frame(width: 62, height: 62)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -814,7 +818,7 @@ private struct NavbarSettingsSheet: View {
                 Section(header: Text("Scroll-Verhalten").foregroundColor(.white.opacity(0.60))) {
                     Toggle("Beim Scrollen minimieren", isOn: $scrollMinimize)
                         .tint(Color(hex: "#fc3c44"))
-                    Text("Schrumpft die Kapsel beim Scrollen nach unten auf einen Kreis und dockt die Minibar direkt in die Zeile ein.")
+                    Text("Schrumpft die Kapsel beim Scrollen nach unten wie in Octave in zwei Kreise und dockt die Minibar direkt dazwischen ein.")
                         .font(.system(size: 12))
                         .foregroundColor(Color.white.opacity(0.50))
                 }
