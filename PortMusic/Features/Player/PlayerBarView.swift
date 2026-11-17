@@ -36,10 +36,10 @@ public struct PlayerBarView: View {
             ZStack(alignment: .bottom) {
                 if isInline {
                     inlineContentView(track: track)
-                        .transition(.opacity)
+                        .transition(AnyTransition.opacity)
                 } else {
                     expandedContentView(track: track)
-                        .transition(.opacity)
+                        .transition(AnyTransition.opacity)
                 }
             }
             .frame(height: isInline ? 62 : 48)
@@ -68,7 +68,7 @@ public struct PlayerBarView: View {
 
     // MARK: - Inline Minibar (Exakt wie in Octave: Sitzt im minimierten Zustand zwischen linkem und rechtem 62pt-Kreis)
     @ViewBuilder
-    private func inlineContentView(track: MusicTrack) -> some View {
+    private func inlineContentView(track: Track) -> some View {
         Button(action: {
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
@@ -119,7 +119,7 @@ public struct PlayerBarView: View {
 
     // MARK: - Vollwertige Schwebende Minibar (Im Ruhezustand über der durchgehenden Leiste)
     @ViewBuilder
-    private func expandedContentView(track: MusicTrack) -> some View {
+    private func expandedContentView(track: Track) -> some View {
         ZStack(alignment: .bottom) {
             HStack(spacing: 10) {
                 // Linker Bereich: Cover + Titel + Interpret (Antippen oeffnet Vollbild)
