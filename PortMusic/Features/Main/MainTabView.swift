@@ -35,23 +35,23 @@ public enum MainTabItem: Int, CaseIterable {
     }
 }
 
-// MARK: - Rich Liquid Glass Tab Model (Exakt wie im Apple Music Referenz-Screenshot: Home, New, Radio, Library + Apart Search)
+// MARK: - Rich Liquid Glass Tab Model (Home, Library, Radio, Search)
 public enum LiquidTabID: String, CaseIterable, Identifiable {
     case home = "home"
-    case newReleases = "new"
-    case radio = "radio"
     case library = "library"
+    case radio = "radio"
     case search = "search"
+    case newReleases = "new"
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
         case .home: return "Startseite"
-        case .newReleases: return "Entdecken"
+        case .library: return "Bibliothek"
         case .radio: return "Radio"
-        case .library: return "Mediathek"
-        case .search: return "Suchen"
+        case .search: return "Suche"
+        case .newReleases: return "Entdecken"
         }
     }
 
@@ -59,14 +59,14 @@ public enum LiquidTabID: String, CaseIterable, Identifiable {
         switch self {
         case .home:
             return isSelected ? "house.fill" : "house"
-        case .newReleases:
-            return isSelected ? "square.grid.2x2.fill" : "square.grid.2x2"
-        case .radio:
-            return "dot.radiowaves.left.and.right"
         case .library:
             return "music.note.list"
+        case .radio:
+            return "dot.radiowaves.left.and.right"
         case .search:
             return "magnifyingglass"
+        case .newReleases:
+            return isSelected ? "square.grid.2x2.fill" : "square.grid.2x2"
         }
     }
 }
@@ -540,8 +540,8 @@ private struct InteractiveTabCapsule: View {
     @State private var lastHapticIndex: Int? = nil
     private let inactiveTabOpacity: Double = 0.45
 
-    // Alle 5 Tabs in einer einzigen Schwebekapsel vereint (Home, New, Radio, Library, Search)
-    private let tabs: [LiquidTabID] = [.home, .newReleases, .radio, .library, .search]
+    // Genau 4 Tabs in der Schwebekapsel: Startseite, Bibliothek, Radio, Suche
+    private let tabs: [LiquidTabID] = [.home, .library, .radio, .search]
 
     // Strictly uses MainTabItem.allCases to guarantee AST test contracts (T2_F03_2)
     private var allCasesAudit: [MainTabItem] {
