@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - MainTabItem (Maintained strictly for AST E2E Test Contracts: T1_F03_1, T2_F03_4)
 public enum MainTabItem: Int, CaseIterable {
@@ -777,6 +778,37 @@ private struct SearchApartCircle: View {
     }
 }
 
+// MARK: - Tab Reordering Drop Delegate for Native Drag & Drop
+private struct TabDropDelegate: DropDelegate {
+    let item: LiquidTabID
+    @Binding var tabs: [LiquidTabID]
+    @Binding var draggedItem: LiquidTabID?
+    let onCommit: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged = draggedItem,
+              dragged != item,
+              let from = tabs.firstIndex(of: dragged),
+              let to = tabs.firstIndex(of: item) else { return }
+
+        if tabs[to] != dragged {
+            withAnimation(.default) {
+                tabs.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+            }
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedItem = nil
+        onCommit()
+        return true
+    }
+}
+
 // MARK: - Navbar Settings Sheet (Tab-Konfiguration & Anzeigeeinstellungen)
 private struct NavbarSettingsSheet: View {
     @Binding var iconsOnly: Bool
@@ -784,11 +816,9 @@ private struct NavbarSettingsSheet: View {
     @Binding var customTabsRaw: String
     @Environment(\.dismiss) private var dismiss
 
-    private var activeTabs: [LiquidTabID] {
-        let rawIds = customTabsRaw.split(separator: ",").map(String.init)
-        let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
-        return parsed.isEmpty ? [.home, .library, .radio, .search] : parsed
-    }
+    @State private var activeTabs: [LiquidTabID] = []
+    @State private var isEditing: Bool = false
+    @State private var draggedItem: LiquidTabID? = nil
 
     private var inactiveTabs: [LiquidTabID] {
         let current = Set(activeTabs)
@@ -800,38 +830,33 @@ private struct NavbarSettingsSheet: View {
         customTabsRaw = tabs.map(\.rawValue).joined(separator: ",")
     }
 
-    private func moveTab(from: Int, to: Int) {
-        var list = activeTabs
-        guard from >= 0, from < list.count, to >= 0, to < list.count else { return }
-        let item = list.remove(at: from)
-        list.insert(item, at: to)
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
-        saveTabs(list)
-    }
-
-    private func removeTab(at index: Int) {
-        var list = activeTabs
-        guard list.count > 2, index >= 0, index < list.count else { return }
-        list.remove(at: index)
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-        saveTabs(list)
-    }
-
-    private func addTab(_ tab: LiquidTabID) {
-        var list = activeTabs
-        guard !list.contains(tab) else { return }
-        list.append(tab)
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
-        saveTabs(list)
+    private func toggleTab(_ tab: LiquidTabID) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            if activeTabs.contains(tab) {
+                guard activeTabs.count > 2 else {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.warning)
+                    return
+                }
+                activeTabs.removeAll { $0 == tab }
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+            } else {
+                activeTabs.append(tab)
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+            }
+            saveTabs(activeTabs)
+        }
     }
 
     private func resetToDefault() {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
-        saveTabs([.home, .library, .radio, .search])
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            activeTabs = [.home, .library, .radio, .search]
+            saveTabs(activeTabs)
+        }
     }
 
     var body: some View {
@@ -851,77 +876,91 @@ private struct NavbarSettingsSheet: View {
                 }
 
                 Section(
-                    header: Text("Angezeigte Tabs & Reihenfolge").foregroundColor(.white.opacity(0.60)),
-                    footer: Text("Pfeile antippen oder Listeneinträge verschieben, um die Reihenfolge in der Leiste festzulegen. Mindestens 2 Tabs bleiben aktiv.").font(.system(size: 12)).foregroundColor(.white.opacity(0.45))
+                    header:
+                        HStack {
+                            Text("Angezeigte Tabs")
+                                .foregroundColor(.white.opacity(0.60))
+                            Spacer()
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                    isEditing.toggle()
+                                }
+                            }) {
+                                Text(isEditing ? "Fertig" : "Bearbeiten")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .textCase(nil)
+                            }
+                        },
+                    footer:
+                        Group {
+                            if isEditing {
+                                Text("Mit den drei Strichen links per Drag & Drop sortieren. Rechts den Haken zum An- oder Abwählen tippen. Mindestens 2 Tabs bleiben aktiv.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+                        }
                 ) {
-                    ForEach(Array(activeTabs.enumerated()), id: \.element) { index, tab in
+                    ForEach(activeTabs) { tab in
                         HStack(spacing: 12) {
+                            if isEditing {
+                                // 1. Linke Seite: 3 Striche vor dem Icon zum Verschieben per Drag & Drop
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(Color.white.opacity(0.45))
+                                    .frame(width: 24)
+                            }
+
+                            // 2. Tab Icon
                             Image(systemName: tab.iconName(isSelected: true))
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(Color(hex: "#fc3c44"))
                                 .frame(width: 26)
 
+                            // 3. Tab Titel
                             Text(tab.title)
                                 .foregroundColor(.white)
                                 .font(.system(size: 15, weight: .medium))
 
                             Spacer()
 
-                            // Pfeil nach oben
-                            if index > 0 {
-                                Button(action: { moveTab(from: index, to: index - 1) }) {
-                                    Image(systemName: "chevron.up")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(Color.white.opacity(0.70))
-                                        .frame(width: 28, height: 28)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            // Pfeil nach unten
-                            if index < activeTabs.count - 1 {
-                                Button(action: { moveTab(from: index, to: index + 1) }) {
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(Color.white.opacity(0.70))
-                                        .frame(width: 28, height: 28)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            // Entfernen
-                            if activeTabs.count > 2 {
-                                Button(action: { removeTab(at: index) }) {
-                                    Image(systemName: "minus.circle.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(Color(hex: "#fc3c44").opacity(0.90))
-                                        .frame(width: 28, height: 28)
+                            if isEditing {
+                                // 4. Rechte Seite: Haken zum An- und Abwählen
+                                Button(action: { toggleTab(tab) }) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(Color(hex: "#fc3c44"))
+                                        .frame(width: 32, height: 32)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
-                    }
-                    .onMove { indices, newOffset in
-                        var list = activeTabs
-                        list.move(fromOffsets: indices, toOffset: newOffset)
-                        saveTabs(list)
+                        .padding(.vertical, 2)
+                        .onDrag {
+                            guard isEditing else { return NSItemProvider() }
+                            self.draggedItem = tab
+                            return NSItemProvider(object: tab.rawValue as NSString)
+                        }
+                        .onDrop(of: [UTType.text], delegate: TabDropDelegate(item: tab, tabs: $activeTabs, draggedItem: $draggedItem, onCommit: {
+                            saveTabs(activeTabs)
+                        }))
                     }
                 }
 
-                if !inactiveTabs.isEmpty {
-                    Section(header: Text("Weitere verfügbare Tabs").foregroundColor(.white.opacity(0.60))) {
+                // Sektion "Weitere Optionen" wird NUR angezeigt, wenn Bearbeiten aktiv ist und inaktive Tabs vorhanden sind
+                if isEditing && !inactiveTabs.isEmpty {
+                    Section(
+                        header: Text("Weitere Optionen").foregroundColor(.white.opacity(0.60)),
+                        footer: Text("Tippe auf den Kreis rechts, um einen Tab wieder unten in der Leiste anzuzeigen.").font(.system(size: 12)).foregroundColor(.white.opacity(0.45))
+                    ) {
                         ForEach(inactiveTabs) { tab in
                             HStack(spacing: 12) {
-                                Button(action: { addTab(tab) }) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(Color(hex: "#34c759"))
-                                        .frame(width: 26)
-                                }
-                                .buttonStyle(.plain)
+                                // Platzhalter links fuer exakte Ausrichtung mit den 3 Strichen
+                                Color.clear
+                                    .frame(width: 24, height: 24)
 
                                 Image(systemName: tab.iconName(isSelected: false))
                                     .font(.system(size: 16))
@@ -933,23 +972,36 @@ private struct NavbarSettingsSheet: View {
                                     .font(.system(size: 15))
 
                                 Spacer()
+
+                                // Leerer Kreis zum Hinzufuegen
+                                Button(action: { toggleTab(tab) }) {
+                                    Image(systemName: "circle")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(Color.white.opacity(0.35))
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
                             }
+                            .padding(.vertical, 2)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                addTab(tab)
+                                toggleTab(tab)
                             }
                         }
                     }
                 }
 
-                Section {
-                    Button(action: resetToDefault) {
-                        HStack {
-                            Spacer()
-                            Text("Standard-Reihenfolge wiederherstellen")
-                                .foregroundColor(Color(hex: "#fc3c44"))
-                                .font(.system(size: 14, weight: .semibold))
-                            Spacer()
+                if isEditing {
+                    Section {
+                        Button(action: resetToDefault) {
+                            HStack {
+                                Spacer()
+                                Text("Standard-Reihenfolge wiederherstellen")
+                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .font(.system(size: 14, weight: .semibold))
+                                Spacer()
+                            }
                         }
                     }
                 }
@@ -957,16 +1009,17 @@ private struct NavbarSettingsSheet: View {
             .navigationTitle("Navigationsleiste")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    EditButton()
-                        .foregroundColor(Color(hex: "#fc3c44"))
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Fertig") {
                         dismiss()
                     }
                     .foregroundColor(Color(hex: "#fc3c44"))
                 }
+            }
+            .onAppear {
+                let rawIds = customTabsRaw.split(separator: ",").map(String.init)
+                let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
+                activeTabs = parsed.isEmpty ? [.home, .library, .radio, .search] : parsed
             }
         }
         .preferredColorScheme(.dark)
