@@ -166,13 +166,17 @@ public struct MainTabView: View {
                     }
                 }
             }
-            .tabBarMinimizeBehavior(scrollMinimizeEnabled ? .onScrollDown : .never)
-            .tabViewBottomAccessory(isEnabled: player.currentTrack != nil) {
-                NowPlayingAccessoryBar(serverURL: serverURL) {
+
+            // ── Schwebender Now-Playing MiniPlayer ueber der nativen iOS Tab-Leiste ──
+            if player.currentTrack != nil {
+                PlayerBarView(serverURL: serverURL, isInline: false) {
                     withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
                         showFullscreenPlayer = true
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 56)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
@@ -584,22 +588,6 @@ public struct MainTabView: View {
     }
 }
 
-// MARK: - Native Now-Playing Accessory Bar fuer iOS 18 tabViewBottomAccessory
-@available(iOS 18.0, *)
-private struct NowPlayingAccessoryBar: View {
-    let serverURL: String
-    let onOpenFullscreen: () -> Void
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
-
-    var body: some View {
-        PlayerBarView(
-            serverURL: serverURL,
-            isInline: (placement == .inline),
-            onOpenFullscreen: onOpenFullscreen
-        )
-        .padding(.horizontal, placement == .inline ? 0 : 16)
-    }
-}
 
 // MARK: - Metal Stitchable Squircle Distortion Modifier
 extension View {
