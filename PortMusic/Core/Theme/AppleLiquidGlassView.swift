@@ -55,11 +55,21 @@ public struct AppleLiquidGlassView: UIViewRepresentable {
                         let setImp = method_getImplementation(setMethod)
                         let setFn = unsafeBitCast(setImp, to: SetCornerConfigFunc.self)
                         setFn(blurView, setSel, config)
+                        // Wichtig: clipsToBounds muss false sein, damit die optische Randbrechung (Refraktions-Saum)
+                        // von UICornerConfiguration gerendert und nicht abgeschnitten wird
+                        blurView.clipsToBounds = false
+                    } else {
+                        blurView.layer.cornerCurve = .continuous
+                        blurView.clipsToBounds = true
                     }
+                } else {
+                    blurView.layer.cornerCurve = .continuous
+                    blurView.clipsToBounds = true
                 }
+            } else {
+                blurView.layer.cornerCurve = .continuous
+                blurView.clipsToBounds = true
             }
-            blurView.layer.cornerCurve = .continuous
-            blurView.clipsToBounds = true
         } else if isCapsule {
             blurView.layer.cornerCurve = .continuous
             blurView.clipsToBounds = true
@@ -73,9 +83,14 @@ public struct AppleLiquidGlassView: UIViewRepresentable {
 
     public func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
         if isCapsule {
-            uiView.layer.cornerRadius = uiView.bounds.height / 2
-            uiView.layer.cornerCurve = .continuous
-            uiView.clipsToBounds = true
+            let hasCornerConfig = NSClassFromString("UICornerConfiguration") != nil && uiView.responds(to: NSSelectorFromString("setCornerConfiguration:"))
+            if !hasCornerConfig {
+                uiView.layer.cornerRadius = uiView.bounds.height / 2
+                uiView.layer.cornerCurve = .continuous
+                uiView.clipsToBounds = true
+            } else {
+                uiView.clipsToBounds = false
+            }
         }
         if tintAlpha > 0 {
             uiView.backgroundColor = UIColor(white: style == .systemUltraThinMaterialLight ? 1.0 : 0.35, alpha: tintAlpha)

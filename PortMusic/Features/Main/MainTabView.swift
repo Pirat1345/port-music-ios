@@ -438,66 +438,60 @@ private struct LiquidGlassLensPill: View {
 
     var body: some View {
         ZStack {
-            // 1. Echter nativer UIGlassEffect / Blur für die Kapsel-Linse (Bricht das Licht des Hintergrunds)
-            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
-                .clipShape(Capsule())
+            // 1. Echter nativer UIGlassEffect für die Kapsel-Linse (Bricht das Licht des Hintergrunds)
+            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.14, isCapsule: true)
 
-            // 2. SwiftUI UltraThinMaterial für dynamisches OS-Backdrop-Sampling
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .opacity(0.85)
-
-            // 3. Diffuser Glanz-Verlauf (Lichtreflexion der Glasoberfläche)
+            // 2. Subtiler Glanz-Verlauf (Lichtreflexion der Glasoberfläche)
             Capsule()
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.28), location: 0.0),
-                            .init(color: Color.white.opacity(0.10), location: 0.35),
-                            .init(color: Color.white.opacity(0.02), location: 0.70),
-                            .init(color: Color.white.opacity(0.14), location: 1.0)
+                            .init(color: Color.white.opacity(0.18), location: 0.0),
+                            .init(color: Color.white.opacity(0.06), location: 0.35),
+                            .init(color: Color.clear, location: 0.70),
+                            .init(color: Color.white.opacity(0.08), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
 
-            // 4. Äußere hochpräzise Specular-Lichtkante (Facettenschliff)
+            // 3. Äußere hochpräzise Specular-Lichtkante (Facettenschliff)
             Capsule()
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.85), location: 0.0),
-                            .init(color: Color.white.opacity(0.45), location: 0.25),
-                            .init(color: Color.white.opacity(0.15), location: 0.70),
-                            .init(color: Color.white.opacity(0.45), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 1.0
-                )
-
-            // 5. Innere 3D-Glasdicke (Subtile Kantenfase)
-            Capsule()
-                .inset(by: 1.0)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.white.opacity(0.25), location: 0.0),
-                            .init(color: Color.clear, location: 0.40),
-                            .init(color: Color.black.opacity(0.20), location: 1.0)
+                            .init(color: Color.white.opacity(0.60), location: 0.0),
+                            .init(color: Color.white.opacity(0.25), location: 0.25),
+                            .init(color: Color.white.opacity(0.10), location: 0.70),
+                            .init(color: Color.white.opacity(0.30), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
                     lineWidth: 0.75
                 )
+
+            // 4. Innere 3D-Glasdicke (Subtile Kantenfase)
+            Capsule()
+                .inset(by: 1.0)
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.20), location: 0.0),
+                            .init(color: Color.clear, location: 0.40),
+                            .init(color: Color.black.opacity(0.15), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.5
+                )
         }
         .frame(width: width, height: height)
-        .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
-        .shadow(color: Color.black.opacity(0.18), radius: 2, x: 0, y: 1)
-        .shadow(color: Color.white.opacity(0.15), radius: 1, x: 0, y: -1)
+        .shadow(color: Color.black.opacity(0.30), radius: 8, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
+        .shadow(color: Color.white.opacity(0.10), radius: 1, x: 0, y: -1)
     }
 }
 
@@ -531,41 +525,36 @@ private struct InteractiveTabCapsule: View {
             ZStack(alignment: .leading) {
                 // Layer 1: Native Apple Liquid Glass View mit echter Frost-Luminanz
                 AppleLiquidGlassView(style: .systemUltraThinMaterialDark, tintAlpha: 0.22, isCapsule: true)
-                    .clipShape(Capsule())
 
-                // Layer 2: SwiftUI Material for dynamic OS blending
-                Capsule()
-                    .fill(.ultraThinMaterial)
-
-                // Layer 3: Subtiler Specular Frost Sheen
+                // Layer 2: Subtiler Specular Frost Sheen
                 Capsule()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.18), location: 0.0),
-                                .init(color: Color.white.opacity(0.06), location: 0.35),
+                                .init(color: Color.white.opacity(0.14), location: 0.0),
+                                .init(color: Color.white.opacity(0.04), location: 0.35),
                                 .init(color: Color.clear, location: 0.70),
-                                .init(color: Color.black.opacity(0.10), location: 1.0)
+                                .init(color: Color.black.opacity(0.08), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
 
-                // Layer 4: Specular Glass Edge (Lichtkante)
+                // Layer 3: Specular Glass Edge (Lichtkante)
                 Capsule()
                     .stroke(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.65), location: 0.0),
-                                .init(color: Color.white.opacity(0.28), location: 0.25),
-                                .init(color: Color.white.opacity(0.10), location: 0.70),
-                                .init(color: Color.white.opacity(0.22), location: 1.0)
+                                .init(color: Color.white.opacity(0.50), location: 0.0),
+                                .init(color: Color.white.opacity(0.20), location: 0.25),
+                                .init(color: Color.white.opacity(0.08), location: 0.70),
+                                .init(color: Color.white.opacity(0.18), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
-                        lineWidth: 1.0
+                        lineWidth: 0.85
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 7)
                     .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
