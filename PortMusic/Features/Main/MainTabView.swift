@@ -109,6 +109,139 @@ public struct MainTabView: View {
     }
 
     public var body: some View {
+        Group {
+            if #available(iOS 18.0, *) {
+                modernTabView
+            } else {
+                legacyTabView
+            }
+        }
+        .preferredColorScheme(.dark)
+        .tint(.white)
+        .task {
+            await player.syncLastPlayedFromServerIfNeeded(serverURL: serverURL, token: SessionManager.shared.currentToken)
+            await SessionManager.shared.refreshUserProfile()
+        }
+        .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
+    }
+
+    // MARK: - Offizielle Native Apple iOS 18 TabView mit tabViewBottomAccessory
+    @available(iOS 18.0, *)
+    private var modernTabView: some View {
+        ZStack {
+            TabView(selection: $activeLiquidTab) {
+                Tab("Startseite", systemImage: activeLiquidTab == .home ? "house.fill" : "house", value: LiquidTabID.home) {
+                    NavigationStack {
+                        HomeView(serverURL: serverURL, user: user)
+                            .navigationDestination(for: AppRoute.self) { route in
+                                destinationForRoute(route)
+                            }
+                    }
+                }
+
+                Tab("Bibliothek", systemImage: "music.note.list", value: LiquidTabID.library) {
+                    NavigationStack {
+                        LibraryView(serverURL: serverURL, user: user)
+                            .navigationDestination(for: AppRoute.self) { route in
+                                destinationForRoute(route)
+                            }
+                    }
+                }
+
+                Tab("Radio", systemImage: "dot.radiowaves.left.and.right", value: LiquidTabID.radio) {
+                    NavigationStack {
+                        RadioBrowserView(serverURL: serverURL)
+                            .navigationDestination(for: AppRoute.self) { route in
+                                destinationForRoute(route)
+                            }
+                    }
+                }
+
+                Tab("Suche", systemImage: "magnifyingglass", value: LiquidTabID.search, role: .search) {
+                    NavigationStack(path: $searchPath) {
+                        SearchView(serverURL: serverURL, navigationPath: $searchPath)
+                            .navigationDestination(for: AppRoute.self) { route in
+                                destinationForRoute(route)
+                            }
+                    }
+                }
+            }
+            .tabBarMinimizeBehavior(scrollMinimizeEnabled ? .onScrollDown : .never)
+            .tabViewBottomAccessory(isEnabled: player.currentTrack != nil) {
+                NowPlayingAccessoryBar(serverURL: serverURL) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                        showFullscreenPlayer = true
+                    }
+                }
+            }
+
+            // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
+            if showFullscreenPlayer {
+                Color.black.opacity(0.40)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showFullscreenPlayer = false
+                        }
+                    }
+
+                FullscreenPlayerView(serverURL: serverURL) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showFullscreenPlayer = false
+                    }
+                }
+                .ignoresSafeArea()
+                .transition(.move(edge: .bottom))
+                .zIndex(999)
+            }
+
+            // ── Menü Drawer (Slide-In Sheet von links) ──
+            PortMenuDrawerView(
+                user: session.currentUser ?? user,
+                serverURL: serverURL,
+                isPresented: $showMenuDrawer,
+                onNavigateHome: {
+                    selectLiquidTab(.home)
+                    showMenuDrawer = false
+                },
+                onOpenProfile: {
+                    showUserProfileSheet = true
+                    showMenuDrawer = false
+                },
+                onOpenSettings: {
+                    showNavbarSettings = true
+                    showMenuDrawer = false
+                },
+                onLogout: onLogout
+            )
+            .ignoresSafeArea()
+            .zIndex(998)
+        }
+        .sheet(isPresented: $showUserProfileSheet) {
+            UserPageView(user: session.currentUser ?? user, serverURL: serverURL)
+        }
+        .sheet(isPresented: $showNavbarSettings) {
+            NavbarSettingsSheet(
+                iconsOnly: $iconsOnly,
+                scrollMinimize: $scrollMinimizeEnabled,
+                customTabsRaw: $customTabsRaw
+            )
+        }
+        .onChange(of: activeLiquidTab) { newTab in
+            switch newTab {
+            case .home, .newReleases, .radio:
+                selectedTab = .home
+            case .library:
+                selectedTab = .library
+            case .search:
+                selectedTab = .search
+            }
+        }
+    }
+
+    // MARK: - Legacy TabView (Klassische Leiste für iOS < 18)
+    private var legacyTabView: some View {
         ZStack(alignment: .bottom) {
             ZStack {
                 Color(hex: "#161618")
@@ -274,12 +407,6 @@ public struct MainTabView: View {
                 selectLiquidTab(first)
             }
         }
-        .preferredColorScheme(.dark)
-        .task {
-            await player.syncLastPlayedFromServerIfNeeded(serverURL: serverURL, token: SessionManager.shared.currentToken)
-            await SessionManager.shared.refreshUserProfile()
-        }
-        .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
     // MARK: - Native Liquid Glass Floating Split TabBar
@@ -454,6 +581,23 @@ public struct MainTabView: View {
         case .appleCategory(let id, let title, let artworkUrl, let bgColor):
             AppleCategoryDetailView(id: id, title: title, artworkUrl: artworkUrl, bgColor: bgColor, serverURL: serverURL)
         }
+    }
+}
+
+// MARK: - Native Now-Playing Accessory Bar fuer iOS 18 tabViewBottomAccessory
+@available(iOS 18.0, *)
+private struct NowPlayingAccessoryBar: View {
+    let serverURL: String
+    let onOpenFullscreen: () -> Void
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
+    var body: some View {
+        PlayerBarView(
+            serverURL: serverURL,
+            isInline: (placement == .inline),
+            onOpenFullscreen: onOpenFullscreen
+        )
+        .padding(.horizontal, placement == .inline ? 0 : 16)
     }
 }
 
