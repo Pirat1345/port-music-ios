@@ -5,6 +5,10 @@ struct PortMusicApp: App {
     @StateObject private var sessionManager = SessionManager.shared
 
     public init() {
+        UserDefaults.standard.register(defaults: [
+            "com.apple.SwiftUI.IgnoreSolariumLinkedOnCheck": true
+        ])
+        UserDefaults.standard.set(true, forKey: "com.apple.SwiftUI.IgnoreSolariumLinkedOnCheck")
         UITextField.appearance().tintColor = .white
         UITextView.appearance().tintColor = .white
         UIView.appearance().tintColor = .white
