@@ -431,7 +431,7 @@ public struct MainTabView: View {
     }
 }
 
-// MARK: - Refractive Liquid Glass Lens Pill (Auswahl-Linse mit nativer Lichtbrechung)
+// MARK: - Refractive Liquid Glass Lens Pill (Auswahl-Linse mit nativer Lichtbrechung & 3D-Kantenkrümmung)
 private struct LiquidGlassLensPill: View {
     let width: CGFloat
     let height: CGFloat
@@ -439,59 +439,119 @@ private struct LiquidGlassLensPill: View {
     var body: some View {
         ZStack {
             // 1. Echter nativer UIGlassEffect für die Kapsel-Linse (Bricht das Licht des Hintergrunds)
-            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.14, isCapsule: true)
+            AppleLiquidGlassView(style: .systemUltraThinMaterialLight, tintAlpha: 0.12, isCapsule: true)
 
-            // 2. Subtiler Glanz-Verlauf (Lichtreflexion der Glasoberfläche)
+            // 2. 3D-Linsenbäuchung (Zylindrisch-konvexe Wölbung im Linsenzentrum)
             Capsule()
                 .fill(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.18), location: 0.0),
-                            .init(color: Color.white.opacity(0.06), location: 0.35),
-                            .init(color: Color.clear, location: 0.70),
-                            .init(color: Color.white.opacity(0.08), location: 1.0)
+                            .init(color: Color.white.opacity(0.24), location: 0.0),
+                            .init(color: Color.white.opacity(0.08), location: 0.25),
+                            .init(color: Color.clear, location: 0.60),
+                            .init(color: Color.white.opacity(0.06), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
 
-            // 3. Äußere hochpräzise Specular-Lichtkante (Facettenschliff)
+            // 3. Laterale Halbkugel-Wölbungen an den runden Enden (Radial Curvature der Kapselkappen)
+            // Bringt die echte sphärische Lichtkrümmung an die linken und rechten Enden
+            HStack(spacing: 0) {
+                // Linke Kantenkrümmung: Bricht das Licht bogenförmig entlang des linken Halbkreises
+                Circle()
+                    .strokeBorder(
+                        RadialGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.55), location: 0.60),
+                                .init(color: Color.white.opacity(0.18), location: 0.85),
+                                .init(color: Color.clear, location: 1.0)
+                            ],
+                            center: UnitPoint(x: 0.38, y: 0.38),
+                            startRadius: height * 0.15,
+                            endRadius: height * 0.50
+                        ),
+                        lineWidth: 2.2
+                    )
+                    .frame(width: height, height: height)
+                    .blendMode(.plusLighter)
+
+                Spacer(minLength: 0)
+
+                // Rechte Kantenkrümmung: Bricht das Licht bogenförmig entlang des rechten Halbkreises
+                Circle()
+                    .strokeBorder(
+                        RadialGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.40), location: 0.60),
+                                .init(color: Color.white.opacity(0.12), location: 0.85),
+                                .init(color: Color.clear, location: 1.0)
+                            ],
+                            center: UnitPoint(x: 0.62, y: 0.38),
+                            startRadius: height * 0.15,
+                            endRadius: height * 0.50
+                        ),
+                        lineWidth: 2.2
+                    )
+                    .frame(width: height, height: height)
+                    .blendMode(.plusLighter)
+            }
+            .clipShape(Capsule())
+
+            // 4. Primäre 3D-Kantenwölbung / Facettenschliff (Äußerer 1.0pt-Refraktionsrand)
             Capsule()
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.60), location: 0.0),
-                            .init(color: Color.white.opacity(0.25), location: 0.25),
-                            .init(color: Color.white.opacity(0.10), location: 0.70),
-                            .init(color: Color.white.opacity(0.30), location: 1.0)
+                            .init(color: Color(red: 0.90, green: 0.96, blue: 1.0, opacity: 0.75), location: 0.0), // Zartes spektrales Cyan-Highlight
+                            .init(color: Color.white.opacity(0.35), location: 0.30),
+                            .init(color: Color.white.opacity(0.12), location: 0.70),
+                            .init(color: Color(red: 1.0, green: 0.96, blue: 0.90, opacity: 0.40), location: 1.0)  // Zartes warmes Austrittslicht
                         ],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     ),
-                    lineWidth: 0.75
+                    lineWidth: 1.0
                 )
 
-            // 4. Innere 3D-Glasdicke (Subtile Kantenfase)
+            // 5. Konzentrische Kantenfase (1.5pt Inset - Tiefenrefraktion der Glaskrümmung)
             Capsule()
-                .inset(by: 1.0)
+                .inset(by: 1.5)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: Color.white.opacity(0.20), location: 0.0),
-                            .init(color: Color.clear, location: 0.40),
-                            .init(color: Color.black.opacity(0.15), location: 1.0)
+                            .init(color: Color.white.opacity(0.30), location: 0.0),
+                            .init(color: Color.clear, location: 0.35),
+                            .init(color: Color.black.opacity(0.20), location: 0.75),
+                            .init(color: Color.black.opacity(0.32), location: 1.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.2
+                )
+
+            // 6. Subtiler innerer Glas-Caustic-Schliff (3.0pt Inset - Lichtsammlung am Boden der Wölbung)
+            Capsule()
+                .inset(by: 3.0)
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.16), location: 0.0),
+                            .init(color: Color.clear, location: 0.50),
+                            .init(color: Color.white.opacity(0.12), location: 1.0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 0.5
+                    lineWidth: 0.6
                 )
         }
         .frame(width: width, height: height)
-        .shadow(color: Color.black.opacity(0.30), radius: 8, x: 0, y: 4)
-        .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
-        .shadow(color: Color.white.opacity(0.10), radius: 1, x: 0, y: -1)
+        .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 5)
+        .shadow(color: Color.black.opacity(0.20), radius: 3, x: 0, y: 1)
+        .shadow(color: Color.white.opacity(0.12), radius: 1, x: 0, y: -1)
     }
 }
 
@@ -574,24 +634,34 @@ private struct InteractiveTabCapsule: View {
                     .position(x: currentCenterX, y: geo.size.height / 2)
                     .animation(liveDragX == nil ? .spring(response: 0.34, dampingFraction: 0.80) : .interactiveSpring(), value: currentCenterX)
 
-                // Layer 6: Tab Items Stack
+                // Layer 6: Tab Items Stack mit optischer Linsen-Wölbungsreaktion (Magnification unter Glas)
                 HStack(spacing: 0) {
-                    ForEach(tabs) { tab in
+                    ForEach(0..<tabs.count, id: \.self) { idx in
+                        let tab = tabs[idx]
                         let isSelected = (activeTab == tab)
+                        let tabCenterX = CGFloat(idx) * tabWidth + tabWidth * 0.5
+                        let dist = abs(currentCenterX - tabCenterX)
+                        let norm = min(1.0, dist / tabWidth)
+                        let proximity = 1.0 - norm
+                        let dynamicScale = 1.0 + (proximity * 0.07)
+                        let textOpacity = isSelected ? 1.0 : max(inactiveTabOpacity, inactiveTabOpacity + proximity * 0.30)
+
                         VStack(spacing: 2) {
                             Image(systemName: tab.iconName(isSelected: isSelected))
                                 .font(.system(size: iconsOnly ? 22 : 20, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(inactiveTabOpacity))
+                                .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(textOpacity))
                                 .frame(height: iconsOnly ? 28 : 22)
 
                             if !iconsOnly {
                                 Text(tab.title)
                                     .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
-                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(inactiveTabOpacity))
+                                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(textOpacity))
                                     .minimumScaleFactor(0.8)
                                     .lineLimit(1)
                             }
                         }
+                        .scaleEffect(dynamicScale)
+                        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: dynamicScale)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                     }
