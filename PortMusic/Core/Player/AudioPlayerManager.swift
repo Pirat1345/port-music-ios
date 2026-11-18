@@ -464,11 +464,11 @@ public final class AudioPlayerManager: ObservableObject {
                 if let hits = discovery.todaysTopHits {
                     freshTracks.append(contentsOf: hits.map { $0.toTrack() })
                 }
-                if let forYou = discovery.forYou {
-                    freshTracks.append(contentsOf: forYou.map { $0.toTrack() })
+                if let top100 = discovery.top100Global {
+                    freshTracks.append(contentsOf: top100.map { $0.toTrack() })
                 }
-                if let radar = discovery.releaseRadar {
-                    freshTracks.append(contentsOf: radar.map { $0.toTrack() })
+                if let picks = discovery.topPicks {
+                    freshTracks.append(contentsOf: picks.map { $0.toTrack() })
                 }
 
                 let newUnique = freshTracks.filter { !existingIds.contains($0.id) }
