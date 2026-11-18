@@ -184,6 +184,7 @@ public final class AudioPlayerManager: ObservableObject {
             self.currentServerURL = sUrl
         }
         let effectiveServerURL = (serverURL != nil && !serverURL!.isEmpty) ? serverURL! : (self.currentServerURL ?? SessionManager.shared.serverURL ?? "")
+        let token = SessionManager.shared.currentToken
 
         // Track-Historie fuer Rueckwaerts-Springen fuehren (nur bei Vorwaerts-Wiedergabe)
         if !isNavigatingBackward, let current = self.currentTrack, current.id != track.id {
@@ -263,7 +264,6 @@ public final class AudioPlayerManager: ObservableObject {
         persistRecentTracks()
 
         // Background Playback Reporting to server
-        let token = SessionManager.shared.currentToken
         Task {
             await MusicService.shared.reportPlayback(track: track, serverURL: effectiveServerURL, token: token)
         }
