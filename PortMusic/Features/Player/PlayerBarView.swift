@@ -9,7 +9,7 @@ public struct PlayerBarView: View {
 
     @State private var dragProgress: Double? = nil
     @State private var horizontalDragOffset: CGFloat = 0
-    @State private var isSwiping: Bool = false
+    @State private var hasSwiped: Bool = false
 
     public init(serverURL: String, isInline: Bool = false, onOpenFullscreen: @escaping () -> Void) {
         self.serverURL = serverURL
@@ -66,14 +66,68 @@ public struct PlayerBarView: View {
         }
     }
 
+    // MARK: - Swipe & Tap Gesture (Präzise Trennung von Antippen und horizontalem Wischen)
+    private var swipeAndTapGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { val in
+                let dx = val.translation.width
+                let dy = val.translation.height
+                if abs(dx) > 6 || abs(dy) > 6 {
+                    hasSwiped = true
+                }
+                // Folge der horizontalen Bewegung (gedämpft), wenn horizontal überwiegt
+                if abs(dx) > abs(dy) {
+                    let clamped = max(-50.0, min(50.0, dx))
+                    horizontalDragOffset = clamped
+                }
+            }
+            .onEnded { val in
+                let dx = val.translation.width
+                let dy = val.translation.height
+                let velocityX = val.predictedEndTranslation.width - val.translation.width
+                let velocityY = val.predictedEndTranslation.height - val.translation.height
+                let distance = hypot(dx, dy)
+
+                // 1. Reiner Tap (Finger wurde kaum bewegt): Vollbild öffnen
+                if !hasSwiped || distance < 7 {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    onOpenFullscreen()
+                }
+                // 2. Wischen nach oben: Vollbild-Player öffnen (wie in Apple Music)
+                else if dy < -25 || velocityY < -35 {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
+                        onOpenFullscreen()
+                    }
+                }
+                // 3. Wischen nach links: Nächster Titel
+                else if dx < -35 || velocityX < -50 {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    player.next(serverURL: serverURL)
+                }
+                // 4. Wischen nach rechts: Vorheriger Titel
+                else if dx > 35 || velocityX > 50 {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    player.previous(serverURL: serverURL)
+                }
+
+                // Zustand zurücksetzen und Offset animiert zentrieren
+                hasSwiped = false
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                    horizontalDragOffset = 0
+                }
+            }
+    }
+
     // MARK: - Inline Minibar (Exakt wie in Octave: Sitzt im minimierten Zustand zwischen linkem und rechtem 62pt-Kreis)
     @ViewBuilder
     private func inlineContentView(track: Track) -> some View {
-        Button(action: {
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.impactOccurred()
-            onOpenFullscreen()
-        }) {
+        HStack(spacing: 10) {
+            // Antippbarer & Wischbarer Info-Bereich (Cover + Titel)
             HStack(spacing: 10) {
                 // Mini Cover Artwork (38x38, 8pt Radius)
                 let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
@@ -96,25 +150,27 @@ public struct PlayerBarView: View {
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Play / Pause Button (32x32 runder Glasbutton)
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    player.togglePlayPause()
-                }) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
-                        .background(Circle().fill(Color.white.opacity(0.18)))
-                }
-                .buttonStyle(PlainButtonStyle())
             }
-            .padding(.horizontal, 12)
-            .frame(height: 62)
+            .contentShape(Rectangle())
+            .offset(x: horizontalDragOffset)
+            .gesture(swipeAndTapGesture)
+
+            // Play / Pause Button (32x32 runder Glasbutton)
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                player.togglePlayPause()
+            }) {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Color.white.opacity(0.18)))
+            }
+            .buttonStyle(PlainButtonStyle())
         }
-        .buttonStyle(PlainButtonStyle())
+        .padding(.horizontal, 12)
+        .frame(height: 62)
     }
 
     // MARK: - Vollwertige Schwebende Minibar (Im Ruhezustand über der durchgehenden Leiste)
@@ -122,57 +178,51 @@ public struct PlayerBarView: View {
     private func expandedContentView(track: Track) -> some View {
         ZStack(alignment: .bottom) {
             HStack(spacing: 10) {
-                // Linker Bereich: Cover + Titel + Interpret (Antippen oeffnet Vollbild)
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
-                    onOpenFullscreen()
-                }) {
-                    HStack(spacing: 10) {
-                        // Cover-Artwork (44x44 Standard)
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.white.opacity(0.08))
+                // Linker Bereich: Cover + Titel + Interpret (Antippen öffnet Vollbild, Wischen wechselt Titel)
+                HStack(spacing: 10) {
+                    // Cover-Artwork (44x44 Standard)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 44, height: 44)
+
+                        let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                        PortCachedAsyncImage(url: resolved) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
                                 .frame(width: 44, height: 44)
-
-                            let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
-                            PortCachedAsyncImage(url: resolved) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 44, height: 44)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                            } placeholder: {
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(Color.white.opacity(0.5))
-                            }
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        } placeholder: {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 15))
+                                .foregroundColor(Color.white.opacity(0.5))
                         }
-                        .frame(width: 44, height: 44)
-                        .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
-
-                        // Titel und Interpret
-                        let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
-                        let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(displayTitle)
-                                .font(.system(size: 13.5, weight: .semibold))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-
-                            Text(displayArtist)
-                                .font(.system(size: 11.5, weight: .regular))
-                                .foregroundColor(Color.white.opacity(0.65))
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: 4)
                     }
-                    .contentShape(Rectangle())
+                    .frame(width: 44, height: 44)
+                    .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
+
+                    // Titel und Interpret
+                    let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
+                    let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(displayTitle)
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        Text(displayArtist)
+                            .font(.system(size: 11.5, weight: .regular))
+                            .foregroundColor(Color.white.opacity(0.65))
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 4)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .contentShape(Rectangle())
                 .offset(x: horizontalDragOffset)
+                .gesture(swipeAndTapGesture)
 
                 // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
                 HStack(spacing: 8) {
@@ -196,7 +246,7 @@ public struct PlayerBarView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    // Naechster Titel (forward.fill)
+                    // Nächster Titel (forward.fill)
                     Button(action: {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
@@ -212,48 +262,6 @@ public struct PlayerBarView: View {
             }
             .padding(.horizontal, 12)
             .frame(height: 48)
-            // Gesten: Wischen nach oben oeffnet Vollbild, Wischen horizontal wechselt Titel
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { val in
-                        if abs(val.translation.width) > abs(val.translation.height) {
-                            isSwiping = true
-                            horizontalDragOffset = val.translation.width
-                        }
-                    }
-                    .onEnded { val in
-                        let dx = val.translation.width
-                        let dy = val.translation.height
-                        let velocityX = val.predictedEndTranslation.width - val.translation.width
-                        let velocityY = val.predictedEndTranslation.height - val.translation.height
-
-                        // 1. Wischen nach oben: Vollbild-Player oeffnen (wie in Apple Music)
-                        if dy < -25 || velocityY < -35 {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.impactOccurred()
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
-                                onOpenFullscreen()
-                            }
-                            return
-                        }
-
-                        // 2. Horizontales Wischen: Vorheriger / Naechster Titel
-                        guard isSwiping else { return }
-                        isSwiping = false
-                        if dx < -45 || velocityX < -60 {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.impactOccurred()
-                            player.next(serverURL: serverURL)
-                        } else if dx > 45 || velocityX > 60 {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.impactOccurred()
-                            player.previous(serverURL: serverURL)
-                        }
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                            horizontalDragOffset = 0
-                        }
-                    }
-            )
 
             // 2px filigrane Fortschrittslinie direkt am unteren Rand der Kapsel
             timelineScrubberSection
