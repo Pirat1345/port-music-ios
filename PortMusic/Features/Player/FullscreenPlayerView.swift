@@ -13,7 +13,6 @@ public struct FullscreenPlayerView: View {
     @State private var isFavorite: Bool = false
     @State private var showLyrics: Bool = false
     @State private var sidePanelMode: SidePanelMode = .none
-    @GestureState private var gestureDragOffset: CGFloat = 0.0
     @State private var dragOffset: CGFloat = 0.0
     @State private var isDismissing: Bool = false
     @State private var volume: Float = 0.7
@@ -33,13 +32,6 @@ public struct FullscreenPlayerView: View {
     public init(serverURL: String, onClose: @escaping () -> Void) {
         self.serverURL = serverURL
         self.onClose = onClose
-    }
-
-    private var effectiveDragOffset: CGFloat {
-        if isDismissing {
-            return dragOffset
-        }
-        return gestureDragOffset
     }
 
     private func triggerDismiss(fullHeight: CGFloat) {
@@ -80,9 +72,9 @@ public struct FullscreenPlayerView: View {
             let fullHeight = geo.size.height
 
             // Dynamischer Eckenradius: Im Ruhezustand 0 (vollflächig bis an den Displayrand ohne schwarze Lücken),
-            // beim Herunterziehen (effectiveDragOffset > 0) blendet sich die 44pt-Kartenabrundung ein:
-            let pullProgress = min(1.0, max(0.0, effectiveDragOffset / 120.0))
-            let dynamicCornerRadius: CGFloat = effectiveDragOffset > 0 ? (pullProgress * 44.0) : 0.0
+            // beim Herunterziehen (dragOffset > 0) blendet sich die 44pt-Kartenabrundung ein:
+            let pullProgress = min(1.0, max(0.0, dragOffset / 120.0))
+            let dynamicCornerRadius: CGFloat = dragOffset > 0 ? (pullProgress * 44.0) : 0.0
 
             // ── GESAMTER MODAL-CONTAINER (Hintergrund + Inhalt wandern gemeinsam) ──
             // Exakt auf fullWidth x fullHeight begrenzt und geclippt.
@@ -115,19 +107,29 @@ public struct FullscreenPlayerView: View {
             .clipShape(RoundedRectangle(cornerRadius: dynamicCornerRadius, style: .continuous))
             .simultaneousGesture(
                 DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                    .updating($gestureDragOffset) { val, state, _ in
+                    .onChanged { val in
                         guard !isDismissing else { return }
-                        if val.translation.height > 0 {
-                            state = val.translation.height
+                        let dy = val.translation.height
+                        if dy > 0 {
+                            var transaction = Transaction()
+                            transaction.animation = nil
+                            withTransaction(transaction) {
+                                dragOffset = dy
+                            }
                         } else {
-                            state = val.translation.height * 0.15
+                            let damped = dy * 0.15
+                            var transaction = Transaction()
+                            transaction.animation = nil
+                            withTransaction(transaction) {
+                                dragOffset = damped
+                            }
                         }
                     }
                     .onEnded { val in
                         guard !isDismissing else { return }
                         let dy = val.translation.height
                         let velocityY = val.predictedEndTranslation.height - val.translation.height
-                        if dy > 120 || (dy > 80 && velocityY > 160) {
+                        if dy > 120 || (dy > 60 && velocityY > 150) {
                             triggerDismiss(fullHeight: fullHeight)
                         } else {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -136,13 +138,13 @@ public struct FullscreenPlayerView: View {
                         }
                     }
             )
-            .scaleEffect(max(0.88, 1.0 - (max(0, effectiveDragOffset) / 1400.0)), anchor: .top)
+            .scaleEffect(max(0.88, 1.0 - (max(0, dragOffset) / 1400.0)), anchor: .top)
             .shadow(
-                color: Color.black.opacity(effectiveDragOffset > 0 ? (pullProgress * 0.60) : 0.0),
-                radius: effectiveDragOffset > 0 ? (pullProgress * 36) : 0,
-                y: effectiveDragOffset > 0 ? (pullProgress * 18) : 0
+                color: Color.black.opacity(dragOffset > 0 ? (pullProgress * 0.60) : 0.0),
+                radius: dragOffset > 0 ? (pullProgress * 36) : 0,
+                y: dragOffset > 0 ? (pullProgress * 18) : 0
             )
-            .offset(y: max(0, effectiveDragOffset))
+            .offset(y: max(0, dragOffset))
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
             }
@@ -152,6 +154,8 @@ public struct FullscreenPlayerView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
+            dragOffset = 0
+            isDismissing = false
             volumeManager.syncVolume()
             self.volume = volumeManager.volume
             if let track = player.currentTrack {
