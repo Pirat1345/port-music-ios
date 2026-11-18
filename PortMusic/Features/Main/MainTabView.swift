@@ -245,12 +245,43 @@ public struct MainTabView: View {
 
                     // 2. Mittiger Player (Morpht vertikal, horizontal und in der Höhe nahtlos durch)
                     if player.currentTrack != nil {
-                        PlayerBarView(serverURL: serverURL, isInline: isMinimized) {
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
-                                showFullscreenPlayer = true
+                        PlayerBarView(
+                            serverURL: serverURL,
+                            isInline: isMinimized,
+                            onOpenFullscreen: {
+                                withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                                    showFullscreenPlayer = true
+                                }
+                            },
+                            onLongPress: {
+                                showUserProfileSheet = false
+                                showNavbarSettings = true
+                            }
+                        )
+                        .frame(maxWidth: .infinity)
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.40)
+                                .onEnded { _ in
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.impactOccurred()
+                                    showUserProfileSheet = false
+                                    showNavbarSettings = true
+                                }
+                        )
+                        .contextMenu {
+                            Button(action: {
+                                showUserProfileSheet = false
+                                showNavbarSettings = true
+                            }) {
+                                Label("Leisten-Einstellungen", systemImage: "slider.horizontal.3")
+                            }
+                            Button(action: { scrollMinimizeEnabled.toggle() }) {
+                                Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
+                            }
+                            Button(action: { showUserProfileSheet = true }) {
+                                Label("Benutzerprofil", systemImage: "person.crop.circle")
                             }
                         }
-                        .frame(maxWidth: .infinity)
                     } else if isMinimized {
                         Spacer()
                     }
@@ -527,53 +558,75 @@ struct TabBarLongPressModifier: UIViewRepresentable {
 
     func updateUIView(_ uiView: TabBarAttacherView, context: Context) {
         uiView.onLongPress = onLongPress
-        DispatchQueue.main.async {
-            uiView.reattach()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            uiView.reattach()
-        }
+        uiView.ensureAttached()
     }
 }
 
 final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
     var onLongPress: (() -> Void)?
+    private weak var attachedTabBar: UITabBar?
+    private weak var activeRecognizer: TabBarCustomLongPressRecognizer?
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        reattach()
+        ensureAttached()
     }
 
     override func didMoveToSuperview() {
         super.didMoveToSuperview()
-        reattach()
+        ensureAttached()
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        reattach()
+        ensureAttached()
     }
 
-    func reattach() {
+    func ensureAttached() {
         guard let tabBar = findCurrentTabBar() else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                self?.reattach()
+                self?.ensureAttached()
             }
             return
         }
 
-        // Entferne eventuell alte Gesten-Erkenner
+        // Prüfe, ob unser Recognizer bereits aktiv auf der UITabBar installiert ist
+        if let active = activeRecognizer,
+           active.view === tabBar,
+           tabBar.gestureRecognizers?.contains(active) == true {
+            // Bereits aktiv und empfängt Gesten -> Auf keinen Fall neu anhängen oder abreissen!
+            return
+        }
+
+        // Suche, ob bereits ein TabBarCustomLongPressRecognizer auf der TabBar liegt
         for g in tabBar.gestureRecognizers ?? [] {
-            if g is TabBarCustomLongPressRecognizer {
-                tabBar.removeGestureRecognizer(g)
+            if let custom = g as? TabBarCustomLongPressRecognizer {
+                if custom.attacher === self {
+                    self.activeRecognizer = custom
+                    self.attachedTabBar = tabBar
+                    return
+                } else if custom.attacher == nil {
+                    // Verwaisten Recognizer entfernen
+                    tabBar.removeGestureRecognizer(custom)
+                }
             }
         }
 
         let lp = TabBarCustomLongPressRecognizer(target: self, action: #selector(handleLP(_:)))
-        lp.minimumPressDuration = 0.40
+        lp.attacher = self
+        lp.minimumPressDuration = 0.38
+        lp.allowableMovement = 25.0
         lp.cancelsTouchesInView = false
         lp.delegate = self
         tabBar.addGestureRecognizer(lp)
+        self.activeRecognizer = lp
+        self.attachedTabBar = tabBar
+    }
+
+    deinit {
+        if let active = activeRecognizer, let tb = attachedTabBar {
+            tb.removeGestureRecognizer(active)
+        }
     }
 
     private func findCurrentTabBar() -> UITabBar? {
@@ -612,6 +665,14 @@ final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
         return true
     }
 
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return false
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return false
+    }
+
     @objc private func handleLP(_ gesture: UILongPressGestureRecognizer) {
         if gesture.state == .began {
             let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -629,7 +690,9 @@ final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
     }
 }
 
-private class TabBarCustomLongPressRecognizer: UILongPressGestureRecognizer {}
+private class TabBarCustomLongPressRecognizer: UILongPressGestureRecognizer {
+    weak var attacher: TabBarAttacherView?
+}
 
 // MARK: - Apart Search Circular Platter (Right 62pt Circle)
 private struct SearchApartCircle: View {

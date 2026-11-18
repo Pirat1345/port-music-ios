@@ -6,6 +6,7 @@ public struct PlayerBarView: View {
     public let serverURL: String
     public let isInline: Bool
     public let onOpenFullscreen: () -> Void
+    public let onLongPress: (() -> Void)?
 
     @State private var dragProgress: Double? = nil
     @State private var horizontalDragOffset: CGFloat = 0
@@ -14,11 +15,20 @@ public struct PlayerBarView: View {
     @State private var isDragging: Bool = false
     @State private var dragDirectionLocked: Bool = false
     @State private var isTransitioning: Bool = false
+    @State private var touchStartTime: Date? = nil
+    @State private var longPressWorkItem: DispatchWorkItem? = nil
+    @State private var didTriggerLongPress: Bool = false
 
-    public init(serverURL: String, isInline: Bool = false, onOpenFullscreen: @escaping () -> Void) {
+    public init(
+        serverURL: String,
+        isInline: Bool = false,
+        onOpenFullscreen: @escaping () -> Void,
+        onLongPress: (() -> Void)? = nil
+    ) {
         self.serverURL = serverURL
         self.isInline = isInline
         self.onOpenFullscreen = onOpenFullscreen
+        self.onLongPress = onLongPress
     }
 
     private var progress: Double {
@@ -107,7 +117,7 @@ public struct PlayerBarView: View {
         }
     }
 
-    // MARK: - Swipe & Tap Gesture (Präzise Trennung von Antippen und verzögerungsfreiem horizontalen Wischen)
+    // MARK: - Swipe & Tap Gesture (Präzise Trennung von Antippen, Wischen und langem Drücken)
     private var swipeAndTapGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { val in
@@ -115,6 +125,28 @@ public struct PlayerBarView: View {
                 let dx = val.translation.width
                 let dy = val.translation.height
                 let distance = hypot(dx, dy)
+
+                // Bei neuem Touch: Startzeit merken und Long-Press-Timer starten
+                if touchStartTime == nil {
+                    touchStartTime = Date()
+                    didTriggerLongPress = false
+
+                    // Timer für langes Drücken (0.38s)
+                    let workItem = DispatchWorkItem { [onLongPress] in
+                        didTriggerLongPress = true
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        onLongPress?()
+                    }
+                    longPressWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.38, execute: workItem)
+                }
+
+                // Wenn sich der Finger mehr als 6 Punkte bewegt, ist es kein statischer Long-Press
+                if distance > 6 {
+                    longPressWorkItem?.cancel()
+                    longPressWorkItem = nil
+                }
 
                 if distance > 4 {
                     hasSwiped = true
@@ -137,18 +169,42 @@ public struct PlayerBarView: View {
                 }
             }
             .onEnded { val in
-                guard !isTransitioning else { return }
+                // Laufenden Timer verwerfen
+                longPressWorkItem?.cancel()
+                longPressWorkItem = nil
+
+                guard !isTransitioning else {
+                    touchStartTime = nil
+                    didTriggerLongPress = false
+                    return
+                }
+
                 let dx = val.translation.width
                 let dy = val.translation.height
                 let velocityX = val.predictedEndTranslation.width - val.translation.width
                 let velocityY = val.predictedEndTranslation.height - val.translation.height
                 let distance = hypot(dx, dy)
+                let pressDuration = touchStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
-                // 1. Reiner Tap (Finger wurde kaum bewegt): Vollbild öffnen
+                // Wenn bereits ein Long-Press ausgelöst wurde: Nicht zusätzlich Fullscreen öffnen!
+                if didTriggerLongPress {
+                    didTriggerLongPress = false
+                    touchStartTime = nil
+                    hasSwiped = false
+                    isDragging = false
+                    dragDirectionLocked = false
+                    return
+                }
+
+                touchStartTime = nil
+
+                // 1. Reiner kurzer Tap (Finger wurde kaum bewegt und maximal 0.38s gehalten): Vollbild öffnen
                 if !hasSwiped || distance < 7 {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
-                    onOpenFullscreen()
+                    if pressDuration < 0.38 {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        onOpenFullscreen()
+                    }
                 }
                 // 2. Wischen nach oben: Vollbild-Player öffnen (wie in Apple Music)
                 else if dy < -25 || velocityY < -35 {
