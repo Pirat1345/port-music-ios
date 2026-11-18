@@ -241,25 +241,6 @@ public struct MainTabView: View {
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .simultaneousGesture(
-                            LongPressGesture(minimumDuration: 0.45)
-                                .onEnded { _ in
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.impactOccurred()
-                                    showNavbarSettings = true
-                                }
-                        )
-                        .contextMenu {
-                            Button(action: { showNavbarSettings = true }) {
-                                Label("Leisten-Einstellungen", systemImage: "slider.horizontal.3")
-                            }
-                            Button(action: { scrollMinimizeEnabled.toggle() }) {
-                                Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
-                            }
-                            Button(action: { showUserProfileSheet = true }) {
-                                Label("Benutzerprofil", systemImage: "person.crop.circle")
-                            }
-                        }
                     } else if isMinimized {
                         Spacer()
                     }
@@ -522,83 +503,116 @@ public struct MainTabView: View {
     }
 }
 
-// MARK: - Native TabBar Long Press Modifier (Gedrückt halten -> Leisten-Einstellungen)
+// MARK: - Native TabBar Long Press Attacher (Gedrückt halten -> Leisten-Einstellungen)
 struct TabBarLongPressModifier: UIViewRepresentable {
     let onLongPress: () -> Void
 
-    func makeCoordinator() -> TabBarLongPressCoordinator {
-        TabBarLongPressCoordinator(onLongPress: onLongPress)
-    }
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.isUserInteractionEnabled = false
-        DispatchQueue.main.async {
-            context.coordinator.attachGesture(from: view)
-        }
+    func makeUIView(context: Context) -> TabBarAttacherView {
+        let view = TabBarAttacherView()
+        view.onLongPress = onLongPress
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.onLongPress = onLongPress
-        DispatchQueue.main.async {
-            context.coordinator.attachGesture(from: uiView)
-        }
-    }
-
-    class TabBarLongPressCoordinator: NSObject {
-        var onLongPress: () -> Void
-        private weak var attachedTabBar: UITabBar?
-
-        init(onLongPress: @escaping () -> Void) {
-            self.onLongPress = onLongPress
-        }
-
-        func attachGesture(from view: UIView) {
-            guard let window = view.window ?? UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap({ $0.windows })
-                .first(where: { $0.isKeyWindow }) else { return }
-
-            guard let tabBar = findTabBar(in: window) else { return }
-            if attachedTabBar === tabBar { return }
-            attachedTabBar = tabBar
-
-            for recognizer in tabBar.gestureRecognizers ?? [] {
-                if recognizer is TabBarLongPressGestureRecognizer {
-                    tabBar.removeGestureRecognizer(recognizer)
-                }
-            }
-
-            let longPress = TabBarLongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
-            longPress.minimumPressDuration = 0.45
-            longPress.cancelsTouchesInView = false
-            tabBar.addGestureRecognizer(longPress)
-        }
-
-        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-            if gesture.state == .began {
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-                onLongPress()
-            }
-        }
-
-        private func findTabBar(in view: UIView) -> UITabBar? {
-            if let tabBar = view as? UITabBar {
-                return tabBar
-            }
-            for subview in view.subviews {
-                if let found = findTabBar(in: subview) {
-                    return found
-                }
-            }
-            return nil
-        }
+    func updateUIView(_ uiView: TabBarAttacherView, context: Context) {
+        uiView.onLongPress = onLongPress
     }
 }
 
-private class TabBarLongPressGestureRecognizer: UILongPressGestureRecognizer {}
+final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
+    var onLongPress: (() -> Void)?
+    private weak var attachedTabBar: UITabBar?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        attach()
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        attach()
+    }
+
+    func attach() {
+        // 1. Suche über Responder Chain
+        var responder: UIResponder? = self
+        var foundTabBar: UITabBar? = nil
+        while let r = responder {
+            if let tc = r as? UITabBarController {
+                foundTabBar = tc.tabBar
+                break
+            }
+            responder = r.next
+        }
+
+        // 2. Suche über Fenster-Hierarchie
+        if foundTabBar == nil, let window = self.window {
+            foundTabBar = findTabBar(in: window)
+        }
+
+        // 3. Fallback über aktive Fenster der UIWindowScene
+        if foundTabBar == nil {
+            let activeWindows = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+            for w in activeWindows {
+                if let tb = findTabBar(in: w) {
+                    foundTabBar = tb
+                    break
+                }
+            }
+        }
+
+        guard let tabBar = foundTabBar else {
+            // Nach kurzer Verzögerung erneut versuchen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                self?.attach()
+            }
+            return
+        }
+
+        if attachedTabBar === tabBar { return }
+        attachedTabBar = tabBar
+
+        // Entferne eventuell vorhandene alte Instanzen
+        for g in tabBar.gestureRecognizers ?? [] {
+            if g is TabBarCustomLongPressRecognizer {
+                tabBar.removeGestureRecognizer(g)
+            }
+        }
+
+        let lp = TabBarCustomLongPressRecognizer(target: self, action: #selector(handleLP(_:)))
+        lp.minimumPressDuration = 0.40
+        lp.cancelsTouchesInView = false
+        lp.delegate = self
+        tabBar.addGestureRecognizer(lp)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return true
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        return true
+    }
+
+    @objc private func handleLP(_ gesture: UILongPressGestureRecognizer) {
+        if gesture.state == .began {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+            onLongPress?()
+        }
+    }
+
+    private func findTabBar(in view: UIView) -> UITabBar? {
+        if let tb = view as? UITabBar { return tb }
+        for sub in view.subviews {
+            if let found = findTabBar(in: sub) { return found }
+        }
+        return nil
+    }
+}
+
+private class TabBarCustomLongPressRecognizer: UILongPressGestureRecognizer {}
 
 // MARK: - Apart Search Circular Platter (Right 62pt Circle)
 private struct SearchApartCircle: View {
