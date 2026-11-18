@@ -8,7 +8,6 @@ public struct PlayerBarView: View {
     public let onOpenFullscreen: () -> Void
     public let onLongPress: (() -> Void)?
 
-    @State private var dragProgress: Double? = nil
     @State private var horizontalDragOffset: CGFloat = 0
     @State private var textOpacity: Double = 1.0
     @State private var hasSwiped: Bool = false
@@ -29,20 +28,6 @@ public struct PlayerBarView: View {
         self.isInline = isInline
         self.onOpenFullscreen = onOpenFullscreen
         self.onLongPress = onLongPress
-    }
-
-    private var progress: Double {
-        if let drag = dragProgress {
-            return drag
-        }
-        guard player.duration > 0, !player.currentTime.isNaN && player.currentTime.isFinite else {
-            return 0.0
-        }
-        return max(0.0, min(1.0, player.currentTime / player.duration))
-    }
-
-    private var activeProgress: Double {
-        progress
     }
 
     // MARK: - Rubber Band Resistance Helper (1.5 Zeichen / ~14pt Schwelle mit spürbarem Widerstand)
@@ -446,6 +431,34 @@ public struct PlayerBarView: View {
 
     // MARK: - Timeline Scrubber Section
     private var timelineScrubberSection: some View {
+        PlayerBarScrubberView(
+            duration: player.duration,
+            onSeek: { target in
+                player.seek(to: target)
+            }
+        )
+    }
+}
+
+// MARK: - Isolated Scrubber Subview (Isoliert Re-Rendering auf 2.5pt Progressbar)
+struct PlayerBarScrubberView: View {
+    @ObservedObject private var progress = AudioPlayerProgress.shared
+    let duration: Double
+    let onSeek: (Double) -> Void
+
+    @State private var dragProgress: Double? = nil
+
+    private var activeProgress: Double {
+        if let drag = dragProgress {
+            return drag
+        }
+        guard duration > 0, !progress.currentTime.isNaN && progress.currentTime.isFinite else {
+            return 0.0
+        }
+        return max(0.0, min(1.0, progress.currentTime / duration))
+    }
+
+    var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
             let ratio = max(0.0, min(1.0, activeProgress))
@@ -470,8 +483,8 @@ public struct PlayerBarView: View {
                     }
                     .onEnded { val in
                         let r = max(0.0, min(1.0, Double(val.location.x / w)))
-                        let target = r * player.duration
-                        player.seek(to: target)
+                        let target = r * duration
+                        onSeek(target)
                         dragProgress = nil
                     }
             )

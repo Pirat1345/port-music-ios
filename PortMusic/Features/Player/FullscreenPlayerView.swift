@@ -4,6 +4,7 @@ import MediaPlayer
 public struct FullscreenPlayerView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var volumeManager = SystemVolumeManager.shared
+    @ObservedObject private var progress = AudioPlayerProgress.shared
     public let serverURL: String
     public let onClose: () -> Void
 
@@ -52,7 +53,7 @@ public struct FullscreenPlayerView: View {
         if isScrubbing {
             return scrubPosition
         }
-        return player.currentTime
+        return progress.currentTime
     }
 
     private var currentLyricId: String? {

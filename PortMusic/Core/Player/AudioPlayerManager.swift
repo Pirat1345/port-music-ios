@@ -5,14 +5,22 @@ import Combine
 import UIKit
 
 @MainActor
+public final class AudioPlayerProgress: ObservableObject {
+    public static let shared = AudioPlayerProgress()
+
+    @Published public var currentTime: Double = 0.0
+
+    private init() {}
+}
+
+@MainActor
 public final class AudioPlayerManager: ObservableObject {
     public static let shared = AudioPlayerManager()
 
-    // MARK: - Reactive State
+    // MARK: - Reactive State (Non-High-Frequency)
     @Published public private(set) var currentTrack: Track? = nil
     @Published public private(set) var isPlaying: Bool = false
     @Published public private(set) var isBuffering: Bool = false
-    @Published public private(set) var currentTime: Double = 0.0
     @Published public private(set) var duration: Double = 0.0
     @Published public private(set) var queue: [Track] = []
     @Published public private(set) var queueIndex: Int = 0
@@ -21,6 +29,13 @@ public final class AudioPlayerManager: ObservableObject {
 
     @Published public var isShuffle: Bool = false
     @Published public var isRepeat: Bool = false
+
+    // Entkoppelte Wiedergabeposition: AudioPlayerProgress publiziert separat,
+    // damit nicht der gesamte SwiftUI-View-Tree (HomeView, MainTabView, TrackRows) 4x pro Sekunde invalidiert wird.
+    public var currentTime: Double {
+        get { AudioPlayerProgress.shared.currentTime }
+        set { AudioPlayerProgress.shared.currentTime = newValue }
+    }
 
     public private(set) var currentServerURL: String? = nil
     private var lastPreviousTapTime: Date? = nil
@@ -34,7 +49,6 @@ public final class AudioPlayerManager: ObservableObject {
     private var itemDurationObserver: NSKeyValueObservation? = nil
     private var itemBufferObserver: NSKeyValueObservation? = nil
     @Published public private(set) var nowPlayingArtwork: UIImage? = nil
-    private var periodicPersistCounter: Int = 0
 
     public func setVolume(_ volume: Float) {
         avPlayer?.volume = max(0.0, min(1.0, volume))
@@ -654,11 +668,6 @@ public final class AudioPlayerManager: ObservableObject {
                 if self.isPlaying && self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
                     self.playerItemDidReachEnd()
                     return
-                }
-                self.periodicPersistCounter += 1
-                if self.periodicPersistCounter >= 8 { // roughly every 2s
-                    self.periodicPersistCounter = 0
-                    self.persistPlayerState()
                 }
             }
         }
