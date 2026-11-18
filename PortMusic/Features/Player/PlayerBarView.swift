@@ -11,6 +11,8 @@ public struct PlayerBarView: View {
     @State private var horizontalDragOffset: CGFloat = 0
     @State private var textOpacity: Double = 1.0
     @State private var hasSwiped: Bool = false
+    @State private var isDragging: Bool = false
+    @State private var dragDirectionLocked: Bool = false
     @State private var isTransitioning: Bool = false
 
     public init(serverURL: String, isInline: Bool = false, onOpenFullscreen: @escaping () -> Void) {
@@ -47,18 +49,27 @@ public struct PlayerBarView: View {
         return signedDamped
     }
 
-    // MARK: - Horizontale Fade-Maske für geschmeidiges Ein- und Ausblenden an den Rändern
-    private var edgeFadeMask: some View {
-        LinearGradient(
+    // MARK: - Dynamische Horizontale Fade-Maske (Nur aktiv beim Verschieben, kein Blur im Ruhezustand!)
+    private var dynamicEdgeFadeMask: some View {
+        let absOffset = abs(horizontalDragOffset)
+        // Nur wenn tatsächlich verschoben wird (absOffset > 0.5), wird an der jeweiligen Seite ausgeblendet
+        let leftFade: CGFloat = (horizontalDragOffset < -0.5) ? min(0.09, (absOffset / 14.0) * 0.09) : 0.0
+        let rightFade: CGFloat = (horizontalDragOffset > 0.5) ? min(0.09, (absOffset / 14.0) * 0.09) : 0.0
+
+        return LinearGradient(
             stops: [
-                .init(color: .clear, location: 0.0),
-                .init(color: .black, location: 0.07),
-                .init(color: .black, location: 0.93),
-                .init(color: .clear, location: 1.0)
+                .init(color: leftFade > 0.001 ? .clear : .black, location: 0.0),
+                .init(color: .black, location: max(0.0001, leftFade)),
+                .init(color: .black, location: min(0.9999, 1.0 - rightFade)),
+                .init(color: rightFade > 0.001 ? .clear : .black, location: 1.0)
             ],
             startPoint: .leading,
             endPoint: .trailing
         )
+    }
+
+    private var edgeFadeMask: some View {
+        dynamicEdgeFadeMask
     }
 
     public var body: some View {
@@ -96,19 +107,33 @@ public struct PlayerBarView: View {
         }
     }
 
-    // MARK: - Swipe & Tap Gesture (Präzise Trennung von Antippen und horizontalem Wischen)
+    // MARK: - Swipe & Tap Gesture (Präzise Trennung von Antippen und verzögerungsfreiem horizontalen Wischen)
     private var swipeAndTapGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { val in
                 guard !isTransitioning else { return }
                 let dx = val.translation.width
                 let dy = val.translation.height
-                if abs(dx) > 5 || abs(dy) > 5 {
+                let distance = hypot(dx, dy)
+
+                if distance > 4 {
                     hasSwiped = true
                 }
-                // Folge der horizontalen Bewegung (mit Rubber-Band-Widerstand ab 1.5 Buchstaben)
-                if abs(dx) > abs(dy) {
-                    horizontalDragOffset = computeDampedDragOffset(dx)
+
+                // Richtungssperre: Nach 4 Punkten feststellen, ob der Zug horizontal erfolgt
+                if !dragDirectionLocked && distance > 4 {
+                    dragDirectionLocked = true
+                    isDragging = abs(dx) > abs(dy)
+                }
+
+                // Wenn horizontal eingerastet: Verzögerungsfrei ohne Federanimation direkt dem Finger folgen
+                if isDragging {
+                    let target = computeDampedDragOffset(dx)
+                    var transaction = Transaction()
+                    transaction.animation = nil
+                    withTransaction(transaction) {
+                        horizontalDragOffset = target
+                    }
                 }
             }
             .onEnded { val in
@@ -189,6 +214,8 @@ public struct PlayerBarView: View {
 
                 // Zustand zurücksetzen
                 hasSwiped = false
+                isDragging = false
+                dragDirectionLocked = false
             }
     }
 
@@ -213,7 +240,7 @@ public struct PlayerBarView: View {
                 }
                 .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
 
-                // Titel - Nur der Text verschiebt sich beim Wischen mit Rand-Fade!
+                // Titel - Nur der Text verschiebt sich beim Wischen mit dynamischem Rand-Fade!
                 Text(track.title)
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundColor(.white)
@@ -221,7 +248,8 @@ public struct PlayerBarView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .offset(x: horizontalDragOffset)
                     .opacity(textOpacity)
-                    .mask(edgeFadeMask)
+                    .mask(dynamicEdgeFadeMask)
+                    .animation(nil, value: horizontalDragOffset)
             }
             .contentShape(Rectangle())
             .gesture(swipeAndTapGesture)
@@ -277,7 +305,7 @@ public struct PlayerBarView: View {
                     .frame(width: 44, height: 44)
                     .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
 
-                    // Titel und Interpret - Nur dieser Textblock gleitet beim Wischen mit Rand-Fade!
+                    // Titel und Interpret - Nur dieser Textblock gleitet beim Wischen mit dynamischem Rand-Fade!
                     let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
                     let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
 
@@ -295,7 +323,8 @@ public struct PlayerBarView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .offset(x: horizontalDragOffset)
                     .opacity(textOpacity)
-                    .mask(edgeFadeMask)
+                    .mask(dynamicEdgeFadeMask)
+                    .animation(nil, value: horizontalDragOffset)
 
                     Spacer(minLength: 4)
                 }
