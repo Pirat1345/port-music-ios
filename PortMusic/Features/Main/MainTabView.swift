@@ -115,7 +115,7 @@ public struct MainTabView: View {
             TabView(selection: $activeLiquidTab) {
                 // Tab 1: Startseite
                 NavigationStack {
-                    HomeView(serverURL: serverURL, user: user)
+                    HomeView(serverURL: serverURL, user: user, onOpenNavbarSettings: { showNavbarSettings = true })
                         .navigationDestination(for: AppRoute.self) { route in
                             destinationForRoute(route)
                         }
@@ -233,12 +233,23 @@ public struct MainTabView: View {
                                     .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
 
                                 Image(systemName: leftTab.iconName(isSelected: !isSearch))
-                                    .font(.system(size: 21, weight: isSearch ? .semibold : .bold))
-                                    .foregroundColor(isSearch ? Color.white.opacity(0.85) : Color(hex: "#fc3c44"))
+                                    .font(.system(size: 21, weight: .bold))
+                                    .foregroundColor(.white)
                             }
                             .frame(width: 62, height: 62)
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .contextMenu {
+                            Button(action: { showNavbarSettings = true }) {
+                                Label("Leisten-Einstellungen", systemImage: "slider.horizontal.3")
+                            }
+                            Button(action: { scrollMinimizeEnabled.toggle() }) {
+                                Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
+                            }
+                            Button(action: { showUserProfileSheet = true }) {
+                                Label("Benutzerprofil", systemImage: "person.crop.circle")
+                            }
+                        }
                         .transition(
                             .asymmetric(
                                 insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
@@ -255,6 +266,17 @@ public struct MainTabView: View {
                             }
                         }
                         .frame(maxWidth: .infinity)
+                        .contextMenu {
+                            Button(action: { showNavbarSettings = true }) {
+                                Label("Leisten-Einstellungen", systemImage: "slider.horizontal.3")
+                            }
+                            Button(action: { scrollMinimizeEnabled.toggle() }) {
+                                Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
+                            }
+                            Button(action: { showUserProfileSheet = true }) {
+                                Label("Benutzerprofil", systemImage: "person.crop.circle")
+                            }
+                        }
                     } else if isMinimized {
                         Spacer()
                     }
@@ -269,6 +291,17 @@ public struct MainTabView: View {
                                 selectLiquidTab(.search)
                             }
                         )
+                        .contextMenu {
+                            Button(action: { showNavbarSettings = true }) {
+                                Label("Leisten-Einstellungen", systemImage: "slider.horizontal.3")
+                            }
+                            Button(action: { scrollMinimizeEnabled.toggle() }) {
+                                Label(scrollMinimizeEnabled ? "Scroll-Minimierung deaktivieren" : "Scroll-Minimierung aktivieren", systemImage: "arrow.up.and.down")
+                            }
+                            Button(action: { showUserProfileSheet = true }) {
+                                Label("Benutzerprofil", systemImage: "person.crop.circle")
+                            }
+                        }
                         .transition(
                             .asymmetric(
                                 insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.75)),
@@ -454,7 +487,7 @@ private struct SearchApartCircle: View {
 
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 21, weight: isSelected ? .bold : .semibold))
-                    .foregroundColor(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.85))
+                    .foregroundColor(.white)
             }
             .frame(width: 62, height: 62)
         }
@@ -463,7 +496,7 @@ private struct SearchApartCircle: View {
 }
 
 // MARK: - Navbar Settings Sheet (Tab-Konfiguration & Anzeigeeinstellungen)
-private struct NavbarSettingsSheet: View {
+public struct NavbarSettingsSheet: View {
     @Binding var iconsOnly: Bool
     @Binding var scrollMinimize: Bool
     @Binding var customTabsRaw: String

@@ -129,18 +129,18 @@ public struct PlayerBarView: View {
                     onOpenFullscreen()
                 }) {
                     HStack(spacing: 10) {
-                        // Cover-Artwork (36x36, 8pt Radius)
+                        // Cover-Artwork (44x44 Standard)
                         ZStack {
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Color.white.opacity(0.08))
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
 
                             let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
                             PortCachedAsyncImage(url: resolved) { image in
                                 image
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                             } placeholder: {
                                 Image(systemName: "music.note")
@@ -148,7 +148,7 @@ public struct PlayerBarView: View {
                                     .foregroundColor(Color.white.opacity(0.5))
                             }
                         }
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
 
                         // Titel und Interpret
