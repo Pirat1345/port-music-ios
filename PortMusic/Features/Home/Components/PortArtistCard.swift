@@ -3,12 +3,12 @@ import SwiftUI
 public struct PortArtistCard: View {
     public let artist: DiscoveryArtist
     public let serverURL: String
-    public let onSelect: () -> Void
+    public let onSelect: (() -> Void)?
 
     public init(
         artist: DiscoveryArtist,
         serverURL: String = "",
-        onSelect: @escaping () -> Void
+        onSelect: (() -> Void)? = nil
     ) {
         self.artist = artist
         self.serverURL = serverURL
@@ -37,51 +37,57 @@ public struct PortArtistCard: View {
     }
 
     public var body: some View {
-        Button(action: onSelect) {
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: "#18181b"))
-                        .frame(width: 120, height: 120)
+        let content = VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color(hex: "#18181b"))
+                    .frame(width: 120, height: 120)
 
-                    Text(initials)
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.70))
+                Text(initials)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(Color.white.opacity(0.70))
 
-                    if let resolved = resolveCoverURL(artist.picture, serverURL: serverURL) {
-                        PortCachedAsyncImage(url: resolved) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .clipShape(Circle())
-                        } placeholder: {
-                            EmptyView()
-                        }
+                if let resolved = resolveCoverURL(artist.picture, serverURL: serverURL) {
+                    PortCachedAsyncImage(url: resolved) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 120, height: 120)
+                            .clipShape(Circle())
+                    } placeholder: {
+                        EmptyView()
                     }
                 }
-                .frame(width: 120, height: 120)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.35), radius: 8, y: 3)
+            }
+            .frame(width: 120, height: 120)
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.35), radius: 8, y: 3)
 
-                VStack(spacing: 2) {
-                    Text(artist.name)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(PortColors.textPrimary)
-                        .lineLimit(1)
-                        .frame(width: 120)
+            VStack(spacing: 2) {
+                Text(artist.name)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(PortColors.textPrimary)
+                    .lineLimit(1)
+                    .frame(width: 120)
 
-                    Text(fanCountText)
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "#a0a0a0"))
-                        .lineLimit(1)
-                        .frame(width: 120)
-                }
+                Text(fanCountText)
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(hex: "#a0a0a0"))
+                    .lineLimit(1)
+                    .frame(width: 120)
             }
         }
-        .buttonStyle(PlainButtonStyle())
+
+        if let onSelect = onSelect {
+            Button(action: onSelect) {
+                content
+            }
+            .buttonStyle(PlainButtonStyle())
+        } else {
+            content
+        }
     }
 }

@@ -118,6 +118,21 @@ public struct HomeView: View {
         .task {
             if discovery == nil {
                 await loadHomeData()
+            } else {
+                let token = SessionManager.shared.currentToken
+                let historyRes = await MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
+                if !historyRes.isEmpty {
+                    player.mergeServerHistory(historyRes)
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task {
+                let token = SessionManager.shared.currentToken
+                let historyRes = await MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
+                if !historyRes.isEmpty {
+                    player.mergeServerHistory(historyRes)
+                }
             }
         }
     }
@@ -298,17 +313,21 @@ public struct HomeView: View {
                             title: album.title,
                             subtitle: album.artist,
                             coverUrl: album.cover,
-                            serverURL: serverURL
-                        ) {
-                            let albumTrack = Track(
-                                id: "album_\(album.id)",
-                                title: album.title,
-                                artist: album.artist,
-                                album: album.title,
-                                coverUrl: album.cover
-                            )
-                            playTrackWithFullQueue(albumTrack, discovery: allDiscovery)
-                        }
+                            serverURL: serverURL,
+                            onTap: nil,
+                            onPlay: {
+                                Task {
+                                    if let detail = await MusicService.shared.fetchAlbum(id: album.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                        let trks = detail.tracks.map { $0.toTrack() }
+                                        if let first = trks.first {
+                                            await MainActor.run {
+                                                player.play(track: first, from: trks, serverURL: serverURL)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        )
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -329,23 +348,33 @@ public struct HomeView: View {
 
             PortShelfContainer {
                 ForEach(drops.prefix(20)) { drop in
-                    let dropTrack = Track(
-                        id: "drop_\(drop.id)",
+                    NavigationLink(value: AppRoute.album(
+                        id: drop.id,
                         title: drop.title,
                         artist: drop.artist,
-                        album: drop.title,
                         coverUrl: drop.cover
-                    )
-                    let isCurrentPlaying = player.isPlaying && player.currentTrack?.id == dropTrack.id
-                    PortTrackCard(
-                        title: drop.title,
-                        subtitle: drop.artist,
-                        coverUrl: drop.cover,
-                        serverURL: serverURL,
-                        isPlaying: isCurrentPlaying
-                    ) {
-                        playTrackWithFullQueue(dropTrack, discovery: allDiscovery)
+                    )) {
+                        PortTrackCard(
+                            title: drop.title,
+                            subtitle: drop.artist,
+                            coverUrl: drop.cover,
+                            serverURL: serverURL,
+                            onTap: nil,
+                            onPlay: {
+                                Task {
+                                    if let detail = await MusicService.shared.fetchAlbum(id: drop.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                        let trks = detail.tracks.map { $0.toTrack() }
+                                        if let first = trks.first {
+                                            await MainActor.run {
+                                                player.play(track: first, from: trks, serverURL: serverURL)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        )
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
@@ -427,21 +456,32 @@ public struct HomeView: View {
             PortShelfContainer {
                 ForEach(playlists) { playlist in
                     let sub = playlist.user ?? (playlist.nbTracks.map { "\($0) Songs" } ?? "Playlist")
-                    PortTrackCard(
+                    NavigationLink(value: AppRoute.playlist(
+                        id: playlist.id,
                         title: playlist.title,
-                        subtitle: sub,
-                        coverUrl: playlist.cover,
-                        serverURL: serverURL
-                    ) {
-                        let playlistTrack = Track(
-                            id: "pl_\(playlist.id)",
+                        coverUrl: playlist.cover
+                    )) {
+                        PortTrackCard(
                             title: playlist.title,
-                            artist: playlist.user ?? "Port Music",
-                            album: "Playlist",
-                            coverUrl: playlist.cover
+                            subtitle: sub,
+                            coverUrl: playlist.cover,
+                            serverURL: serverURL,
+                            onTap: nil,
+                            onPlay: {
+                                Task {
+                                    if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: playlist.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                        let trks = detail.tracks.map { $0.toTrack() }
+                                        if let first = trks.first {
+                                            await MainActor.run {
+                                                player.play(track: first, from: trks, serverURL: serverURL)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         )
-                        playTrackWithFullQueue(playlistTrack, discovery: allDiscovery)
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
@@ -463,15 +503,7 @@ public struct HomeView: View {
                         name: artist.name,
                         coverUrl: artist.picture
                     )) {
-                        PortArtistCard(artist: artist, serverURL: serverURL) {
-                            let artistTrack = Track(
-                                id: "artist_\(artist.id)",
-                                title: artist.name,
-                                artist: artist.name,
-                                coverUrl: artist.picture
-                            )
-                            playTrackWithFullQueue(artistTrack, discovery: allDiscovery)
-                        }
+                        PortArtistCard(artist: artist, serverURL: serverURL)
                     }
                     .buttonStyle(PlainButtonStyle())
                 }

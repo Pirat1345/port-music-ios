@@ -40,6 +40,9 @@ public final class MusicService {
             items.append(URLQueryItem(name: "cover", value: cover))
             items.append(URLQueryItem(name: "cover_url", value: cover))
         }
+        if track.durationSeconds > 0 {
+            items.append(URLQueryItem(name: "duration", value: "\(track.durationSeconds)"))
+        }
         components.queryItems = items
         return components.url
     }
@@ -347,7 +350,24 @@ public final class MusicService {
             if !results.isEmpty { return results }
         }
 
-        // Case 2: /api/history -> Array of { id: ..., track: { ... }, played_at: ... }
+        // Case 2: Object containing tracks array e.g. { "tracks": [ ... ] } or { "data": [ ... ] }
+        if let dict = json as? [String: Any] {
+            let rawList = (dict["tracks"] as? [[String: Any]]) ?? (dict["data"] as? [[String: Any]])
+            if let list = rawList {
+                var seen = Set<String>()
+                for item in list {
+                    if let track = trackFromDictionary(item) {
+                        if !seen.contains(track.id) {
+                            seen.insert(track.id)
+                            results.append(track)
+                        }
+                    }
+                }
+                if !results.isEmpty { return results }
+            }
+        }
+
+        // Case 3: /api/history -> Array of { id: ..., track: { ... }, played_at: ... }
         if let arr = json as? [[String: Any]] {
             var seen = Set<String>()
             for item in arr {
@@ -357,7 +377,7 @@ public final class MusicService {
                         results.append(track)
                     }
                 } else if let track = trackFromDictionary(item) {
-                    // Case 3: Direct array of tracks
+                    // Case 4: Direct array of tracks
                     if !seen.contains(track.id) {
                         seen.insert(track.id)
                         results.append(track)
@@ -1061,23 +1081,40 @@ public final class MusicService {
     // MARK: - Similar Songs / Recommendations (Feature #20)
     public func fetchRecommendations(trackId: String, artist: String, title: String, serverURL: String, token: String? = nil) async -> [Track] {
         guard !serverURL.isEmpty else { return [] }
-        var comps = URLComponents(string: "\(serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/discovery/recommendations")
-        comps?.queryItems = [
-            URLQueryItem(name: "exclude_ids", value: trackId),
-            URLQueryItem(name: "artists", value: artist),
-            URLQueryItem(name: "seed_tracks", value: title),
-            URLQueryItem(name: "limit", value: "10")
-        ]
-        guard let url = comps?.url else { return [] }
+        let cleanBase = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanBase)/api/discovery/recommendations") else { return [] }
+
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let t = token, !t.isEmpty {
             request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
         }
 
+        var artistsList: [String] = []
+        if !artist.isEmpty && artist != "Unbekannt" {
+            artistsList.append(artist)
+        }
+        var seedTracksList: [String] = []
+        if !title.isEmpty {
+            seedTracksList.append(title)
+        }
+        var excludeIdsList: [String] = []
+        if !trackId.isEmpty {
+            excludeIdsList.append(trackId)
+        }
+
+        let body: [String: Any] = [
+            "artists": artistsList,
+            "seed_tracks": seedTracksList,
+            "exclude_ids": excludeIdsList,
+            "limit": 15
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return [] }
             return parseTracksFromAnyJSON(data: data)
         } catch {
             return []

@@ -549,15 +549,7 @@ public struct SearchView: View {
                             HStack(spacing: 14) {
                                 ForEach(artists) { artist in
                                     NavigationLink(value: AppRoute.artist(name: artist.name, coverUrl: artist.picture)) {
-                                        PortArtistCard(artist: artist, serverURL: serverURL) {
-                                            let artistTrack = Track(
-                                                id: "artist_\(artist.id)",
-                                                title: artist.name,
-                                                artist: artist.name,
-                                                coverUrl: artist.picture
-                                            )
-                                            player.play(track: artistTrack, from: [artistTrack], serverURL: serverURL)
-                                        }
+                                        PortArtistCard(artist: artist, serverURL: serverURL)
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
@@ -583,17 +575,21 @@ public struct SearchView: View {
                                             title: album.title,
                                             subtitle: album.artist,
                                             coverUrl: album.cover,
-                                            serverURL: serverURL
-                                        ) {
-                                            let albumTrack = Track(
-                                                id: "album_\(album.id)",
-                                                title: album.title,
-                                                artist: album.artist,
-                                                album: album.title,
-                                                coverUrl: album.cover
-                                            )
-                                            player.play(track: albumTrack, from: [albumTrack], serverURL: serverURL)
-                                        }
+                                            serverURL: serverURL,
+                                            onTap: nil,
+                                            onPlay: {
+                                                Task {
+                                                    if let detail = await MusicService.shared.fetchAlbum(id: album.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                                        let trks = detail.tracks.map { $0.toTrack() }
+                                                        if let first = trks.first {
+                                                            await MainActor.run {
+                                                                player.play(track: first, from: trks, serverURL: serverURL)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        )
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
@@ -615,21 +611,28 @@ public struct SearchView: View {
                             HStack(spacing: 14) {
                                 ForEach(playlists) { playlist in
                                     let sub = playlist.user ?? (playlist.nbTracks.map { "\($0) Songs" } ?? "Playlist")
-                                    PortTrackCard(
-                                        title: playlist.title,
-                                        subtitle: sub,
-                                        coverUrl: playlist.cover,
-                                        serverURL: serverURL
-                                    ) {
-                                        let playlistTrack = Track(
-                                            id: "pl_\(playlist.id)",
+                                    NavigationLink(value: AppRoute.playlist(id: playlist.id, title: playlist.title, coverUrl: playlist.cover)) {
+                                        PortTrackCard(
                                             title: playlist.title,
-                                            artist: playlist.user ?? "Port Music",
-                                            album: "Playlist",
-                                            coverUrl: playlist.cover
+                                            subtitle: sub,
+                                            coverUrl: playlist.cover,
+                                            serverURL: serverURL,
+                                            onTap: nil,
+                                            onPlay: {
+                                                Task {
+                                                    if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: playlist.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                                        let trks = detail.tracks.map { $0.toTrack() }
+                                                        if let first = trks.first {
+                                                            await MainActor.run {
+                                                                player.play(track: first, from: trks, serverURL: serverURL)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         )
-                                        player.play(track: playlistTrack, from: [playlistTrack], serverURL: serverURL)
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }
                             .padding(.horizontal, 20)
@@ -647,15 +650,7 @@ public struct SearchView: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     ForEach(artists) { artist in
                         NavigationLink(value: AppRoute.artist(name: artist.name, coverUrl: artist.picture)) {
-                            PortArtistCard(artist: artist, serverURL: serverURL) {
-                                let artistTrack = Track(
-                                    id: "artist_\(artist.id)",
-                                    title: artist.name,
-                                    artist: artist.name,
-                                    coverUrl: artist.picture
-                                )
-                                player.play(track: artistTrack, from: [artistTrack], serverURL: serverURL)
-                            }
+                            PortArtistCard(artist: artist, serverURL: serverURL)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
@@ -669,17 +664,21 @@ public struct SearchView: View {
                                 title: album.title,
                                 subtitle: album.artist,
                                 coverUrl: album.cover,
-                                serverURL: serverURL
-                            ) {
-                                let albumTrack = Track(
-                                    id: "album_\(album.id)",
-                                    title: album.title,
-                                    artist: album.artist,
-                                    album: album.title,
-                                    coverUrl: album.cover
-                                )
-                                player.play(track: albumTrack, from: [albumTrack], serverURL: serverURL)
-                            }
+                                serverURL: serverURL,
+                                onTap: nil,
+                                onPlay: {
+                                    Task {
+                                        if let detail = await MusicService.shared.fetchAlbum(id: album.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                            let trks = detail.tracks.map { $0.toTrack() }
+                                            if let first = trks.first {
+                                                await MainActor.run {
+                                                    player.play(track: first, from: trks, serverURL: serverURL)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            )
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
@@ -689,21 +688,28 @@ public struct SearchView: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     ForEach(playlists) { playlist in
                         let sub = playlist.user ?? (playlist.nbTracks.map { "\($0) Songs" } ?? "Playlist")
-                        PortTrackCard(
-                            title: playlist.title,
-                            subtitle: sub,
-                            coverUrl: playlist.cover,
-                            serverURL: serverURL
-                        ) {
-                            let playlistTrack = Track(
-                                id: "pl_\(playlist.id)",
+                        NavigationLink(value: AppRoute.playlist(id: playlist.id, title: playlist.title, coverUrl: playlist.cover)) {
+                            PortTrackCard(
                                 title: playlist.title,
-                                artist: playlist.user ?? "Port Music",
-                                album: "Playlist",
-                                coverUrl: playlist.cover
+                                subtitle: sub,
+                                coverUrl: playlist.cover,
+                                serverURL: serverURL,
+                                onTap: nil,
+                                onPlay: {
+                                    Task {
+                                        if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: playlist.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                            let trks = detail.tracks.map { $0.toTrack() }
+                                            if let first = trks.first {
+                                                await MainActor.run {
+                                                    player.play(track: first, from: trks, serverURL: serverURL)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             )
-                            player.play(track: playlistTrack, from: [playlistTrack], serverURL: serverURL)
                         }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, 20)

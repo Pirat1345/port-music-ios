@@ -241,17 +241,21 @@ public struct AppleCategoryDetailView: View {
                                         title: pl.title,
                                         subtitle: pl.user ?? "Playlist",
                                         coverUrl: pl.cover,
-                                        serverURL: serverURL
-                                    ) {
-                                        let dummyTrack = Track(
-                                            id: "pl_\(pl.id)",
-                                            title: pl.title,
-                                            artist: pl.user ?? "Port Music",
-                                            album: "Playlist",
-                                            coverUrl: pl.cover
-                                        )
-                                        player.play(track: dummyTrack, from: [dummyTrack], serverURL: serverURL)
-                                    }
+                                        serverURL: serverURL,
+                                        onTap: nil,
+                                        onPlay: {
+                                            Task {
+                                                if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: pl.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                                    let trks = detail.tracks.map { $0.toTrack() }
+                                                    if let first = trks.first {
+                                                        await MainActor.run {
+                                                            player.play(track: first, from: trks, serverURL: serverURL)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    )
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }
@@ -277,17 +281,21 @@ public struct AppleCategoryDetailView: View {
                                         title: alb.title,
                                         subtitle: alb.artist,
                                         coverUrl: alb.cover,
-                                        serverURL: serverURL
-                                    ) {
-                                        let dummyTrack = Track(
-                                            id: "alb_\(alb.id)",
-                                            title: alb.title,
-                                            artist: alb.artist,
-                                            album: alb.title,
-                                            coverUrl: alb.cover
-                                        )
-                                        player.play(track: dummyTrack, from: [dummyTrack], serverURL: serverURL)
-                                    }
+                                        serverURL: serverURL,
+                                        onTap: nil,
+                                        onPlay: {
+                                            Task {
+                                                if let detail = await MusicService.shared.fetchAlbum(id: alb.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                                    let trks = detail.tracks.map { $0.toTrack() }
+                                                    if let first = trks.first {
+                                                        await MainActor.run {
+                                                            player.play(track: first, from: trks, serverURL: serverURL)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    )
                                 }
                                 .buttonStyle(PlainButtonStyle())
                             }

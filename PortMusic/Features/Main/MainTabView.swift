@@ -339,12 +339,14 @@ public struct MainTabView: View {
                     }
 
                 FullscreenPlayerView(serverURL: serverURL) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         showFullscreenPlayer = false
                     }
                 }
                 .ignoresSafeArea()
-                .transition(.move(edge: .bottom))
+                .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .identity))
                 .zIndex(999)
             }
 
@@ -677,7 +679,9 @@ final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
         if gesture.state == .began {
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
-            onLongPress?()
+            DispatchQueue.main.async { [weak self] in
+                self?.onLongPress?()
+            }
         }
     }
 

@@ -136,24 +136,26 @@ public struct PlayerBarView: View {
                         didTriggerLongPress = true
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
-                        onLongPress?()
+                        DispatchQueue.main.async {
+                            onLongPress?()
+                        }
                     }
                     longPressWorkItem = workItem
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.38, execute: workItem)
                 }
 
-                // Wenn sich der Finger mehr als 6 Punkte bewegt, ist es kein statischer Long-Press
-                if distance > 6 {
+                // Natürliche Fingerbewegung auf kapazitivem Display tolerieren (bis 20 Punkte)
+                if distance > 20 {
                     longPressWorkItem?.cancel()
                     longPressWorkItem = nil
                 }
 
-                if distance > 4 {
+                if distance > 14 {
                     hasSwiped = true
                 }
 
-                // Richtungssperre: Nach 4 Punkten feststellen, ob der Zug horizontal erfolgt
-                if !dragDirectionLocked && distance > 4 {
+                // Richtungssperre: Nach 14 Punkten feststellen, ob der Zug horizontal erfolgt
+                if !dragDirectionLocked && distance > 14 {
                     dragDirectionLocked = true
                     isDragging = abs(dx) > abs(dy)
                 }
@@ -198,12 +200,18 @@ public struct PlayerBarView: View {
 
                 touchStartTime = nil
 
-                // 1. Reiner kurzer Tap (Finger wurde kaum bewegt und maximal 0.38s gehalten): Vollbild öffnen
-                if !hasSwiped || distance < 7 {
+                // 1. Reiner Tap oder gedrückt gehaltener Finger ohne Wischen
+                if !hasSwiped || distance < 15 {
                     if pressDuration < 0.38 {
+                        // Kurzer Klick -> Vollbild öffnen
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                         onOpenFullscreen()
+                    } else {
+                        // Gedrückt gehalten -> Leisten-Einstellungen öffnen
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        onLongPress?()
                     }
                 }
                 // 2. Wischen nach oben: Vollbild-Player öffnen (wie in Apple Music)

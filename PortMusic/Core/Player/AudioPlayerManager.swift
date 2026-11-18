@@ -229,6 +229,29 @@ public final class AudioPlayerManager: ObservableObject {
         self.duration = parseDurationSeconds(from: track)
         self.isBuffering = true
 
+        // Background-Metadaten-Anreicherung falls Dauer unbekannt (0s)
+        if self.duration <= 0 {
+            let searchQ = "\(track.title) \(track.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
+            if !searchQ.isEmpty {
+                let trackId = track.id
+                Task {
+                    if let searchRes = await MusicService.shared.fetchDiscoverySearch(query: searchQ, serverURL: effectiveServerURL, token: token) {
+                        if let matched = searchRes.tracks?.first, let dSecs = matched.durationSeconds, dSecs > 0 {
+                            await MainActor.run {
+                                if self.currentTrack?.id == trackId {
+                                    let cleanDur = Double(dSecs)
+                                    if self.duration <= 0 || (self.duration > cleanDur * 1.7 && self.duration < cleanDur * 2.3) {
+                                        self.duration = cleanDur
+                                        self.updateNowPlayingInfo()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Zuletzt gehoert aktualisieren
         if let existingIdx = self.recentTracks.firstIndex(where: { $0.id == track.id }) {
             self.recentTracks.remove(at: existingIdx)
@@ -287,14 +310,40 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func mergeServerHistory(_ serverList: [Track]) {
-        for t in serverList {
-            if !recentTracks.contains(where: { $0.id == t.id }) {
-                recentTracks.append(t)
+        guard !serverList.isEmpty else { return }
+        var merged: [Track] = []
+        var seenIds = Set<String>()
+
+        // 1. Nicht-synchronisierte lokale Tracks (in der aktuellen Session abgespielt) ganz oben behalten
+        for local in recentTracks {
+            if !serverList.contains(where: { $0.id == local.id }) {
+                if !seenIds.contains(local.id) {
+                    seenIds.insert(local.id)
+                    merged.append(local)
+                }
             }
         }
-        if recentTracks.count > 50 {
-            recentTracks = Array(recentTracks.prefix(50))
+
+        // 2. Server-Verlauf (aktuelle Aktivitäten geräteübergreifend, neueste zuerst)
+        for s in serverList {
+            if !seenIds.contains(s.id) {
+                seenIds.insert(s.id)
+                merged.append(s)
+            }
         }
+
+        // 3. Verbleibende lokale Tracks beibehalten
+        for local in recentTracks {
+            if !seenIds.contains(local.id) {
+                seenIds.insert(local.id)
+                merged.append(local)
+            }
+        }
+
+        if merged.count > 50 {
+            merged = Array(merged.prefix(50))
+        }
+        self.recentTracks = merged
         persistRecentTracks()
     }
 
@@ -367,6 +416,46 @@ public final class AudioPlayerManager: ObservableObject {
     private func extendAutoplayQueueAndPlayNext(serverURL: String) {
         Task { @MainActor in
             let token = SessionManager.shared.currentToken
+            let existingIds = Set(self.queue.map { $0.id })
+
+            // 1. Höchste Priorität: Ähnliche Titel / Discovery Recommendations zum aktuellen Song
+            if let cur = self.currentTrack {
+                let recs = await MusicService.shared.fetchRecommendations(
+                    trackId: cur.id,
+                    artist: cur.artist,
+                    title: cur.title,
+                    serverURL: serverURL,
+                    token: token
+                )
+                let newRecs = recs.filter { !existingIds.contains($0.id) }
+                if !newRecs.isEmpty {
+                    self.queue.append(contentsOf: newRecs)
+                    self.queueIndex += 1
+                    let nextTrack = self.queue[self.queueIndex]
+                    self.play(track: nextTrack, from: self.queue, serverURL: serverURL)
+                    return
+                }
+            }
+
+            // 2. Mittlere Priorität: Weitere Top-Tracks des Künstlers abrufen
+            if let cur = self.currentTrack, !cur.artist.isEmpty && cur.artist != "Unbekannt" {
+                if let artistData = await MusicService.shared.fetchArtist(name: cur.artist, serverURL: serverURL, token: token) {
+                    var artistPool: [Track] = []
+                    if let topTracks = artistData.topTracks {
+                        artistPool.append(contentsOf: topTracks.map { $0.toTrack() })
+                    }
+                    let newArtistTracks = artistPool.filter { !existingIds.contains($0.id) }
+                    if !newArtistTracks.isEmpty {
+                        self.queue.append(contentsOf: newArtistTracks)
+                        self.queueIndex += 1
+                        let nextTrack = self.queue[self.queueIndex]
+                        self.play(track: nextTrack, from: self.queue, serverURL: serverURL)
+                        return
+                    }
+                }
+            }
+
+            // 3. Fallback: Frische Home-Discovery-Tracks (Trending, Hits, For You, Radar)
             if let discovery = await MusicService.shared.fetchHomeDiscovery(serverURL: serverURL, token: token) {
                 var freshTracks: [Track] = []
                 if let trending = discovery.trendingEverywhere {
@@ -375,19 +464,24 @@ public final class AudioPlayerManager: ObservableObject {
                 if let hits = discovery.todaysTopHits {
                     freshTracks.append(contentsOf: hits.map { $0.toTrack() })
                 }
+                if let forYou = discovery.forYou {
+                    freshTracks.append(contentsOf: forYou.map { $0.toTrack() })
+                }
+                if let radar = discovery.releaseRadar {
+                    freshTracks.append(contentsOf: radar.map { $0.toTrack() })
+                }
 
-                let existingIds = Set(self.queue.map { $0.id })
                 let newUnique = freshTracks.filter { !existingIds.contains($0.id) }
-
                 if !newUnique.isEmpty {
                     self.queue.append(contentsOf: newUnique)
-                    let nextTrack = self.queue[self.queueIndex + 1]
                     self.queueIndex += 1
+                    let nextTrack = self.queue[self.queueIndex]
                     self.play(track: nextTrack, from: self.queue, serverURL: serverURL)
                     return
                 }
             }
 
+            // 4. Absoluter Not-Fallback: Nur wenn wirklich alle Quellen erschöpft sind
             if !self.queue.isEmpty {
                 self.queueIndex = 0
                 self.play(track: self.queue[0], from: self.queue, serverURL: serverURL)
@@ -589,6 +683,13 @@ public final class AudioPlayerManager: ObservableObject {
                 return
             }
             if self.duration > 5.0 && self.currentTime < self.duration - 3.0 {
+                // Timescale-Verdopplungs-Bug abfangen: Wenn AVPlayer den Song bei ca. der Hälfte der Spieldauer regulär beendet
+                if self.currentTime > 30.0 && self.currentTime >= (self.duration * 0.42) && self.currentTime <= (self.duration * 0.58) {
+                    print("AudioPlayerManager: fMP4-Timescale-Verdopplung bei EOF erkannt (\(self.currentTime)/\(self.duration)). Dauer korrigiert, springe zum nächsten Titel.")
+                    self.duration = self.currentTime
+                    self.next()
+                    return
+                }
                 print("AudioPlayerManager: Premature stream end at \(self.currentTime)/\(self.duration), skipping ignored")
                 return
             }
@@ -603,6 +704,12 @@ public final class AudioPlayerManager: ObservableObject {
                 return
             }
             if self.duration > 5.0 && self.currentTime < self.duration - 3.0 {
+                if self.currentTime > 30.0 && self.currentTime >= (self.duration * 0.42) && self.currentTime <= (self.duration * 0.58) {
+                    print("AudioPlayerManager: fMP4-Timescale-Verdopplung bei Stream-Ende erkannt (\(self.currentTime)/\(self.duration)). Korrigiere und springe weiter.")
+                    self.duration = self.currentTime
+                    self.next()
+                    return
+                }
                 print("AudioPlayerManager: Premature stream failure at \(self.currentTime)/\(self.duration), skipping ignored")
                 return
             }
