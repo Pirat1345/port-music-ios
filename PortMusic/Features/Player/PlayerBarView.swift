@@ -102,23 +102,43 @@ public struct PlayerBarView: View {
                         onOpenFullscreen()
                     }
                 }
-                // 3. Wischen nach links: Nächster Titel
+                // 3. Wischen nach links: Nächster Titel (Cover bleibt fest, nur Text gleitet)
                 else if dx < -35 || velocityX < -50 {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                        horizontalDragOffset = -80
+                    }
                     player.next(serverURL: serverURL)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                        horizontalDragOffset = 50
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                            horizontalDragOffset = 0
+                        }
+                    }
                 }
-                // 4. Wischen nach rechts: Vorheriger Titel
+                // 4. Wischen nach rechts: Vorheriger Titel (Cover bleibt fest, nur Text gleitet)
                 else if dx > 35 || velocityX > 50 {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                        horizontalDragOffset = 80
+                    }
                     player.previous(serverURL: serverURL)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                        horizontalDragOffset = -50
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                            horizontalDragOffset = 0
+                        }
+                    }
                 }
 
-                // Zustand zurücksetzen und Offset animiert zentrieren
+                // Zustand zurücksetzen
                 hasSwiped = false
-                withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                    horizontalDragOffset = 0
+                if abs(dx) <= 35 && abs(velocityX) <= 50 {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                        horizontalDragOffset = 0
+                    }
                 }
             }
     }
@@ -127,9 +147,9 @@ public struct PlayerBarView: View {
     @ViewBuilder
     private func inlineContentView(track: Track) -> some View {
         HStack(spacing: 10) {
-            // Antippbarer & Wischbarer Info-Bereich (Cover + Titel)
+            // Antippbarer & Wischbarer Info-Bereich (Cover bleibt fest, nur Text gleitet)
             HStack(spacing: 10) {
-                // Mini Cover Artwork (38x38, 8pt Radius)
+                // Mini Cover Artwork (38x38, 8pt Radius) - Bleibt fest an Ort und Stelle
                 let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
@@ -144,15 +164,16 @@ public struct PlayerBarView: View {
                 }
                 .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
 
-                // Titel
+                // Titel - Nur der Text verschiebt sich beim Wischen!
                 Text(track.title)
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .offset(x: horizontalDragOffset)
+                    .clipped()
             }
             .contentShape(Rectangle())
-            .offset(x: horizontalDragOffset)
             .gesture(swipeAndTapGesture)
 
             // Play / Pause Button (32x32 runder Glasbutton)
@@ -178,9 +199,9 @@ public struct PlayerBarView: View {
     private func expandedContentView(track: Track) -> some View {
         ZStack(alignment: .bottom) {
             HStack(spacing: 10) {
-                // Linker Bereich: Cover + Titel + Interpret (Antippen öffnet Vollbild, Wischen wechselt Titel)
+                // Linker Bereich: Cover + Titel + Interpret (Cover bleibt fest, nur Text gleitet)
                 HStack(spacing: 10) {
-                    // Cover-Artwork (44x44 Standard)
+                    // Cover-Artwork (44x44 Standard) - Bleibt fest an Ort und Stelle
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(Color.white.opacity(0.08))
@@ -202,7 +223,7 @@ public struct PlayerBarView: View {
                     .frame(width: 44, height: 44)
                     .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
 
-                    // Titel und Interpret
+                    // Titel und Interpret - Nur dieser Textblock gleitet beim Wischen!
                     let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
                     let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
 
@@ -217,11 +238,13 @@ public struct PlayerBarView: View {
                             .foregroundColor(Color.white.opacity(0.65))
                             .lineLimit(1)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .offset(x: horizontalDragOffset)
+                    .clipped()
 
                     Spacer(minLength: 4)
                 }
                 .contentShape(Rectangle())
-                .offset(x: horizontalDragOffset)
                 .gesture(swipeAndTapGesture)
 
                 // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
