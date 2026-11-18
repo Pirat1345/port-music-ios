@@ -440,10 +440,7 @@ public final class AudioPlayerManager: ObservableObject {
             // 2. Mittlere Priorität: Weitere Top-Tracks des Künstlers abrufen
             if let cur = self.currentTrack, !cur.artist.isEmpty && cur.artist != "Unbekannt" {
                 if let artistData = await MusicService.shared.fetchArtist(name: cur.artist, serverURL: serverURL, token: token) {
-                    var artistPool: [Track] = []
-                    if let topTracks = artistData.topTracks {
-                        artistPool.append(contentsOf: topTracks.map { $0.toTrack() })
-                    }
+                    let artistPool = artistData.topTracks.map { $0.toTrack() }
                     let newArtistTracks = artistPool.filter { !existingIds.contains($0.id) }
                     if !newArtistTracks.isEmpty {
                         self.queue.append(contentsOf: newArtistTracks)
