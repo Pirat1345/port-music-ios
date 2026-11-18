@@ -141,7 +141,7 @@ public struct MainTabView: View {
                 ) {
                     showNavbarSettings = true
                 }
-                .id("tabbar_long_press_\(customTabsRaw)_\(iconsOnly)_\(showNavbarSettings)")
+                .id("tabbar_long_press_\(customTabsRaw)_\(iconsOnly)")
             )
             .animation(.spring(response: 0.36, dampingFraction: 0.84), value: isMinimized)
             // Detektiert vertikale Scroll-Bewegungen für die flüssige Octave-Leistenminimierung
@@ -348,7 +348,6 @@ public struct MainTabView: View {
                 scrollMinimize: $scrollMinimizeEnabled,
                 customTabsRaw: $customTabsRaw
             )
-            .id("navbar_sheet_\(customTabsRaw)_\(showNavbarSettings)")
         }
         .onChange(of: customTabsRaw) { _ in
             let tabs = currentTabsList
@@ -531,6 +530,9 @@ struct TabBarLongPressModifier: UIViewRepresentable {
         DispatchQueue.main.async {
             uiView.reattach()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            uiView.reattach()
+        }
     }
 }
 
@@ -671,60 +673,58 @@ struct NavbarSettingsSheet: View {
     @Binding var customTabsRaw: String
     @Environment(\.dismiss) private var dismiss
 
-    @State private var activeTabs: [LiquidTabID] = []
+    // Lokaler Zustand: Änderungen werden erst beim Schließen des Menüs ("Fertig") übernommen
+    @State private var localIconsOnly: Bool = false
+    @State private var localScrollMinimize: Bool = false
+    @State private var localTabs: [LiquidTabID] = []
     @State private var editMode: EditMode = .inactive
 
     private var inactiveTabs: [LiquidTabID] {
-        let current = Set(activeTabs)
+        let current = Set(localTabs)
         let all: [LiquidTabID] = [.home, .library, .radio, .search, .newReleases]
         return all.filter { !current.contains($0) }
     }
 
-    private var activeTabsKey: String {
-        activeTabs.map(\.rawValue).sorted().joined(separator: "_")
-    }
-
-    private func saveTabs(_ tabs: [LiquidTabID]) {
+    private func commitChanges() {
         var unique: [LiquidTabID] = []
-        for t in tabs {
+        for t in localTabs {
             if !unique.contains(t) {
                 unique.append(t)
             }
         }
-        customTabsRaw = unique.map(\.rawValue).joined(separator: ",")
-    }
-
-    private func syncFromRaw() {
-        let rawIds = customTabsRaw.split(separator: ",").map(String.init)
-        let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
-        var unique: [LiquidTabID] = []
-        for t in parsed {
-            if !unique.contains(t) {
-                unique.append(t)
-            }
+        if unique.isEmpty {
+            unique = [.home, .library, .radio, .search]
         }
-        activeTabs = unique.isEmpty ? [.home, .library, .radio, .search] : unique
+        let newRaw = unique.map(\.rawValue).joined(separator: ",")
+        if customTabsRaw != newRaw {
+            customTabsRaw = newRaw
+        }
+        if iconsOnly != localIconsOnly {
+            iconsOnly = localIconsOnly
+        }
+        if scrollMinimize != localScrollMinimize {
+            scrollMinimize = localScrollMinimize
+        }
     }
 
     private func toggleTab(_ tab: LiquidTabID) {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            if activeTabs.contains(tab) {
-                guard activeTabs.count > 2 else {
+            if localTabs.contains(tab) {
+                guard localTabs.count > 2 else {
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.warning)
                     return
                 }
-                activeTabs.removeAll { $0 == tab }
+                localTabs.removeAll { $0 == tab }
                 let generator = UIImpactFeedbackGenerator(style: .medium)
                 generator.impactOccurred()
             } else {
-                if !activeTabs.contains(tab) {
-                    activeTabs.append(tab)
+                if !localTabs.contains(tab) {
+                    localTabs.append(tab)
                 }
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
             }
-            saveTabs(activeTabs)
         }
     }
 
@@ -732,8 +732,7 @@ struct NavbarSettingsSheet: View {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            activeTabs = [.home, .library, .radio, .search]
-            saveTabs(activeTabs)
+            localTabs = [.home, .library, .radio, .search]
         }
     }
 
@@ -741,12 +740,12 @@ struct NavbarSettingsSheet: View {
         NavigationStack {
             List {
                 Section(header: Text("Anzeigevariante").foregroundColor(.white.opacity(0.60))) {
-                    Toggle("Nur Icons anzeigen (ohne Text)", isOn: $iconsOnly)
+                    Toggle("Nur Icons anzeigen (ohne Text)", isOn: $localIconsOnly)
                         .tint(Color(hex: "#fc3c44"))
                 }
 
                 Section(header: Text("Scroll-Verhalten").foregroundColor(.white.opacity(0.60))) {
-                    Toggle("Beim Scrollen minimieren", isOn: $scrollMinimize)
+                    Toggle("Beim Scrollen minimieren", isOn: $localScrollMinimize)
                         .tint(Color(hex: "#fc3c44"))
                     Text("Schrumpft die Leiste beim Scrollen nach unten wie in Octave in zwei Kreise und dockt die Minibar direkt dazwischen ein.")
                         .font(.system(size: 12))
@@ -781,7 +780,7 @@ struct NavbarSettingsSheet: View {
                             }
                         }
                 ) {
-                    ForEach(activeTabs, id: \.self) { tab in
+                    ForEach(localTabs, id: \.self) { tab in
                         HStack(spacing: 12) {
                             // 1. Tab Icon
                             Image(systemName: tab.iconName(isSelected: true))
@@ -811,13 +810,9 @@ struct NavbarSettingsSheet: View {
                         .padding(.vertical, 2)
                     }
                     .onMove { indices, newOffset in
-                        var list = activeTabs
-                        list.move(fromOffsets: indices, toOffset: newOffset)
-                        activeTabs = list
-                        saveTabs(list)
+                        localTabs.move(fromOffsets: indices, toOffset: newOffset)
                     }
                 }
-                .id("active_section_\(activeTabsKey)_\(editMode == .active ? "1" : "0")")
 
                 // Sektion "Weitere Optionen" wird NUR angezeigt, wenn Bearbeiten aktiv ist und inaktive Tabs vorhanden sind
                 if editMode == .active && !inactiveTabs.isEmpty {
@@ -855,7 +850,6 @@ struct NavbarSettingsSheet: View {
                             }
                         }
                     }
-                    .id("inactive_section_\(activeTabsKey)")
                 }
 
                 if editMode == .active {
@@ -878,16 +872,27 @@ struct NavbarSettingsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Fertig") {
+                        commitChanges()
                         dismiss()
                     }
                     .foregroundColor(Color(hex: "#fc3c44"))
                 }
             }
             .onAppear {
-                syncFromRaw()
+                localIconsOnly = iconsOnly
+                localScrollMinimize = scrollMinimize
+                let rawIds = customTabsRaw.split(separator: ",").map(String.init)
+                let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
+                var unique: [LiquidTabID] = []
+                for t in parsed {
+                    if !unique.contains(t) {
+                        unique.append(t)
+                    }
+                }
+                localTabs = unique.isEmpty ? [.home, .library, .radio, .search] : unique
             }
-            .onChange(of: customTabsRaw) { _ in
-                syncFromRaw()
+            .onDisappear {
+                commitChanges()
             }
         }
         .preferredColorScheme(.dark)
