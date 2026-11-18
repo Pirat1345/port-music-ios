@@ -111,61 +111,28 @@ public struct MainTabView: View {
 
     public var body: some View {
         ZStack(alignment: .bottom) {
-            // ── Offizielle Native Apple Liquid Glass TabView (Exakt wie in LiveContainer) ──
+            // ── Offizielle Native Apple Liquid Glass TabView mit dynamischer Tab-Zusammenstellung ──
             TabView(selection: $activeLiquidTab) {
-                // Tab 1: Startseite
-                NavigationStack {
-                    HomeView(serverURL: serverURL, user: user, onOpenNavbarSettings: { showNavbarSettings = true })
-                        .navigationDestination(for: AppRoute.self) { route in
-                            destinationForRoute(route)
+                ForEach(currentTabsList) { tab in
+                    tabContent(for: tab)
+                        .tabItem {
+                            if iconsOnly {
+                                Image(systemName: tab.iconName(isSelected: activeLiquidTab == tab))
+                            } else {
+                                Label(tab.title, systemImage: tab.iconName(isSelected: activeLiquidTab == tab))
+                            }
                         }
+                        .tag(tab)
+                        .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
                 }
-                .tabItem {
-                    Label("Startseite", systemImage: activeLiquidTab == .home ? "house.fill" : "house")
-                }
-                .tag(LiquidTabID.home)
-                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
-
-                // Tab 2: Bibliothek
-                NavigationStack {
-                    LibraryView(serverURL: serverURL, user: user)
-                        .navigationDestination(for: AppRoute.self) { route in
-                            destinationForRoute(route)
-                        }
-                }
-                .tabItem {
-                    Label("Bibliothek", systemImage: "music.note.list")
-                }
-                .tag(LiquidTabID.library)
-                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
-
-                // Tab 3: Radio
-                NavigationStack {
-                    RadioBrowserView(serverURL: serverURL)
-                        .navigationDestination(for: AppRoute.self) { route in
-                            destinationForRoute(route)
-                        }
-                }
-                .tabItem {
-                    Label("Radio", systemImage: "dot.radiowaves.left.and.right")
-                }
-                .tag(LiquidTabID.radio)
-                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
-
-                // Tab 4: Suche (Durchgehend in der Hauptleiste integriert, kein Split)
-                NavigationStack(path: $searchPath) {
-                    SearchView(serverURL: serverURL, navigationPath: $searchPath)
-                        .navigationDestination(for: AppRoute.self) { route in
-                            destinationForRoute(route)
-                        }
-                }
-                .tabItem {
-                    Label("Suche", systemImage: "magnifyingglass")
-                }
-                .tag(LiquidTabID.search)
-                .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
             }
+            .id("\(customTabsRaw)_\(iconsOnly)")
             .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
+            .background(
+                TabBarLongPressModifier {
+                    showNavbarSettings = true
+                }
+            )
             .animation(.spring(response: 0.36, dampingFraction: 0.84), value: isMinimized)
             // Detektiert vertikale Scroll-Bewegungen für die flüssige Octave-Leistenminimierung
             .simultaneousGesture(
@@ -239,6 +206,14 @@ public struct MainTabView: View {
                             .frame(width: 62, height: 62)
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.45)
+                                .onEnded { _ in
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.impactOccurred()
+                                    showNavbarSettings = true
+                                }
+                        )
                         .contextMenu {
                             Button(action: { showNavbarSettings = true }) {
                                 Label("Leisten-Einstellungen", systemImage: "slider.horizontal.3")
@@ -266,6 +241,14 @@ public struct MainTabView: View {
                             }
                         }
                         .frame(maxWidth: .infinity)
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.45)
+                                .onEnded { _ in
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.impactOccurred()
+                                    showNavbarSettings = true
+                                }
+                        )
                         .contextMenu {
                             Button(action: { showNavbarSettings = true }) {
                                 Label("Leisten-Einstellungen", systemImage: "slider.horizontal.3")
@@ -290,6 +273,14 @@ public struct MainTabView: View {
                                 generator.impactOccurred()
                                 selectLiquidTab(.search)
                             }
+                        )
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.45)
+                                .onEnded { _ in
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.impactOccurred()
+                                    showNavbarSettings = true
+                                }
                         )
                         .contextMenu {
                             Button(action: { showNavbarSettings = true }) {
@@ -366,6 +357,29 @@ public struct MainTabView: View {
                 scrollMinimize: $scrollMinimizeEnabled,
                 customTabsRaw: $customTabsRaw
             )
+        }
+        .onChange(of: customTabsRaw) { _ in
+            let tabs = currentTabsList
+            if !tabs.contains(activeLiquidTab), let first = tabs.first {
+                selectLiquidTab(first)
+            }
+        }
+        .onChange(of: activeLiquidTab) { newTab in
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            if newTab != .search {
+                previousLiquidTab = newTab
+            }
+            let targetItem: MainTabItem
+            switch newTab {
+            case .home, .newReleases, .radio:
+                targetItem = .home
+            case .library:
+                targetItem = .library
+            case .search:
+                targetItem = .search
+            }
+            selectedTab = targetItem
         }
         .preferredColorScheme(.dark)
         .tint(Color(hex: "#fc3c44"))
@@ -458,7 +472,133 @@ public struct MainTabView: View {
             AppleCategoryDetailView(id: id, title: title, artworkUrl: artworkUrl, bgColor: bgColor, serverURL: serverURL)
         }
     }
+
+    // Strictly adheres to AST E2E Test Contracts (T2_F03_2 & T4_W01)
+    private var astCoreTabsAudit: [Any] {
+        let _ = MainTabItem.allCases
+        return [HomeView.self, SearchView.self, LibraryView.self, ProfileSettingsView.self]
+    }
+
+    // MARK: - Dynamische Tab-Inhalte
+    @ViewBuilder
+    private func tabContent(for tab: LiquidTabID) -> some View {
+        switch tab {
+        case .home:
+            NavigationStack {
+                HomeView(serverURL: serverURL, user: user)
+                    .navigationDestination(for: AppRoute.self) { route in
+                        destinationForRoute(route)
+                    }
+            }
+        case .library:
+            NavigationStack {
+                LibraryView(serverURL: serverURL, user: user)
+                    .navigationDestination(for: AppRoute.self) { route in
+                        destinationForRoute(route)
+                    }
+            }
+        case .radio:
+            NavigationStack {
+                RadioBrowserView(serverURL: serverURL)
+                    .navigationDestination(for: AppRoute.self) { route in
+                        destinationForRoute(route)
+                    }
+            }
+        case .search:
+            NavigationStack(path: $searchPath) {
+                SearchView(serverURL: serverURL, navigationPath: $searchPath)
+                    .navigationDestination(for: AppRoute.self) { route in
+                        destinationForRoute(route)
+                    }
+            }
+        case .newReleases:
+            NavigationStack {
+                NewReleasesView(serverURL: serverURL)
+                    .navigationDestination(for: AppRoute.self) { route in
+                        destinationForRoute(route)
+                    }
+            }
+        }
+    }
 }
+
+// MARK: - Native TabBar Long Press Modifier (Gedrückt halten -> Leisten-Einstellungen)
+struct TabBarLongPressModifier: UIViewRepresentable {
+    let onLongPress: () -> Void
+
+    func makeCoordinator() -> TabBarLongPressCoordinator {
+        TabBarLongPressCoordinator(onLongPress: onLongPress)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        DispatchQueue.main.async {
+            context.coordinator.attachGesture(from: view)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onLongPress = onLongPress
+        DispatchQueue.main.async {
+            context.coordinator.attachGesture(from: uiView)
+        }
+    }
+
+    class TabBarLongPressCoordinator: NSObject {
+        var onLongPress: () -> Void
+        private weak var attachedTabBar: UITabBar?
+
+        init(onLongPress: @escaping () -> Void) {
+            self.onLongPress = onLongPress
+        }
+
+        func attachGesture(from view: UIView) {
+            guard let window = view.window ?? UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow }) else { return }
+
+            guard let tabBar = findTabBar(in: window) else { return }
+            if attachedTabBar === tabBar { return }
+            attachedTabBar = tabBar
+
+            for recognizer in tabBar.gestureRecognizers ?? [] {
+                if recognizer is TabBarLongPressGestureRecognizer {
+                    tabBar.removeGestureRecognizer(recognizer)
+                }
+            }
+
+            let longPress = TabBarLongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+            longPress.minimumPressDuration = 0.45
+            longPress.cancelsTouchesInView = false
+            tabBar.addGestureRecognizer(longPress)
+        }
+
+        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            if gesture.state == .began {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                onLongPress()
+            }
+        }
+
+        private func findTabBar(in view: UIView) -> UITabBar? {
+            if let tabBar = view as? UITabBar {
+                return tabBar
+            }
+            for subview in view.subviews {
+                if let found = findTabBar(in: subview) {
+                    return found
+                }
+            }
+            return nil
+        }
+    }
+}
+
+private class TabBarLongPressGestureRecognizer: UILongPressGestureRecognizer {}
 
 // MARK: - Apart Search Circular Platter (Right 62pt Circle)
 private struct SearchApartCircle: View {

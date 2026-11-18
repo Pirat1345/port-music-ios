@@ -3,17 +3,15 @@ import SwiftUI
 public struct HomeView: View {
     public let serverURL: String
     public let user: UserProfile
-    public var onOpenNavbarSettings: (() -> Void)? = nil
 
     @ObservedObject private var player = AudioPlayerManager.shared
     @State private var discovery: DiscoveryHomeResponse? = nil
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
 
-    public init(serverURL: String, user: UserProfile, onOpenNavbarSettings: (() -> Void)? = nil) {
+    public init(serverURL: String, user: UserProfile) {
         self.serverURL = serverURL
         self.user = user
-        self.onOpenNavbarSettings = onOpenNavbarSettings
     }
 
     // Exakt identisch zur Web-Funktion getGreeting() in Index.tsx
@@ -124,32 +122,14 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Header (Begruessung und direkter Zugriff auf Leisten-Einstellungen)
+    // MARK: - Header (Exakt wie auf der Webseite: reine Begruessung)
     private var topGreetingHeader: some View {
-        HStack(alignment: .center) {
+        HStack {
             Text(greeting)
                 .font(.system(size: 32, weight: .bold))
                 .foregroundColor(.white)
 
             Spacer()
-
-            if let openSettings = onOpenNavbarSettings {
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    openSettings()
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.12))
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
-                    .frame(width: 40, height: 40)
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
         }
         .padding(.horizontal, 20)
     }
