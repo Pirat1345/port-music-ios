@@ -496,7 +496,7 @@ private struct SearchApartCircle: View {
 }
 
 // MARK: - Navbar Settings Sheet (Tab-Konfiguration & Anzeigeeinstellungen)
-public struct NavbarSettingsSheet: View {
+struct NavbarSettingsSheet: View {
     @Binding var iconsOnly: Bool
     @Binding var scrollMinimize: Bool
     @Binding var customTabsRaw: String
