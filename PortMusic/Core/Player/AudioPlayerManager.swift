@@ -325,8 +325,8 @@ public final class AudioPlayerManager: ObservableObject {
 
     public func pause() {
         guard let player = avPlayer else { return }
-        player.pause()
         self.isPlaying = false
+        player.pause()
         updateNowPlayingInfo()
         persistPlayerState()
     }
@@ -515,6 +515,7 @@ public final class AudioPlayerManager: ObservableObject {
                 case .failed:
                     self.isBuffering = false
                     print("AudioPlayerManager: Item failed to play: \(String(describing: observedItem.error))")
+                    guard self.isPlaying else { return }
                     self.next()
                 case .unknown:
                     break
@@ -559,7 +560,7 @@ public final class AudioPlayerManager: ObservableObject {
             if !sec.isNaN {
                 self.currentTime = sec
                 // Automatischer Übergang zum nächsten Track wenn das reale Songende erreicht ist (keine 3 Minuten Stille)
-                if self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
+                if self.isPlaying && self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
                     self.playerItemDidReachEnd()
                     return
                 }
@@ -583,12 +584,28 @@ public final class AudioPlayerManager: ObservableObject {
 
     @objc private func playerItemDidReachEnd() {
         Task { @MainActor in
+            guard self.isPlaying else {
+                print("AudioPlayerManager: Item ended while paused, skipping ignored")
+                return
+            }
+            if self.duration > 5.0 && self.currentTime < self.duration - 3.0 {
+                print("AudioPlayerManager: Premature stream end at \(self.currentTime)/\(self.duration), skipping ignored")
+                return
+            }
             self.next()
         }
     }
 
     @objc private func playerItemDidFailToEnd() {
         Task { @MainActor in
+            guard self.isPlaying else {
+                print("AudioPlayerManager: Stream failed while paused, skipping ignored")
+                return
+            }
+            if self.duration > 5.0 && self.currentTime < self.duration - 3.0 {
+                print("AudioPlayerManager: Premature stream failure at \(self.currentTime)/\(self.duration), skipping ignored")
+                return
+            }
             self.next()
         }
     }

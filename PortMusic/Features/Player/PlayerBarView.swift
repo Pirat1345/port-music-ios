@@ -9,7 +9,9 @@ public struct PlayerBarView: View {
 
     @State private var dragProgress: Double? = nil
     @State private var horizontalDragOffset: CGFloat = 0
+    @State private var textOpacity: Double = 1.0
     @State private var hasSwiped: Bool = false
+    @State private var isTransitioning: Bool = false
 
     public init(serverURL: String, isInline: Bool = false, onOpenFullscreen: @escaping () -> Void) {
         self.serverURL = serverURL
@@ -29,6 +31,34 @@ public struct PlayerBarView: View {
 
     private var activeProgress: Double {
         progress
+    }
+
+    // MARK: - Rubber Band Resistance Helper (1.5 Zeichen / ~14pt Schwelle mit spürbarem Widerstand)
+    private func computeDampedDragOffset(_ rawDx: CGFloat) -> CGFloat {
+        let absDx = abs(rawDx)
+        let threshold: CGFloat = 14.0 // ca. 1.5 Buchstaben
+        if absDx <= threshold {
+            return rawDx
+        }
+        let excess = absDx - threshold
+        let maxAdditional: CGFloat = 12.0 // Maximal ca. 26pt Gesamtauslenkung
+        let dampedExcess = maxAdditional * (1.0 - exp(-excess / 30.0))
+        let signedDamped = (threshold + dampedExcess) * (rawDx < 0 ? -1.0 : 1.0)
+        return signedDamped
+    }
+
+    // MARK: - Horizontale Fade-Maske für geschmeidiges Ein- und Ausblenden an den Rändern
+    private var edgeFadeMask: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0.0),
+                .init(color: .black, location: 0.07),
+                .init(color: .black, location: 0.93),
+                .init(color: .clear, location: 1.0)
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 
     public var body: some View {
@@ -70,18 +100,19 @@ public struct PlayerBarView: View {
     private var swipeAndTapGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { val in
+                guard !isTransitioning else { return }
                 let dx = val.translation.width
                 let dy = val.translation.height
-                if abs(dx) > 6 || abs(dy) > 6 {
+                if abs(dx) > 5 || abs(dy) > 5 {
                     hasSwiped = true
                 }
-                // Folge der horizontalen Bewegung (gedämpft), wenn horizontal überwiegt
+                // Folge der horizontalen Bewegung (mit Rubber-Band-Widerstand ab 1.5 Buchstaben)
                 if abs(dx) > abs(dy) {
-                    let clamped = max(-50.0, min(50.0, dx))
-                    horizontalDragOffset = clamped
+                    horizontalDragOffset = computeDampedDragOffset(dx)
                 }
             }
             .onEnded { val in
+                guard !isTransitioning else { return }
                 let dx = val.translation.width
                 let dy = val.translation.height
                 let velocityX = val.predictedEndTranslation.width - val.translation.width
@@ -102,44 +133,62 @@ public struct PlayerBarView: View {
                         onOpenFullscreen()
                     }
                 }
-                // 3. Wischen nach links: Nächster Titel (Cover bleibt fest, nur Text gleitet)
-                else if dx < -35 || velocityX < -50 {
+                // 3. Wischen nach links: Nächster Titel (Cover bleibt fest, alter Name gleitet nach links raus, neuer kommt von rechts)
+                else if dx < -16 || velocityX < -40 {
+                    isTransitioning = true
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
-                        horizontalDragOffset = -80
+                    // Text gleitet in die linke Fade-Maske und blendet aus
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        horizontalDragOffset = -42
+                        textOpacity = 0.0
                     }
                     player.next(serverURL: serverURL)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                        horizontalDragOffset = 50
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                    // Neuer Songtext gleitet von rechts aus der Fade-Maske zur Mitte
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                        horizontalDragOffset = 42
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             horizontalDragOffset = 0
+                            textOpacity = 1.0
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                            isTransitioning = false
                         }
                     }
                 }
-                // 4. Wischen nach rechts: Vorheriger Titel (Cover bleibt fest, nur Text gleitet)
-                else if dx > 35 || velocityX > 50 {
+                // 4. Wischen nach rechts: Vorheriger Titel (Cover bleibt fest, alter Name gleitet nach rechts raus, vorheriger kommt von links)
+                else if dx > 16 || velocityX > 40 {
+                    isTransitioning = true
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
-                    withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
-                        horizontalDragOffset = 80
+                    // Text gleitet in die rechte Fade-Maske und blendet aus
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        horizontalDragOffset = 42
+                        textOpacity = 0.0
                     }
                     player.previous(serverURL: serverURL)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
-                        horizontalDragOffset = -50
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                    // Vorheriger Songtext gleitet von links aus der Fade-Maske zur Mitte
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                        horizontalDragOffset = -42
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                             horizontalDragOffset = 0
+                            textOpacity = 1.0
                         }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                            isTransitioning = false
+                        }
+                    }
+                }
+                // 5. Losgelassen ohne Schwelle: Geschmeidig zur Mitte zurückfedern
+                else {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        horizontalDragOffset = 0
+                        textOpacity = 1.0
                     }
                 }
 
                 // Zustand zurücksetzen
                 hasSwiped = false
-                if abs(dx) <= 35 && abs(velocityX) <= 50 {
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                        horizontalDragOffset = 0
-                    }
-                }
             }
     }
 
@@ -164,29 +213,34 @@ public struct PlayerBarView: View {
                 }
                 .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
 
-                // Titel - Nur der Text verschiebt sich beim Wischen!
+                // Titel - Nur der Text verschiebt sich beim Wischen mit Rand-Fade!
                 Text(track.title)
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .offset(x: horizontalDragOffset)
-                    .clipped()
+                    .opacity(textOpacity)
+                    .mask(edgeFadeMask)
             }
             .contentShape(Rectangle())
             .gesture(swipeAndTapGesture)
 
-            // Play / Pause Button (32x32 runder Glasbutton)
+            // Play / Pause Button (34x34 runder Glasbutton mit isoliertem Touch-Target)
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 player.togglePlayPause()
             }) {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(Color.white.opacity(0.18)))
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.18))
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
             }
             .buttonStyle(PlainButtonStyle())
         }
@@ -223,7 +277,7 @@ public struct PlayerBarView: View {
                     .frame(width: 44, height: 44)
                     .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
 
-                    // Titel und Interpret - Nur dieser Textblock gleitet beim Wischen!
+                    // Titel und Interpret - Nur dieser Textblock gleitet beim Wischen mit Rand-Fade!
                     let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
                     let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
 
@@ -240,7 +294,8 @@ public struct PlayerBarView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .offset(x: horizontalDragOffset)
-                    .clipped()
+                    .opacity(textOpacity)
+                    .mask(edgeFadeMask)
 
                     Spacer(minLength: 4)
                 }
@@ -248,28 +303,30 @@ public struct PlayerBarView: View {
                 .gesture(swipeAndTapGesture)
 
                 // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
-                HStack(spacing: 8) {
-                    // Play/Pause Button
+                HStack(spacing: 6) {
+                    // Play/Pause Button mit isoliertem, zuverlässigem Touch-Target
                     Button(action: {
                         let generator = UIImpactFeedbackGenerator(style: .medium)
                         generator.impactOccurred()
                         player.togglePlayPause()
                     }) {
-                        if player.isBuffering {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(0.80)
-                                .frame(width: 30, height: 30)
-                        } else {
-                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 30, height: 30)
+                        ZStack {
+                            if player.isBuffering {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.80)
+                            } else {
+                                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
                         }
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
 
-                    // Nächster Titel (forward.fill)
+                    // Nächster Titel (forward.fill) mit isoliertem Touch-Target
                     Button(action: {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
@@ -278,7 +335,8 @@ public struct PlayerBarView: View {
                         Image(systemName: "forward.fill")
                             .font(.system(size: 17, weight: .bold))
                             .foregroundColor(Color.white.opacity(0.90))
-                            .frame(width: 30, height: 30)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
