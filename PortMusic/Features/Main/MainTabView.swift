@@ -93,7 +93,13 @@ public struct MainTabView: View {
     private var currentTabsList: [LiquidTabID] {
         let rawIds = customTabsRaw.split(separator: ",").map(String.init)
         let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
-        return parsed.isEmpty ? [.home, .library, .radio, .search] : parsed
+        var unique: [LiquidTabID] = []
+        for t in parsed {
+            if !unique.contains(t) {
+                unique.append(t)
+            }
+        }
+        return unique.isEmpty ? [.home, .library, .radio, .search] : unique
     }
 
     @State private var showFullscreenPlayer: Bool = false
@@ -126,11 +132,16 @@ public struct MainTabView: View {
                         .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
                 }
             }
+            .id("main_tabview_\(customTabsRaw)_\(iconsOnly)")
             .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
             .background(
-                TabBarLongPressModifier(isSheetPresented: showNavbarSettings) {
+                TabBarLongPressModifier(
+                    tabsKey: "\(customTabsRaw)_\(iconsOnly)",
+                    isSheetPresented: showNavbarSettings
+                ) {
                     showNavbarSettings = true
                 }
+                .id("tabbar_long_press_\(customTabsRaw)_\(iconsOnly)_\(showNavbarSettings)")
             )
             .animation(.spring(response: 0.36, dampingFraction: 0.84), value: isMinimized)
             // Detektiert vertikale Scroll-Bewegungen für die flüssige Octave-Leistenminimierung
@@ -337,6 +348,7 @@ public struct MainTabView: View {
                 scrollMinimize: $scrollMinimizeEnabled,
                 customTabsRaw: $customTabsRaw
             )
+            .id("navbar_sheet_\(customTabsRaw)_\(showNavbarSettings)")
         }
         .onChange(of: customTabsRaw) { _ in
             let tabs = currentTabsList
@@ -504,6 +516,7 @@ public struct MainTabView: View {
 
 // MARK: - Native TabBar Long Press Attacher (Gedrückt halten -> Leisten-Einstellungen)
 struct TabBarLongPressModifier: UIViewRepresentable {
+    let tabsKey: String
     let isSheetPresented: Bool
     let onLongPress: () -> Void
 
@@ -672,7 +685,25 @@ struct NavbarSettingsSheet: View {
     }
 
     private func saveTabs(_ tabs: [LiquidTabID]) {
-        customTabsRaw = tabs.map(\.rawValue).joined(separator: ",")
+        var unique: [LiquidTabID] = []
+        for t in tabs {
+            if !unique.contains(t) {
+                unique.append(t)
+            }
+        }
+        customTabsRaw = unique.map(\.rawValue).joined(separator: ",")
+    }
+
+    private func syncFromRaw() {
+        let rawIds = customTabsRaw.split(separator: ",").map(String.init)
+        let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
+        var unique: [LiquidTabID] = []
+        for t in parsed {
+            if !unique.contains(t) {
+                unique.append(t)
+            }
+        }
+        activeTabs = unique.isEmpty ? [.home, .library, .radio, .search] : unique
     }
 
     private func toggleTab(_ tab: LiquidTabID) {
@@ -687,7 +718,9 @@ struct NavbarSettingsSheet: View {
                 let generator = UIImpactFeedbackGenerator(style: .medium)
                 generator.impactOccurred()
             } else {
-                activeTabs.append(tab)
+                if !activeTabs.contains(tab) {
+                    activeTabs.append(tab)
+                }
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
             }
@@ -851,9 +884,10 @@ struct NavbarSettingsSheet: View {
                 }
             }
             .onAppear {
-                let rawIds = customTabsRaw.split(separator: ",").map(String.init)
-                let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
-                activeTabs = parsed.isEmpty ? [.home, .library, .radio, .search] : parsed
+                syncFromRaw()
+            }
+            .onChange(of: customTabsRaw) { _ in
+                syncFromRaw()
             }
         }
         .preferredColorScheme(.dark)
