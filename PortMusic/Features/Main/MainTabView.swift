@@ -126,10 +126,9 @@ public struct MainTabView: View {
                         .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
                 }
             }
-            .id("\(customTabsRaw)_\(iconsOnly)")
             .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
             .background(
-                TabBarLongPressModifier {
+                TabBarLongPressModifier(isSheetPresented: showNavbarSettings) {
                     showNavbarSettings = true
                 }
             )
@@ -505,6 +504,7 @@ public struct MainTabView: View {
 
 // MARK: - Native TabBar Long Press Attacher (Gedrückt halten -> Leisten-Einstellungen)
 struct TabBarLongPressModifier: UIViewRepresentable {
+    let isSheetPresented: Bool
     let onLongPress: () -> Void
 
     func makeUIView(context: Context) -> TabBarAttacherView {
@@ -515,65 +515,39 @@ struct TabBarLongPressModifier: UIViewRepresentable {
 
     func updateUIView(_ uiView: TabBarAttacherView, context: Context) {
         uiView.onLongPress = onLongPress
+        DispatchQueue.main.async {
+            uiView.reattach()
+        }
     }
 }
 
 final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
     var onLongPress: (() -> Void)?
-    private weak var attachedTabBar: UITabBar?
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        attach()
+        reattach()
     }
 
     override func didMoveToSuperview() {
         super.didMoveToSuperview()
-        attach()
+        reattach()
     }
 
-    func attach() {
-        // 1. Suche über Responder Chain
-        var responder: UIResponder? = self
-        var foundTabBar: UITabBar? = nil
-        while let r = responder {
-            if let tc = r as? UITabBarController {
-                foundTabBar = tc.tabBar
-                break
-            }
-            responder = r.next
-        }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        reattach()
+    }
 
-        // 2. Suche über Fenster-Hierarchie
-        if foundTabBar == nil, let window = self.window {
-            foundTabBar = findTabBar(in: window)
-        }
-
-        // 3. Fallback über aktive Fenster der UIWindowScene
-        if foundTabBar == nil {
-            let activeWindows = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-            for w in activeWindows {
-                if let tb = findTabBar(in: w) {
-                    foundTabBar = tb
-                    break
-                }
-            }
-        }
-
-        guard let tabBar = foundTabBar else {
-            // Nach kurzer Verzögerung erneut versuchen
+    func reattach() {
+        guard let tabBar = findCurrentTabBar() else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                self?.attach()
+                self?.reattach()
             }
             return
         }
 
-        if attachedTabBar === tabBar { return }
-        attachedTabBar = tabBar
-
-        // Entferne eventuell vorhandene alte Instanzen
+        // Entferne eventuell alte Gesten-Erkenner
         for g in tabBar.gestureRecognizers ?? [] {
             if g is TabBarCustomLongPressRecognizer {
                 tabBar.removeGestureRecognizer(g)
@@ -585,6 +559,34 @@ final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
         lp.cancelsTouchesInView = false
         lp.delegate = self
         tabBar.addGestureRecognizer(lp)
+    }
+
+    private func findCurrentTabBar() -> UITabBar? {
+        // 1. Suche über Responder Chain
+        var responder: UIResponder? = self
+        while let r = responder {
+            if let tc = r as? UITabBarController {
+                return tc.tabBar
+            }
+            responder = r.next
+        }
+
+        // 2. Suche über Fenster-Hierarchie
+        if let window = self.window, let tb = findTabBar(in: window) {
+            return tb
+        }
+
+        // 3. Fallback über aktive Fenster der UIWindowScene
+        let activeWindows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+        for w in activeWindows {
+            if let tb = findTabBar(in: w) {
+                return tb
+            }
+        }
+
+        return nil
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -665,6 +667,10 @@ struct NavbarSettingsSheet: View {
         return all.filter { !current.contains($0) }
     }
 
+    private var activeTabsKey: String {
+        activeTabs.map(\.rawValue).sorted().joined(separator: "_")
+    }
+
     private func saveTabs(_ tabs: [LiquidTabID]) {
         customTabsRaw = tabs.map(\.rawValue).joined(separator: ",")
     }
@@ -742,7 +748,7 @@ struct NavbarSettingsSheet: View {
                             }
                         }
                 ) {
-                    ForEach(activeTabs) { tab in
+                    ForEach(activeTabs, id: \.self) { tab in
                         HStack(spacing: 12) {
                             // 1. Tab Icon
                             Image(systemName: tab.iconName(isSelected: true))
@@ -778,6 +784,7 @@ struct NavbarSettingsSheet: View {
                         saveTabs(list)
                     }
                 }
+                .id("active_section_\(activeTabsKey)_\(editMode == .active ? "1" : "0")")
 
                 // Sektion "Weitere Optionen" wird NUR angezeigt, wenn Bearbeiten aktiv ist und inaktive Tabs vorhanden sind
                 if editMode == .active && !inactiveTabs.isEmpty {
@@ -785,7 +792,7 @@ struct NavbarSettingsSheet: View {
                         header: Text("Weitere Optionen").foregroundColor(.white.opacity(0.60)),
                         footer: Text("Tippe auf den Kreis rechts, um einen Tab wieder unten in der Leiste anzuzeigen.").font(.system(size: 12)).foregroundColor(.white.opacity(0.45))
                     ) {
-                        ForEach(inactiveTabs) { tab in
+                        ForEach(inactiveTabs, id: \.self) { tab in
                             HStack(spacing: 12) {
                                 Image(systemName: tab.iconName(isSelected: false))
                                     .font(.system(size: 16))
@@ -815,6 +822,7 @@ struct NavbarSettingsSheet: View {
                             }
                         }
                     }
+                    .id("inactive_section_\(activeTabsKey)")
                 }
 
                 if editMode == .active {
