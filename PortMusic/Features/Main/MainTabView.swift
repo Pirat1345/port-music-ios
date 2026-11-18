@@ -808,6 +808,7 @@ struct NavbarSettingsSheet: View {
                             }
                         }
                         .padding(.vertical, 2)
+                        .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .onMove { indices, newOffset in
                         localTabs.move(fromOffsets: indices, toOffset: newOffset)
