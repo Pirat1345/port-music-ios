@@ -495,7 +495,7 @@ public struct PlaylistDetailView: View {
         if isDownloaded {
             OfflineDownloadManager.shared.downloadPlaylist(
                 playlistId: playlistId,
-                name: playlist?.title ?? "Playlist",
+                name: displayTitle,
                 tracks: tracks,
                 serverURL: serverURL,
                 token: SessionManager.shared.currentToken

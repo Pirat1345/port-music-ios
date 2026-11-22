@@ -157,38 +157,18 @@ public struct HomeView: View {
                 generator.impactOccurred()
                 showSettingsSheet = true
             }) {
-                ZStack {
-                    Circle()
-                        .fill(Color(white: 0.16))
-                        .frame(width: 38, height: 38)
-                        .overlay(
-                            Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.8)
-                        )
-
-                    if let avatar = user.avatar, !avatar.isEmpty,
-                       let url = MusicService.shared.avatarURL(user: user, serverURL: serverURL) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable().scaledToFill().frame(width: 38, height: 38).clipShape(Circle())
-                            default:
-                                initialsView
-                            }
-                        }
-                    } else {
-                        initialsView
-                    }
-                }
+                PortUserAvatarView(
+                    rawAvatar: user.avatar,
+                    username: user.username,
+                    serverURL: serverURL,
+                    size: 38
+                )
+                .overlay(
+                    Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+                )
             }
         }
         .padding(.horizontal, 20)
-    }
-
-    private var initialsView: some View {
-        let initial = String(user.username.prefix(1)).uppercased()
-        return Text(initial.isEmpty ? "P" : initial)
-            .font(.system(size: 16, weight: .bold, design: .rounded))
-            .foregroundColor(.white)
     }
 
     // MARK: - Shelf 1: Top-Picks für dich (3:4 Poster-Karten)

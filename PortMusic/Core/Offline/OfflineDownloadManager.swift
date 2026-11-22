@@ -173,7 +173,6 @@ public final class OfflineDownloadManager: ObservableObject {
         if let u1 = URL(string: "\(base)/api/tracks/\(encodedId)/download") { candidates.pushCandidate(u1) }
         if let u2 = URL(string: "\(base)/api/stream/\(encodedId)") { candidates.pushCandidate(u2) }
         if let u3 = URL(string: "\(base)/audio/320/\(encodedId)") { candidates.pushCandidate(u3) }
-        if let sf = track.sourceFileId, !sf.isEmpty, let u4 = URL(string: "\(base)/api/files/\(sf)") { candidates.pushCandidate(u4) }
 
         var downloadedData: Data? = nil
         let session = URLSession.shared

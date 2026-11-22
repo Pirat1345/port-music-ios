@@ -36,181 +36,13 @@ public struct SettingsMainView: View {
                 Color.black.ignoresSafeArea()
 
                 List {
-                    // ── 1. BENUTZERPROFIL HEADER-KARTE ──
-                    Section {
-                        profileHeaderCard
-                    }
-                    .listRowBackground(Color(white: 0.10))
-
-                    // ── 2. SERVER & VERBINDUNG ──
-                    Section(header: Text("Server & Verbindung").foregroundColor(.gray)) {
-                        NavigationLink(destination: ServerManagementView()) {
-                            HStack(spacing: 14) {
-                                settingsIcon(name: "server.rack", color: .blue)
-
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Aktiver Server")
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(.white)
-                                    Text(profileManager.activeServerURL.isEmpty ? serverURL : profileManager.activeServerURL)
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.gray)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                    .listRowBackground(Color(white: 0.10))
-
-                    // ── 3. OFFLINE-DOWNLOADS & SPEICHER ──
-                    Section(header: Text("Offline-Downloads & Speicher").foregroundColor(.gray)) {
-                        HStack(spacing: 14) {
-                            settingsIcon(name: "arrow.down.circle.fill", color: Color(hex: "#00d26a"))
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Offline-Speicherbelegung")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.white)
-                                Text("\(offlineManager.formattedTotalStorage()) belegt (\(offlineManager.downloadedTrackIds.count) Titel)")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                        .padding(.vertical, 2)
-
-                        Toggle(isOn: $offlineWifiOnly) {
-                            HStack(spacing: 14) {
-                                settingsIcon(name: "wifi", color: .cyan)
-                                Text("Nur über WLAN herunterladen")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                            }
-                        }
-
-                        if !offlineManager.downloadedTrackIds.isEmpty {
-                            Button(role: .destructive, action: {
-                                showClearDownloadsAlert = true
-                            }) {
-                                HStack(spacing: 14) {
-                                    settingsIcon(name: "trash.fill", color: .red)
-                                    Text("Alle Downloads löschen")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundColor(.red)
-                                }
-                            }
-                        }
-
-                        Button(action: {
-                            URLCache.shared.removeAllCachedResponses()
-                            PortImageCache.shared.clearCache()
-                            showCacheClearedBanner = true
-                        }) {
-                            HStack(spacing: 14) {
-                                settingsIcon(name: "arrow.clockwise", color: .orange)
-                                Text("Temporären Bild- & Audio-Cache leeren")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                    }
-                    .listRowBackground(Color(white: 0.10))
-
-                    // ── 4. AUDIO & WIEDERGABE ──
-                    Section(header: Text("Audio & Wiedergabe").foregroundColor(.gray)) {
-                        HStack(spacing: 14) {
-                            settingsIcon(name: "speaker.wave.3.fill", color: Color(hex: "#fc3c44"))
-
-                            Picker("Streaming-Qualität", selection: $audioQuality) {
-                                Text("Normal (128 kbps)").tag("normal")
-                                Text("Hoch (256 kbps)").tag("high")
-                                Text("Lossless HiFi (FLAC)").tag("lossless")
-                            }
-                            .foregroundColor(.white)
-                            .tint(.gray)
-                        }
-
-                        Toggle(isOn: $autoplayEnabled) {
-                            HStack(spacing: 14) {
-                                settingsIcon(name: "infinity", color: .pink)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Intelligentes Autoplay")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(.white)
-                                    Text("Ähnliche Titel nach Warteschlangen-Ende")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                        }
-
-                        Toggle(isOn: $normalizationEnabled) {
-                            HStack(spacing: 14) {
-                                settingsIcon(name: "waveform", color: .yellow)
-                                Text("Lautstärke-Normalisierung")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                    }
-                    .listRowBackground(Color(white: 0.10))
-
-                    // ── 5. ERSCHEINUNGSBILD & BEDIENUNG ──
-                    Section(header: Text("Erscheinungsbild & Bedienung").foregroundColor(.gray)) {
-                        Toggle(isOn: $hapticsEnabled) {
-                            HStack(spacing: 14) {
-                                settingsIcon(name: "iphone.radiowaves.left.and.right", color: .indigo)
-                                Text("Haptisches Feedback")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                            }
-                        }
-
-                        Toggle(isOn: $keepScreenAwake) {
-                            HStack(spacing: 14) {
-                                settingsIcon(name: "sun.max.fill", color: .orange)
-                                Text("Display bei Wiedergabe aktiv halten")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .onChange(of: keepScreenAwake) { enabled in
-                            UIApplication.shared.isIdleTimerDisabled = enabled
-                        }
-                    }
-                    .listRowBackground(Color(white: 0.10))
-
-                    // ── 6. ÜBER DIE APP ──
-                    Section(header: Text("Über").foregroundColor(.gray)) {
-                        HStack(spacing: 14) {
-                            settingsIcon(name: "info.circle.fill", color: .gray)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Port Music iOS")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.white)
-                                Text("Version 1.0.3 · Native Octave Edition")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                    }
-                    .listRowBackground(Color(white: 0.10))
-
-                    // ── 7. ABMELDEN BUTTON ──
-                    Section {
-                        Button(action: {
-                            showLogoutAlert = true
-                        }) {
-                            HStack {
-                                Spacer()
-                                Text("Abmelden")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.red)
-                                Spacer()
-                            }
-                        }
-                    }
-                    .listRowBackground(Color(white: 0.10))
+                    profileSection
+                    serverSection
+                    downloadsSection
+                    audioSection
+                    appearanceSection
+                    aboutSection
+                    logoutSection
                 }
                 .scrollContentBackground(.hidden)
                 .listStyle(.insetGrouped)
@@ -254,30 +86,215 @@ public struct SettingsMainView: View {
         .preferredColorScheme(.dark)
     }
 
-    private var profileHeaderCard: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color(white: 0.18))
-                    .frame(width: 58, height: 58)
-                    .overlay(
-                        Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.8)
-                    )
+    // MARK: - 1. Profil Section
+    @ViewBuilder
+    private var profileSection: some View {
+        Section {
+            profileHeaderCard
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
 
-                if let avatar = user.avatar, !avatar.isEmpty,
-                   let url = MusicService.shared.avatarURL(user: user, serverURL: serverURL) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img):
-                            img.resizable().scaledToFill().frame(width: 58, height: 58).clipShape(Circle())
-                        default:
-                            initialsView
-                        }
+    // MARK: - 2. Server & Verbindung Section
+    @ViewBuilder
+    private var serverSection: some View {
+        Section(header: Text("Server & Verbindung").foregroundColor(.gray)) {
+            NavigationLink(destination: ServerManagementView()) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "server.rack", color: .blue)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Aktiver Server")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white)
+                        Text(profileManager.activeServerURL.isEmpty ? serverURL : profileManager.activeServerURL)
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
                     }
-                } else {
-                    initialsView
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
+
+    // MARK: - 3. Offline-Downloads & Speicher Section
+    @ViewBuilder
+    private var downloadsSection: some View {
+        Section(header: Text("Offline-Downloads & Speicher").foregroundColor(.gray)) {
+            HStack(spacing: 14) {
+                settingsIcon(name: "arrow.down.circle.fill", color: Color(hex: "#00d26a"))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Offline-Speicherbelegung")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                    Text("\(offlineManager.formattedTotalStorage()) belegt (\(offlineManager.downloadedTrackIds.count) Titel)")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
                 }
             }
+            .padding(.vertical, 2)
+
+            Toggle(isOn: $offlineWifiOnly) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "wifi", color: .cyan)
+                    Text("Nur über WLAN herunterladen")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+
+            if !offlineManager.downloadedTrackIds.isEmpty {
+                Button(role: .destructive, action: {
+                    showClearDownloadsAlert = true
+                }) {
+                    HStack(spacing: 14) {
+                        settingsIcon(name: "trash.fill", color: .red)
+                        Text("Alle Downloads löschen")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.red)
+                    }
+                }
+            }
+
+            Button(action: {
+                URLCache.shared.removeAllCachedResponses()
+                PortImageCache.shared.clearCache()
+                showCacheClearedBanner = true
+            }) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "arrow.clockwise", color: .orange)
+                    Text("Temporären Bild- & Audio-Cache leeren")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
+
+    // MARK: - 4. Audio & Wiedergabe Section
+    @ViewBuilder
+    private var audioSection: some View {
+        Section(header: Text("Audio & Wiedergabe").foregroundColor(.gray)) {
+            HStack(spacing: 14) {
+                settingsIcon(name: "speaker.wave.3.fill", color: Color(hex: "#fc3c44"))
+
+                Picker("Streaming-Qualität", selection: $audioQuality) {
+                    Text("Normal (128 kbps)").tag("normal")
+                    Text("Hoch (256 kbps)").tag("high")
+                    Text("Lossless HiFi (FLAC)").tag("lossless")
+                }
+                .foregroundColor(.white)
+                .tint(.gray)
+            }
+
+            Toggle(isOn: $autoplayEnabled) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "infinity", color: .pink)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Intelligentes Autoplay")
+                            .font(.system(size: 15))
+                            .foregroundColor(.white)
+                        Text("Ähnliche Titel nach Warteschlangen-Ende")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+
+            Toggle(isOn: $normalizationEnabled) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "waveform", color: .yellow)
+                    Text("Lautstärke-Normalisierung")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
+
+    // MARK: - 5. Erscheinungsbild & Bedienung Section
+    @ViewBuilder
+    private var appearanceSection: some View {
+        Section(header: Text("Erscheinungsbild & Bedienung").foregroundColor(.gray)) {
+            Toggle(isOn: $hapticsEnabled) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "iphone.radiowaves.left.and.right", color: .indigo)
+                    Text("Haptisches Feedback")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+
+            Toggle(isOn: $keepScreenAwake) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "sun.max.fill", color: .orange)
+                    Text("Display bei Wiedergabe aktiv halten")
+                        .font(.system(size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+            .onChange(of: keepScreenAwake) { enabled in
+                UIApplication.shared.isIdleTimerDisabled = enabled
+            }
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
+
+    // MARK: - 6. Über Section
+    @ViewBuilder
+    private var aboutSection: some View {
+        Section(header: Text("Über").foregroundColor(.gray)) {
+            HStack(spacing: 14) {
+                settingsIcon(name: "info.circle.fill", color: .gray)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Port Music iOS")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white)
+                    Text("Version 1.0.3 · Native Octave Edition")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
+
+    // MARK: - 7. Abmelden Section
+    @ViewBuilder
+    private var logoutSection: some View {
+        Section {
+            Button(action: {
+                showLogoutAlert = true
+            }) {
+                HStack {
+                    Spacer()
+                    Text("Abmelden")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.red)
+                    Spacer()
+                }
+            }
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
+
+    // MARK: - Profile Header Card
+    private var profileHeaderCard: some View {
+        HStack(spacing: 16) {
+            PortUserAvatarView(
+                rawAvatar: user.avatar,
+                username: user.username,
+                serverURL: serverURL,
+                size: 58
+            )
+            .overlay(
+                Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -285,7 +302,7 @@ public struct SettingsMainView: View {
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white)
 
-                    Text(user.role.uppercased())
+                    Text((user.role ?? "user").uppercased())
                         .font(.system(size: 10, weight: .bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -304,13 +321,6 @@ public struct SettingsMainView: View {
             Spacer()
         }
         .padding(.vertical, 6)
-    }
-
-    private var initialsView: some View {
-        let initial = String(user.username.prefix(1)).uppercased()
-        return Text(initial.isEmpty ? "P" : initial)
-            .font(.system(size: 24, weight: .bold, design: .rounded))
-            .foregroundColor(.white)
     }
 
     private func settingsIcon(name: String, color: Color) -> some View {
