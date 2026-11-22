@@ -491,5 +491,19 @@ public struct PlaylistDetailView: View {
         generator.impactOccurred()
         isDownloaded.toggle()
         UserDefaults.standard.set(isDownloaded, forKey: "\(downloadedStorageKeyPrefix)\(playlistId)")
+
+        if isDownloaded {
+            OfflineDownloadManager.shared.downloadPlaylist(
+                playlistId: playlistId,
+                name: playlist?.title ?? "Playlist",
+                tracks: tracks,
+                serverURL: serverURL,
+                token: SessionManager.shared.currentToken
+            )
+        } else {
+            for t in tracks {
+                OfflineDownloadManager.shared.removeDownload(trackId: t.id)
+            }
+        }
     }
 }

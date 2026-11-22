@@ -105,6 +105,7 @@ public struct MainTabView: View {
     @State private var showFullscreenPlayer: Bool = false
     @State private var showMenuDrawer: Bool = false
     @State private var showUserProfileSheet: Bool = false
+    @State private var showSettingsSheet: Bool = false
     @State private var searchPath: [AppRoute] = []
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var session = SessionManager.shared
@@ -364,13 +365,16 @@ public struct MainTabView: View {
                     showMenuDrawer = false
                 },
                 onOpenSettings: {
-                    showNavbarSettings = true
+                    showSettingsSheet = true
                     showMenuDrawer = false
                 },
                 onLogout: onLogout
             )
             .ignoresSafeArea()
             .zIndex(998)
+        }
+        .sheet(isPresented: $showSettingsSheet) {
+            SettingsMainView(user: session.currentUser ?? user, serverURL: serverURL, onLogout: onLogout)
         }
         .sheet(isPresented: $showUserProfileSheet) {
             UserPageView(user: session.currentUser ?? user, serverURL: serverURL)

@@ -8,6 +8,7 @@ public struct HomeView: View {
     @State private var discovery: DiscoveryHomeResponse? = nil
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
+    @State private var showSettingsSheet: Bool = false
 
     public init(serverURL: String, user: UserProfile) {
         self.serverURL = serverURL
@@ -135,9 +136,14 @@ public struct HomeView: View {
                 }
             }
         }
+        .sheet(isPresented: $showSettingsSheet) {
+            SettingsMainView(user: user, serverURL: serverURL) {
+                SessionManager.shared.logout()
+            }
+        }
     }
 
-    // MARK: - Header (Exakt wie auf der Webseite: reine Begruessung)
+    // MARK: - Header (Apple-Stil: Begrüßung + dezenter Avatar-Button rechts)
     private var topGreetingHeader: some View {
         HStack {
             Text(greeting)
@@ -145,8 +151,44 @@ public struct HomeView: View {
                 .foregroundColor(.white)
 
             Spacer()
+
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                showSettingsSheet = true
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.16))
+                        .frame(width: 38, height: 38)
+                        .overlay(
+                            Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+                        )
+
+                    if let avatar = user.avatar, !avatar.isEmpty,
+                       let url = MusicService.shared.avatarURL(user: user, serverURL: serverURL) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img.resizable().scaledToFill().frame(width: 38, height: 38).clipShape(Circle())
+                            default:
+                                initialsView
+                            }
+                        }
+                    } else {
+                        initialsView
+                    }
+                }
+            }
         }
         .padding(.horizontal, 20)
+    }
+
+    private var initialsView: some View {
+        let initial = String(user.username.prefix(1)).uppercased()
+        return Text(initial.isEmpty ? "P" : initial)
+            .font(.system(size: 16, weight: .bold, design: .rounded))
+            .foregroundColor(.white)
     }
 
     // MARK: - Shelf 1: Top-Picks für dich (3:4 Poster-Karten)

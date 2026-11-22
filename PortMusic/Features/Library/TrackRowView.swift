@@ -48,6 +48,7 @@ public struct TrackRowView: View {
     public var onTap: (() -> Void)? = nil
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @State private var localLiked: Bool = false
     @State private var showShareSheet: Bool = false
 
@@ -223,6 +224,12 @@ public struct TrackRowView: View {
             }
 
             HStack(spacing: 4) {
+                if offlineManager.isDownloaded(trackId: track.id) || isDownloaded {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "#00d26a"))
+                }
+
                 Text(track.artist)
                     .font(.system(size: 12))
                     .foregroundColor(Color(hex: "#a0a0a0"))
@@ -244,6 +251,38 @@ public struct TrackRowView: View {
     // MARK: - 3-Dots Action Menu
     private var actionMenu: some View {
         Menu {
+            // Offline Download Aktion
+            if offlineManager.isDownloaded(trackId: track.id) {
+                Button(role: .destructive, action: {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    offlineManager.removeDownload(trackId: track.id)
+                }) {
+                    Label("Download entfernen", systemImage: "trash")
+                }
+            } else if offlineManager.isDownloading(trackId: track.id) {
+                Button(action: {}) {
+                    Label("Wird heruntergeladen...", systemImage: "arrow.down.circle")
+                }
+                .disabled(true)
+            } else {
+                Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                    Task {
+                        await offlineManager.downloadTrack(
+                            track: track,
+                            serverURL: serverURL,
+                            token: SessionManager.shared.currentToken
+                        )
+                    }
+                }) {
+                    Label("Herunterladen", systemImage: "arrow.down.circle")
+                }
+            }
+
+            Divider()
+
             Button(action: {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()

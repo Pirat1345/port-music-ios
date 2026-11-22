@@ -282,14 +282,20 @@ public final class AudioPlayerManager: ObservableObject {
             await MusicService.shared.reportPlayback(track: track, serverURL: effectiveServerURL, token: token)
         }
 
-        guard let streamURL = MusicService.shared.streamURL(for: track, serverURL: effectiveServerURL) else {
+        // Hybrid-Wiedergabe: Bevorzuge lokale Offline-Datei, falls vorhanden (0 ms Latenz, kein Traffic)
+        let playbackURL: URL
+        if let localURL = OfflineDownloadManager.shared.localAudioFileURL(for: track.id) {
+            playbackURL = localURL
+        } else if let streamURL = MusicService.shared.streamURL(for: track, serverURL: effectiveServerURL) {
+            playbackURL = streamURL
+        } else {
             self.isBuffering = false
             return
         }
 
         cleanupCurrentItem()
 
-        let playerItem = AVPlayerItem(url: streamURL)
+        let playerItem = AVPlayerItem(url: playbackURL)
         observePlayerItem(playerItem)
 
         if let existing = avPlayer {

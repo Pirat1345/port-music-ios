@@ -352,10 +352,10 @@ public struct LibraryCategoryDetailView: View {
             }
 
         case "downloaded", "Downloads", "Heruntergeladen":
-            // Offline downloaded tracks
-            let recent = AudioPlayerManager.shared.recentTracks
+            // Echte Offline heruntergeladene Titel aus dem lokalen Speicher
+            let downloaded = OfflineDownloadManager.shared.allDownloadedTracks()
             await MainActor.run {
-                self.tracks = recent
+                self.tracks = downloaded
                 self.isLoading = false
             }
 
