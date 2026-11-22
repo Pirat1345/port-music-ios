@@ -164,7 +164,8 @@ public struct TrackRowView: View {
                 .fill(Color(hex: "#1c1c1f"))
                 .frame(width: 44, height: 44)
 
-            let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
+            let localCover = OfflineDownloadManager.shared.localCoverFileURL(for: track.id)
+            let resolved = localCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
             PortCachedAsyncImage(url: resolved) { img in
                 img
                     .resizable()

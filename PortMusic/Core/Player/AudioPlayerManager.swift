@@ -812,6 +812,16 @@ public final class AudioPlayerManager: ObservableObject {
 
     private func loadArtwork(from urlString: String?) {
         nowPlayingArtwork = nil
+
+        // 1. Lokales Offline-Cover direkt von Flash laden (sofortiges Lockscreen-Artwork ohne Netzwerk)
+        if let current = currentTrack,
+           let localCoverURL = OfflineDownloadManager.shared.localCoverFileURL(for: current.id),
+           let localImage = UIImage(contentsOfFile: localCoverURL.path) {
+            self.nowPlayingArtwork = localImage
+            self.updateNowPlayingInfo()
+            return
+        }
+
         let resolvedURL = resolveCoverURL(urlString, serverURL: currentServerURL ?? SessionManager.shared.serverURL ?? "")
         guard let url = resolvedURL else {
             updateNowPlayingInfo()

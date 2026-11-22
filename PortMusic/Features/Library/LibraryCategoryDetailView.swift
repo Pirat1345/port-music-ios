@@ -6,6 +6,7 @@ public struct LibraryCategoryDetailView: View {
     public let serverURL: String
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @State private var playlists: [DiscoveryPlaylist] = []
     @State private var artists: [DiscoveryArtist] = []
     @State private var tracks: [Track] = []
@@ -65,6 +66,11 @@ public struct LibraryCategoryDetailView: View {
         .tint(.white)
         .task {
             await loadCategoryData()
+        }
+        .onChange(of: offlineManager.downloadedTrackIds) { _ in
+            if category == "downloaded" || category == "Downloads" || category == "Heruntergeladen" {
+                self.tracks = offlineManager.allDownloadedTracks()
+            }
         }
     }
 

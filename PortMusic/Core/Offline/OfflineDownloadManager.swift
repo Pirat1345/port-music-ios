@@ -121,6 +121,15 @@ public final class OfflineDownloadManager: ObservableObject {
         return nil
     }
 
+    public func localCoverFileURL(for trackId: String) -> URL? {
+        guard let record = records[trackId], let coverName = record.localCoverFileName else { return nil }
+        let fileURL = coversDirectoryURL.appendingPathComponent(coverName)
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            return fileURL
+        }
+        return nil
+    }
+
     public func allDownloadedTracks() -> [Track] {
         records.values
             .sorted(by: { $0.downloadedAt > $1.downloadedAt })
@@ -167,12 +176,33 @@ public final class OfflineDownloadManager: ObservableObject {
         let fileName = "\(safeTrackId).m4a"
         let targetFileURL = tracksDirectoryURL.appendingPathComponent(fileName)
 
-        // URL-Kandidaten zur Audiogewinnung (exakt wie im Web)
+        // URL-Kandidaten zur Audiogewinnung (exakt wie im Web mit vollen Metadaten)
         var candidates: [URL] = []
-        let encodedId = track.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? track.id
-        if let u1 = URL(string: "\(base)/api/tracks/\(encodedId)/download") { candidates.pushCandidate(u1) }
-        if let u2 = URL(string: "\(base)/api/stream/\(encodedId)") { candidates.pushCandidate(u2) }
-        if let u3 = URL(string: "\(base)/audio/320/\(encodedId)") { candidates.pushCandidate(u3) }
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let encodedId = track.id.addingPercentEncoding(withAllowedCharacters: allowed) ?? track.id
+
+        // 1. Primärer Download-Endpunkt mit Metadaten (für sauberes M4A im Backend)
+        if var dlComponents = URLComponents(string: "\(base)/api/tracks/\(encodedId)/download") {
+            var qItems: [URLQueryItem] = [
+                URLQueryItem(name: "title", value: track.title),
+                URLQueryItem(name: "artist", value: track.artist)
+            ]
+            if let alb = track.album, !alb.isEmpty { qItems.append(URLQueryItem(name: "album", value: alb)) }
+            if let cov = track.coverUrl ?? track.cover, !cov.isEmpty { qItems.append(URLQueryItem(name: "cover", value: cov)) }
+            if track.durationSeconds > 0 { qItems.append(URLQueryItem(name: "duration", value: "\(track.durationSeconds)")) }
+            dlComponents.queryItems = qItems
+            if let uDl = dlComponents.url { candidates.pushCandidate(uDl) }
+        }
+
+        // 2. Stream-Endpunkt mit vollen Metadaten als Fallback
+        if let uStream = MusicService.shared.streamURL(for: track, serverURL: base) {
+            candidates.pushCandidate(uStream)
+        }
+
+        // 3. Lokale Server-Dateien (Uploads)
+        if let uFile = URL(string: "\(base)/api/files/audio/\(encodedId)") { candidates.pushCandidate(uFile) }
+        if let uFile2 = URL(string: "\(base)/api/files/\(encodedId)") { candidates.pushCandidate(uFile2) }
+        if let uAudio = URL(string: "\(base)/audio/320/\(encodedId)") { candidates.pushCandidate(uAudio) }
 
         var downloadedData: Data? = nil
         let session = URLSession.shared
@@ -210,8 +240,10 @@ public final class OfflineDownloadManager: ObservableObject {
 
             // Optional Cover laden & lokal speichern
             var localCoverName: String? = nil
-            if let coverStr = track.cover, let coverURL = URL(string: coverStr), !coverStr.isEmpty {
-                if let (coverData, _) = try? await session.data(from: coverURL), !coverData.isEmpty {
+            let coverCandidate = track.coverUrl ?? track.cover
+            if let coverStr = coverCandidate, !coverStr.isEmpty {
+                let resolvedCoverURL = resolveCoverURL(coverStr, serverURL: base)
+                if let cUrl = resolvedCoverURL, let (coverData, _) = try? await session.data(from: cUrl), !coverData.isEmpty {
                     let coverFileName = "\(safeTrackId).jpg"
                     let coverTargetURL = coversDirectoryURL.appendingPathComponent(coverFileName)
                     try? coverData.write(to: coverTargetURL, options: .atomic)

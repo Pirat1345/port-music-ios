@@ -38,6 +38,7 @@ public struct SettingsMainView: View {
                 List {
                     profileSection
                     serverSection
+                    accountAndSecuritySection
                     downloadsSection
                     audioSection
                     appearanceSection
@@ -119,7 +120,48 @@ public struct SettingsMainView: View {
         .listRowBackground(Color(white: 0.10))
     }
 
-    // MARK: - 3. Offline-Downloads & Speicher Section
+    // MARK: - 3. Konto & Sicherheit Section
+    @ViewBuilder
+    private var accountAndSecuritySection: some View {
+        Section(header: Text("Konto & Sicherheit").foregroundColor(.gray)) {
+            NavigationLink(destination: DeviceManagementView()) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "laptopcomputer.and.iphone", color: .indigo)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Geräte & Sitzungen")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white)
+                        Text("Angemeldete Geräte verwalten und abmelden")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            NavigationLink(destination: SecuritySettingsView()) {
+                HStack(spacing: 14) {
+                    settingsIcon(name: "lock.shield.fill", color: Color(hex: "#10b981"))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Sicherheit & 2FA")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white)
+                        Text("Zwei-Faktor-Authentifizierung & Passwort")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .listRowBackground(Color(white: 0.10))
+    }
+
+    // MARK: - 4. Offline-Downloads & Speicher Section
     @ViewBuilder
     private var downloadsSection: some View {
         Section(header: Text("Offline-Downloads & Speicher").foregroundColor(.gray)) {
@@ -175,7 +217,7 @@ public struct SettingsMainView: View {
         .listRowBackground(Color(white: 0.10))
     }
 
-    // MARK: - 4. Audio & Wiedergabe Section
+    // MARK: - 5. Audio & Wiedergabe Section
     @ViewBuilder
     private var audioSection: some View {
         Section(header: Text("Audio & Wiedergabe").foregroundColor(.gray)) {
@@ -217,7 +259,7 @@ public struct SettingsMainView: View {
         .listRowBackground(Color(white: 0.10))
     }
 
-    // MARK: - 5. Erscheinungsbild & Bedienung Section
+    // MARK: - 6. Erscheinungsbild & Bedienung Section
     @ViewBuilder
     private var appearanceSection: some View {
         Section(header: Text("Erscheinungsbild & Bedienung").foregroundColor(.gray)) {
@@ -245,7 +287,7 @@ public struct SettingsMainView: View {
         .listRowBackground(Color(white: 0.10))
     }
 
-    // MARK: - 6. Über Section
+    // MARK: - 7. Über Section
     @ViewBuilder
     private var aboutSection: some View {
         Section(header: Text("Über").foregroundColor(.gray)) {
@@ -255,7 +297,7 @@ public struct SettingsMainView: View {
                     Text("Port Music iOS")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.white)
-                    Text("Version 1.0.3 · Native Octave Edition")
+                    Text("Version 1.0.5 · Native Octave Edition")
                         .font(.system(size: 12))
                         .foregroundColor(.gray)
                 }
@@ -264,7 +306,7 @@ public struct SettingsMainView: View {
         .listRowBackground(Color(white: 0.10))
     }
 
-    // MARK: - 7. Abmelden Section
+    // MARK: - 8. Abmelden Section
     @ViewBuilder
     private var logoutSection: some View {
         Section {
@@ -298,7 +340,7 @@ public struct SettingsMainView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(user.username)
+                    Text(user.displayName ?? user.username)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white)
 
@@ -319,6 +361,12 @@ public struct SettingsMainView: View {
             }
 
             Spacer()
+
+            NavigationLink(destination: EditProfileView(user: user, serverURL: serverURL)) {
+                Text("Bearbeiten")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.blue)
+            }
         }
         .padding(.vertical, 6)
     }

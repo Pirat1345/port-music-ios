@@ -15,6 +15,10 @@ public func resolveCoverURL(_ raw: String?, serverURL: String) -> URL? {
         .replacingOccurrences(of: "{h}", with: "600")
         .replacingOccurrences(of: "100x100bb", with: "600x600bb")
 
+    if cleaned.hasPrefix("file://") {
+        return URL(string: cleaned)
+    }
+
     if cleaned.hasPrefix("http://") || cleaned.hasPrefix("https://") {
         if let direct = URL(string: cleaned) {
             return direct
@@ -475,19 +479,23 @@ public struct PortCoverImage: View {
     public let coverUrl: String?
     public let serverURL: String
     public let placeholderIcon: String
+    public let trackId: String?
 
     public init(
         coverUrl: String?,
         serverURL: String,
-        placeholderIcon: String = "music.note"
+        placeholderIcon: String = "music.note",
+        trackId: String? = nil
     ) {
         self.coverUrl = coverUrl
         self.serverURL = serverURL
         self.placeholderIcon = placeholderIcon
+        self.trackId = trackId
     }
 
     public var body: some View {
-        let resolved = resolveCoverURL(coverUrl, serverURL: serverURL)
+        let offlineCoverURL = trackId.flatMap { OfflineDownloadManager.shared.localCoverFileURL(for: $0) }
+        let resolved = offlineCoverURL ?? resolveCoverURL(coverUrl, serverURL: serverURL)
         PortCachedAsyncImage(url: resolved) { image in
             image
                 .resizable()
