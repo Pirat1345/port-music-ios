@@ -161,7 +161,7 @@ public struct SettingsMainView: View {
 
             Button(action: {
                 URLCache.shared.removeAllCachedResponses()
-                PortImageCache.shared.clearCache()
+                PortImageCache.shared.clearAllCache()
                 showCacheClearedBanner = true
             }) {
                 HStack(spacing: 14) {
