@@ -362,6 +362,8 @@ public struct AlbumDetailView: View {
                         }
                     }
                 }
+            }
+        }
         .padding(.horizontal, 16)
     }
 
