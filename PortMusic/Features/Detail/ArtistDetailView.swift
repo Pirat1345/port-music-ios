@@ -6,6 +6,7 @@ public struct ArtistDetailView: View {
     public let serverURL: String
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @State private var artistData: DiscoveryArtistDetailData? = nil
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
@@ -273,6 +274,12 @@ public struct ArtistDetailView: View {
                                         .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
                                         .lineLimit(1)
 
+                                    if offlineManager.isDownloaded(trackId: item.id) {
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(Color(hex: "#00d26a"))
+                                    }
+
                                     if item.isExplicit == true {
                                         Text("E")
                                             .font(.system(size: 9, weight: .bold))
@@ -313,6 +320,27 @@ public struct ArtistDetailView: View {
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .contextMenu {
+                        if offlineManager.isDownloaded(trackId: track.id) {
+                            Button(role: .destructive) {
+                                offlineManager.removeDownload(trackId: track.id)
+                            } label: {
+                                Label("Download entfernen", systemImage: "trash")
+                            }
+                        } else {
+                            Button {
+                                Task {
+                                    await offlineManager.downloadTrack(
+                                        track: track,
+                                        serverURL: serverURL,
+                                        token: SessionManager.shared.currentToken
+                                    )
+                                }
+                            } label: {
+                                Label("Offline speichern", systemImage: "arrow.down.circle")
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 20)

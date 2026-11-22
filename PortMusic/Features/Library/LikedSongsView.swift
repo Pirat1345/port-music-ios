@@ -15,6 +15,7 @@ public struct LikedSongsView: View {
     public let serverURL: String
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @State private var favorites: [Track] = []
     @State private var isLoading: Bool = true
     @State private var searchQuery: String = ""
@@ -47,6 +48,31 @@ public struct LikedSongsView: View {
             return "\(hours) Std. \(mins) Min."
         } else {
             return "\(mins) Min."
+        }
+    }
+
+    private var isAllLikedDownloaded: Bool {
+        guard !favorites.isEmpty else { return false }
+        return favorites.allSatisfy { offlineManager.isDownloaded(trackId: $0.id) }
+    }
+
+    private func toggleDownloadLikedSongs() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        let token = SessionManager.shared.currentToken
+
+        if isAllLikedDownloaded {
+            for t in favorites {
+                offlineManager.removeDownload(trackId: t.id)
+            }
+        } else {
+            offlineManager.downloadPlaylist(
+                playlistId: "liked_songs",
+                name: "Lieblingssongs",
+                tracks: favorites,
+                serverURL: serverURL,
+                token: token
+            )
         }
     }
 
@@ -229,6 +255,21 @@ public struct LikedSongsView: View {
                         Circle()
                             .stroke(Color.white.opacity(0.16), lineWidth: 1)
                     )
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Download All Liked Songs Toggle
+                Button(action: toggleDownloadLikedSongs) {
+                    Image(systemName: isAllLikedDownloaded ? "arrow.down.circle.fill" : "arrow.down.circle")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(isAllLikedDownloaded ? Color(hex: "#00d26a") : .white)
+                        .padding(12)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        )
                 }
                 .buttonStyle(PlainButtonStyle())
 

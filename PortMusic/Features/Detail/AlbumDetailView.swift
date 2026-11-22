@@ -8,6 +8,7 @@ public struct AlbumDetailView: View {
     public let serverURL: String
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @State private var albumData: DiscoveryAlbumDetailData? = nil
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
@@ -225,6 +226,47 @@ public struct AlbumDetailView: View {
                             .stroke(Color.white.opacity(0.15), lineWidth: 1)
                     )
             }
+
+            // Download Toggle
+            Button(action: toggleAlbumDownload) {
+                Image(systemName: isAlbumDownloaded ? "arrow.down.circle.fill" : "arrow.down.circle")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(isAlbumDownloaded ? Color(hex: "#00d26a") : .white)
+                    .padding(12)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
+            }
+        }
+    }
+
+    private var isAlbumDownloaded: Bool {
+        guard let data = albumData, !data.tracks.isEmpty else { return false }
+        return data.tracks.allSatisfy { offlineManager.isDownloaded(trackId: $0.id) }
+    }
+
+    private func toggleAlbumDownload() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        guard let data = albumData else { return }
+        let allTracks = data.tracks.map { $0.toTrack(fallbackCover: displayCover, fallbackAlbum: displayTitle) }
+        let token = SessionManager.shared.currentToken
+
+        if isAlbumDownloaded {
+            for t in allTracks {
+                offlineManager.removeDownload(trackId: t.id)
+            }
+        } else {
+            offlineManager.downloadPlaylist(
+                playlistId: albumId,
+                name: displayTitle,
+                tracks: allTracks,
+                serverURL: serverURL,
+                token: token
+            )
         }
     }
 
@@ -235,6 +277,7 @@ public struct AlbumDetailView: View {
                 let track = item.toTrack(fallbackCover: displayCover, fallbackAlbum: displayTitle)
                 let isPlayingThis = player.isPlaying && player.currentTrack?.id == track.id
                 let trackNum = item.trackNumber ?? (index + 1)
+                let isDownloaded = offlineManager.isDownloaded(trackId: item.id)
 
                 Button(action: {
                     playTrackFromAlbum(track: track, allItems: tracks)
@@ -253,6 +296,12 @@ public struct AlbumDetailView: View {
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
                                     .lineLimit(1)
+
+                                if isDownloaded {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color(hex: "#00d26a"))
+                                }
 
                                 if item.isExplicit == true {
                                     Text("E")
@@ -292,8 +341,27 @@ public struct AlbumDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(PlainButtonStyle())
-            }
-        }
+                .contextMenu {
+                    if isDownloaded {
+                        Button(role: .destructive) {
+                            offlineManager.removeDownload(trackId: track.id)
+                        } label: {
+                            Label("Download entfernen", systemImage: "trash")
+                        }
+                    } else {
+                        Button {
+                            Task {
+                                await offlineManager.downloadTrack(
+                                    track: track,
+                                    serverURL: serverURL,
+                                    token: SessionManager.shared.currentToken
+                                )
+                            }
+                        } label: {
+                            Label("Offline speichern", systemImage: "arrow.down.circle")
+                        }
+                    }
+                }
         .padding(.horizontal, 16)
     }
 

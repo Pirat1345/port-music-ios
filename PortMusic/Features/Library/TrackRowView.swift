@@ -109,7 +109,7 @@ public struct TrackRowView: View {
 
             // Right-Side Controls: Offline-Badge, Heart-Toggle & 3-Dots Action Menu
             HStack(spacing: 4) {
-                if isDownloaded {
+                if offlineManager.isDownloaded(trackId: track.id) || isDownloaded {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 13))
                         .foregroundColor(Color(hex: "#10b981"))
