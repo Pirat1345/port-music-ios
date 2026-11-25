@@ -111,76 +111,76 @@ public struct HomeView: View {
                 errorStateView(error)
             }
         } else if let data = discovery {
-            let dedup = deduplicateShelves(data: data, recentHistory: player.recentTracks)
-            discoveryShelvesContent(dedup: dedup, rawData: data)
+            let deduplicated = deduplicateShelves(data: data, recentHistory: player.recentTracks)
+            discoveryShelvesContent(deduplicated: deduplicated, rawData: data)
         }
     }
 
     @ViewBuilder
-    private func discoveryShelvesContent(dedup: DeduplicatedResult, rawData: DiscoveryHomeResponse) -> some View {
+    private func discoveryShelvesContent(deduplicated: DeduplicatedResult, rawData: DiscoveryHomeResponse) -> some View {
         // 0. Schnellzugriff (Lieblingssongs + Eigene Playlists)
         if !userFavorites.isEmpty || !userPlaylists.isEmpty {
             quickAccessGridSection
         }
 
         // 1. Top-Picks für dich (3:4 Poster-Karten, 204x282)
-        if !dedup.topPicks.isEmpty {
-            shelfTopPicks(picks: dedup.topPicks, allDiscovery: rawData)
+        if !deduplicated.topPicks.isEmpty {
+            shelfTopPicks(picks: deduplicated.topPicks, allDiscovery: rawData)
         }
 
         // 2. Zuletzt gehört (Chronologischer Verlauf)
-        if !dedup.recentTracks.isEmpty {
-            shelfRecentlyPlayed(tracks: dedup.recentTracks, allDiscovery: rawData)
+        if !deduplicated.recentTracks.isEmpty {
+            shelfRecentlyPlayed(tracks: deduplicated.recentTracks, allDiscovery: rawData)
         }
 
         // 3. Mehr von <Top-Künstler> (Artist Deep Cuts Spotlight wie im Web)
-        if let spotlight = topArtistSpotlight, !dedup.deepCuts.isEmpty {
-            shelfDeepCuts(artistName: spotlight.name, tracks: dedup.deepCuts, allDiscovery: rawData)
+        if let spotlight = topArtistSpotlight, !deduplicated.deepCuts.isEmpty {
+            shelfDeepCuts(artistName: spotlight.name, tracks: deduplicated.deepCuts, allDiscovery: rawData)
         }
 
         // 4. Frisch erschienen (Release Radar aus Top-Künstlern & Neuheiten)
-        if !dedup.releaseRadar.isEmpty {
-            shelfReleaseRadar(tracks: dedup.releaseRadar, allDiscovery: rawData)
+        if !deduplicated.releaseRadar.isEmpty {
+            shelfReleaseRadar(tracks: deduplicated.releaseRadar, allDiscovery: rawData)
         }
 
         // 5. Für dich empfohlen (Personalisierte Empfehlungen)
-        if !dedup.forYou.isEmpty {
-            shelfForYou(tracks: dedup.forYou, allDiscovery: rawData)
+        if !deduplicated.forYou.isEmpty {
+            shelfForYou(tracks: deduplicated.forYou, allDiscovery: rawData)
         }
 
         // 6. Trending überall
-        if !dedup.trending.isEmpty {
-            shelfTrending(tracks: dedup.trending, allDiscovery: rawData)
+        if !deduplicated.trending.isEmpty {
+            shelfTrending(tracks: deduplicated.trending, allDiscovery: rawData)
         }
 
         // 7. Neue Alben & EPs
-        if !dedup.topAlbums.isEmpty {
-            shelfAlbums(albums: dedup.topAlbums, allDiscovery: rawData)
+        if !deduplicated.topAlbums.isEmpty {
+            shelfAlbums(albums: deduplicated.topAlbums, allDiscovery: rawData)
         }
 
         // 8. Frische Song-Drops
-        if !dedup.newMusicDrops.isEmpty {
-            shelfSongDrops(drops: dedup.newMusicDrops, allDiscovery: rawData)
+        if !deduplicated.newMusicDrops.isEmpty {
+            shelfSongDrops(drops: deduplicated.newMusicDrops, allDiscovery: rawData)
         }
 
         // 9. Top Hits heute (mit Rang-Badges)
-        if !dedup.topHits.isEmpty {
-            shelfTopHits(tracks: dedup.topHits, allDiscovery: rawData)
+        if !deduplicated.topHits.isEmpty {
+            shelfTopHits(tracks: deduplicated.topHits, allDiscovery: rawData)
         }
 
         // 10. Top 100: Global (mit Rang-Badges)
-        if !dedup.top100.isEmpty {
-            shelfTop100Global(tracks: dedup.top100, allDiscovery: rawData)
+        if !deduplicated.top100.isEmpty {
+            shelfTop100Global(tracks: deduplicated.top100, allDiscovery: rawData)
         }
 
         // 11. Top-Playlists
-        if !dedup.topPlaylists.isEmpty {
-            shelfTopPlaylists(playlists: dedup.topPlaylists, allDiscovery: rawData)
+        if !deduplicated.topPlaylists.isEmpty {
+            shelfTopPlaylists(playlists: deduplicated.topPlaylists, allDiscovery: rawData)
         }
 
         // 12. Stimmungen & Genres (aus Discovery moodsAndGenres)
-        if !dedup.moodsAndGenres.isEmpty {
-            shelfMoodsAndGenres(genres: dedup.moodsAndGenres)
+        if !deduplicated.moodsAndGenres.isEmpty {
+            shelfMoodsAndGenres(genres: deduplicated.moodsAndGenres)
         }
 
         // 13. Deine Playlists (Persönliche Playlists aus der Bibliothek)
@@ -189,8 +189,8 @@ public struct HomeView: View {
         }
 
         // 14. Angesagte Künstler (Runde Avatare)
-        if !dedup.trendingArtists.isEmpty {
-            shelfTrendingArtists(artists: dedup.trendingArtists)
+        if !deduplicated.trendingArtists.isEmpty {
+            shelfTrendingArtists(artists: deduplicated.trendingArtists)
         }
     }
 
