@@ -596,11 +596,13 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
     public let isExplicit: Bool?
     public let rank: Int?
     public let trackNumber: Int?
+    public let sourceUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, artist, album, duration, durationSeconds
         case duration_seconds, duration_secs
         case cover, isExplicit = "is_explicit", isExplicitAlt = "isExplicit", rank, trackNumber
+        case sourceUrl, source_url
     }
 
     public init(
@@ -613,7 +615,8 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
         cover: String? = nil,
         isExplicit: Bool? = false,
         rank: Int? = nil,
-        trackNumber: Int? = nil
+        trackNumber: Int? = nil,
+        sourceUrl: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -625,6 +628,7 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
         self.isExplicit = isExplicit
         self.rank = rank
         self.trackNumber = trackNumber
+        self.sourceUrl = sourceUrl
     }
 
     public init(from decoder: Decoder) throws {
@@ -670,6 +674,8 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
             ?? (try? container.decodeIfPresent(Bool.self, forKey: .isExplicitAlt))
         rank = try container.decodeIfPresent(Int.self, forKey: .rank)
         trackNumber = try container.decodeIfPresent(Int.self, forKey: .trackNumber)
+        sourceUrl = (try? container.decodeIfPresent(String.self, forKey: .sourceUrl))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .source_url))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -684,6 +690,7 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(isExplicit, forKey: .isExplicit)
         try container.encodeIfPresent(rank, forKey: .rank)
         try container.encodeIfPresent(trackNumber, forKey: .trackNumber)
+        try container.encodeIfPresent(sourceUrl, forKey: .sourceUrl)
     }
 
     public func toTrack(fallbackCover: String? = nil, fallbackAlbum: String? = nil) -> Track {
@@ -703,7 +710,8 @@ public struct DiscoveryArtistTrackItem: Codable, Identifiable, Equatable {
             durationSeconds: calculatedSec,
             coverUrl: cover ?? fallbackCover,
             isLive: false,
-            isExplicit: isExplicit ?? false
+            isExplicit: isExplicit ?? false,
+            sourceUrl: sourceUrl
         )
     }
 }
@@ -801,19 +809,92 @@ public struct DiscoveryRelatedArtistItem: Codable, Identifiable, Equatable {
     }
 }
 
+public struct DiscoveryArtistPlaylistItem: Codable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let cover: String?
+
+    public init(id: String, title: String, cover: String? = nil) {
+        self.id = id
+        self.title = title
+        self.cover = cover
+    }
+}
+
+public struct DiscoveryArtistVideoItem: Codable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let artist: String
+    public let thumbnail: String?
+    public let previewUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, artist, thumbnail, previewUrl, preview_url
+    }
+
+    public init(
+        id: String,
+        title: String,
+        artist: String,
+        thumbnail: String? = nil,
+        previewUrl: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.thumbnail = thumbnail
+        self.previewUrl = previewUrl
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        artist = (try? container.decodeIfPresent(String.self, forKey: .artist)) ?? ""
+        thumbnail = try container.decodeIfPresent(String.self, forKey: .thumbnail)
+        previewUrl = (try? container.decodeIfPresent(String.self, forKey: .previewUrl))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .preview_url))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(artist, forKey: .artist)
+        try container.encodeIfPresent(thumbnail, forKey: .thumbnail)
+        try container.encodeIfPresent(previewUrl, forKey: .previewUrl)
+    }
+}
+
+public struct DiscoveryArtistTracksResponse: Codable {
+    public let success: Bool?
+    public let tracks: [DiscoveryArtistTrackItem]?
+    public let total: Int?
+}
+
 public struct DiscoveryArtistDetailData: Codable, Identifiable {
     public let id: String
     public let name: String
     public let picture: String?
     public let nbFan: Int?
     public let description: String?
+    public let country: String?
+    public let beginDate: String?
+    public let artistType: String?
+    public let mbid: String?
+    public let wikiUrl: String?
+    public let isCustomCover: Bool
     public let topTracks: [DiscoveryArtistTrackItem]
     public let albums: [DiscoveryArtistAlbumItem]
     public let singles: [DiscoveryArtistAlbumItem]
     public let related: [DiscoveryRelatedArtistItem]
+    public let playlists: [DiscoveryArtistPlaylistItem]
+    public let videos: [DiscoveryArtistVideoItem]
 
     enum CodingKeys: String, CodingKey {
-        case id, name, picture, cover, nbFan, description, topTracks, albums, singles, related, relatedArtists
+        case id, name, picture, cover, nbFan, description
+        case country, beginDate, artistType, mbid, wikiUrl, isCustomCover
+        case topTracks, albums, singles, related, relatedArtists, playlists, videos
     }
 
     public init(
@@ -822,20 +903,36 @@ public struct DiscoveryArtistDetailData: Codable, Identifiable {
         picture: String? = nil,
         nbFan: Int? = nil,
         description: String? = nil,
+        country: String? = nil,
+        beginDate: String? = nil,
+        artistType: String? = nil,
+        mbid: String? = nil,
+        wikiUrl: String? = nil,
+        isCustomCover: Bool = false,
         topTracks: [DiscoveryArtistTrackItem] = [],
         albums: [DiscoveryArtistAlbumItem] = [],
         singles: [DiscoveryArtistAlbumItem] = [],
-        related: [DiscoveryRelatedArtistItem] = []
+        related: [DiscoveryRelatedArtistItem] = [],
+        playlists: [DiscoveryArtistPlaylistItem] = [],
+        videos: [DiscoveryArtistVideoItem] = []
     ) {
         self.id = id
         self.name = name
         self.picture = picture
         self.nbFan = nbFan
         self.description = description
+        self.country = country
+        self.beginDate = beginDate
+        self.artistType = artistType
+        self.mbid = mbid
+        self.wikiUrl = wikiUrl
+        self.isCustomCover = isCustomCover
         self.topTracks = topTracks
         self.albums = albums
         self.singles = singles
         self.related = related
+        self.playlists = playlists
+        self.videos = videos
     }
 
     public init(from decoder: Decoder) throws {
@@ -849,6 +946,12 @@ public struct DiscoveryArtistDetailData: Codable, Identifiable {
         }
         nbFan = try container.decodeIfPresent(Int.self, forKey: .nbFan)
         description = try container.decodeIfPresent(String.self, forKey: .description)
+        country = try container.decodeIfPresent(String.self, forKey: .country)
+        beginDate = try container.decodeIfPresent(String.self, forKey: .beginDate)
+        artistType = try container.decodeIfPresent(String.self, forKey: .artistType)
+        mbid = try container.decodeIfPresent(String.self, forKey: .mbid)
+        wikiUrl = try container.decodeIfPresent(String.self, forKey: .wikiUrl)
+        isCustomCover = (try? container.decodeIfPresent(Bool.self, forKey: .isCustomCover)) ?? false
         topTracks = (try? container.decodeIfPresent([DiscoveryArtistTrackItem].self, forKey: .topTracks)) ?? []
         albums = (try? container.decodeIfPresent([DiscoveryArtistAlbumItem].self, forKey: .albums)) ?? []
         singles = (try? container.decodeIfPresent([DiscoveryArtistAlbumItem].self, forKey: .singles)) ?? []
@@ -859,6 +962,8 @@ public struct DiscoveryArtistDetailData: Codable, Identifiable {
         } else {
             related = []
         }
+        playlists = (try? container.decodeIfPresent([DiscoveryArtistPlaylistItem].self, forKey: .playlists)) ?? []
+        videos = (try? container.decodeIfPresent([DiscoveryArtistVideoItem].self, forKey: .videos)) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -868,10 +973,18 @@ public struct DiscoveryArtistDetailData: Codable, Identifiable {
         try container.encodeIfPresent(picture, forKey: .picture)
         try container.encodeIfPresent(nbFan, forKey: .nbFan)
         try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(country, forKey: .country)
+        try container.encodeIfPresent(beginDate, forKey: .beginDate)
+        try container.encodeIfPresent(artistType, forKey: .artistType)
+        try container.encodeIfPresent(mbid, forKey: .mbid)
+        try container.encodeIfPresent(wikiUrl, forKey: .wikiUrl)
+        try container.encode(isCustomCover, forKey: .isCustomCover)
         try container.encode(topTracks, forKey: .topTracks)
         try container.encode(albums, forKey: .albums)
         try container.encode(singles, forKey: .singles)
         try container.encode(related, forKey: .related)
+        try container.encode(playlists, forKey: .playlists)
+        try container.encode(videos, forKey: .videos)
     }
 }
 

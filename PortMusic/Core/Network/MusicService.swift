@@ -4,12 +4,19 @@ public final class MusicService {
     public static let shared = MusicService()
 
     private let session: URLSession
+    private let discoverySession: URLSession
+    private let artistCacheStorageKey = "port_music_artist_detail_cache_v1"
 
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 5.0
-        config.timeoutIntervalForResource = 12.0
+        config.timeoutIntervalForRequest = 6.0
+        config.timeoutIntervalForResource = 15.0
         self.session = URLSession(configuration: config)
+
+        let discConfig = URLSessionConfiguration.default
+        discConfig.timeoutIntervalForRequest = 20.0
+        discConfig.timeoutIntervalForResource = 35.0
+        self.discoverySession = URLSession(configuration: discConfig)
     }
 
     private func cleanURL(_ raw: String) -> String {
@@ -79,7 +86,7 @@ public final class MusicService {
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
@@ -105,12 +112,14 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return []
             }
@@ -141,12 +150,14 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
@@ -158,25 +169,70 @@ public final class MusicService {
     }
 
     // MARK: - Online Artist Discovery (/api/discovery/artist/:name)
-    public func fetchArtist(name: String, serverURL: String, token: String?) async -> DiscoveryArtistDetailData? {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
+    public func cachedArtist(name: String) -> DiscoveryArtistDetailData? {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty,
+              let data = UserDefaults.standard.data(forKey: artistCacheStorageKey),
+              let dict = try? JSONDecoder().decode([String: DiscoveryArtistDetailData].self, from: data) else {
+            return nil
+        }
+        return dict[key]
+    }
 
-        let base = cleanURL(serverURL)
+    private func persistCachedArtist(_ artist: DiscoveryArtistDetailData, lookupKey: String) {
+        var dict: [String: DiscoveryArtistDetailData] = [:]
+        if let data = UserDefaults.standard.data(forKey: artistCacheStorageKey),
+           let existing = try? JSONDecoder().decode([String: DiscoveryArtistDetailData].self, from: data) {
+            dict = existing
+        }
+        let cleanLookup = lookupKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let canonicalKey = artist.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !cleanLookup.isEmpty { dict[cleanLookup] = artist }
+        if !canonicalKey.isEmpty { dict[canonicalKey] = artist }
+        if dict.count > 20 {
+            let trimmedKeys = Array(dict.keys.prefix(15))
+            var compact: [String: DiscoveryArtistDetailData] = [:]
+            for k in trimmedKeys { compact[k] = dict[k] }
+            if !cleanLookup.isEmpty { compact[cleanLookup] = artist }
+            if !canonicalKey.isEmpty { compact[canonicalKey] = artist }
+            dict = compact
+        }
+        if let encoded = try? JSONEncoder().encode(dict) {
+            UserDefaults.standard.set(encoded, forKey: artistCacheStorageKey)
+        }
+    }
+
+    private static func extractPrimaryArtistName(_ raw: String) -> String {
+        var working = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patterns = [
+            "\\s+(?:feat\\.?|ft\\.?|featuring|mit|with)\\s+.*$",
+            "\\s*[,;]\\s+.*$",
+            "\\s+[x×]\\s+.*$",
+            "\\s+/\\s+.*$"
+        ]
+        for pat in patterns {
+            working = working.replacingOccurrences(of: pat, with: "", options: [.regularExpression, .caseInsensitive])
+        }
+        return working.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func performSingleArtistFetch(target: String, base: String, token: String?) async -> DiscoveryArtistDetailData? {
         let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
-        let encodedName = trimmed.addingPercentEncoding(withAllowedCharacters: allowed) ?? trimmed
+        let encodedName = target.addingPercentEncoding(withAllowedCharacters: allowed) ?? target
         guard let url = URL(string: "\(base)/api/discovery/artist/\(encodedName)") else {
             return nil
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 22.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
@@ -194,6 +250,128 @@ public final class MusicService {
         }
     }
 
+    public func fetchArtist(name: String, serverURL: String, token: String?) async -> DiscoveryArtistDetailData? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return cachedArtist(name: trimmed)
+        }
+
+        let base = cleanURL(serverURL)
+        if let exact = await performSingleArtistFetch(target: trimmed, base: base, token: token) {
+            persistCachedArtist(exact, lookupKey: trimmed)
+            return exact
+        }
+
+        // Kollaborationen ("Artist A, Artist B" / "Artist A feat. B") auf Hauptkuenstler aufloesen
+        let primary = Self.extractPrimaryArtistName(trimmed)
+        if !primary.isEmpty, primary.lowercased() != trimmed.lowercased(),
+           let fallback = await performSingleArtistFetch(target: primary, base: base, token: token) {
+            persistCachedArtist(fallback, lookupKey: trimmed)
+            return fallback
+        }
+
+        // Letzter Versuch bei Band-/Collab-Trenner "&" falls volle Schreibweise nichts ergab
+        if let ampIdx = trimmed.range(of: " & ") {
+            let beforeAmp = String(trimmed[..<ampIdx.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !beforeAmp.isEmpty,
+               let ampArtist = await performSingleArtistFetch(target: beforeAmp, base: base, token: token) {
+                persistCachedArtist(ampArtist, lookupKey: trimmed)
+                return ampArtist
+            }
+        }
+
+        return cachedArtist(name: trimmed)
+    }
+
+    public func fetchArtistTracks(name: String, serverURL: String, token: String?) async -> [DiscoveryArtistTrackItem] {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let base = cleanURL(serverURL)
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let candidates = [trimmed, Self.extractPrimaryArtistName(trimmed)].filter { !$0.isEmpty }
+        var tried = Set<String>()
+
+        for cand in candidates {
+            let key = cand.lowercased()
+            if tried.contains(key) { continue }
+            tried.insert(key)
+
+            let encoded = cand.addingPercentEncoding(withAllowedCharacters: allowed) ?? cand
+            guard let url = URL(string: "\(base)/api/discovery/artist/\(encoded)/tracks") else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 22.0
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                request.setValue(tok, forHTTPHeaderField: "x-session-token")
+            }
+
+            if let (data, response) = try? await discoverySession.data(for: request),
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+               let decoded = try? JSONDecoder().decode(DiscoveryArtistTracksResponse.self, from: data),
+               let list = decoded.tracks, !list.isEmpty {
+                return list
+            }
+        }
+        return []
+    }
+
+    public func syncSavedArtistState(artistName: String, isSaved: Bool, serverURL: String, token: String?) async {
+        let trimmed = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let base = cleanURL(serverURL)
+        guard let getUrl = URL(string: "\(base)/api/state"),
+              let tok = token, !tok.isEmpty else { return }
+
+        var getReq = URLRequest(url: getUrl)
+        getReq.httpMethod = "GET"
+        getReq.timeoutInterval = 6.0
+        getReq.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        getReq.setValue(tok, forHTTPHeaderField: "x-session-token")
+
+        guard let (data, resp) = try? await session.data(for: getReq),
+              let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return
+        }
+
+        var libState = (json["libraryState"] as? [String: Any]) ?? [:]
+        var savedArtists = (libState["savedArtists"] as? [String]) ?? []
+        if isSaved {
+            if !savedArtists.contains(where: { $0.lowercased() == trimmed.lowercased() }) {
+                savedArtists.append(trimmed)
+            }
+        } else {
+            savedArtists.removeAll { $0.lowercased() == trimmed.lowercased() }
+        }
+        libState["savedArtists"] = savedArtists
+
+        var payload: [String: Any] = [
+            "playlists": [],
+            "folders": [],
+            "favorites": [],
+            "libraryState": libState
+        ]
+        if let bookmarks = json["audiobookBookmarks"] {
+            payload["audiobookBookmarks"] = bookmarks
+        }
+        if let ignored = json["ignoredDuplicatePairs"] {
+            payload["ignoredDuplicatePairs"] = ignored
+        }
+
+        var putReq = URLRequest(url: getUrl)
+        putReq.httpMethod = "PUT"
+        putReq.timeoutInterval = 8.0
+        putReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        putReq.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        putReq.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+        putReq.setValue(tok, forHTTPHeaderField: "x-session-token")
+        putReq.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        _ = try? await session.data(for: putReq)
+    }
+
     // MARK: - Online Album Discovery (/api/discovery/album/:id)
     public func fetchAlbum(id: String, serverURL: String, token: String?) async -> DiscoveryAlbumDetailData? {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -208,12 +386,14 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
@@ -240,12 +420,14 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return []
             }
@@ -313,12 +495,14 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
@@ -1018,12 +1202,14 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return nil
             }
@@ -1048,12 +1234,14 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 20.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 return ([], [])
             }

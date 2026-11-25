@@ -482,10 +482,20 @@ public struct FullscreenPlayerView: View {
                     .foregroundColor(Color.white)
                     .lineLimit(1)
 
-                Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.70))
-                    .lineLimit(1)
+                Button(action: navigateToCurrentArtist) {
+                    HStack(spacing: 4) {
+                        Text(player.currentTrack?.artist ?? "Unbekannter Interpret")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(Color.white.opacity(0.75))
+                            .lineLimit(1)
+                        if let cur = player.currentTrack, !cur.isLive, !cur.artist.isEmpty, cur.artist.lowercased() != "unbekannter interpret" {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.white.opacity(0.45))
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
             }
 
             Spacer()
@@ -557,6 +567,12 @@ public struct FullscreenPlayerView: View {
                         }
 
                         Divider()
+                    }
+
+                    if let cur = player.currentTrack, !cur.isLive, !cur.artist.isEmpty, cur.artist.lowercased() != "unbekannter interpret" {
+                        Button(action: navigateToCurrentArtist) {
+                            Label("Zum Künstler", systemImage: "person.fill")
+                        }
                     }
 
                     Button(action: {
@@ -1146,6 +1162,21 @@ public struct FullscreenPlayerView: View {
         }
         await MainActor.run {
             self.isLoadingLyrics = false
+        }
+    }
+
+    private func navigateToCurrentArtist() {
+        guard let cur = player.currentTrack, !cur.isLive else { return }
+        let name = cur.artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.lowercased() != "unbekannter interpret" else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        onClose()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NotificationCenter.default.post(
+                name: .portMusicNavigateToArtist,
+                object: nil,
+                userInfo: ["name": name]
+            )
         }
     }
 

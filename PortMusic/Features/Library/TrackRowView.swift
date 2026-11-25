@@ -331,9 +331,17 @@ public struct TrackRowView: View {
                 }
             }
 
-            if let onSelectArtist = onSelectArtist, !track.artist.isEmpty {
+            if !track.artist.isEmpty && track.artist.lowercased() != "unbekannter interpret" && !track.isLive {
                 Button(action: {
-                    onSelectArtist(track.artist)
+                    if let onSelectArtist = onSelectArtist {
+                        onSelectArtist(track.artist)
+                    } else {
+                        NotificationCenter.default.post(
+                            name: .portMusicNavigateToArtist,
+                            object: nil,
+                            userInfo: ["name": track.artist]
+                        )
+                    }
                 }) {
                     Label("Zu Künstler: \(track.artist)", systemImage: "person.fill")
                 }

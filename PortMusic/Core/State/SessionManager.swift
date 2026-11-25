@@ -4,6 +4,7 @@ import Network
 
 public extension Notification.Name {
     static let portMusicDidReconnect = Notification.Name("portMusicDidReconnect")
+    static let portMusicNavigateToArtist = Notification.Name("portMusicNavigateToArtist")
 }
 
 @MainActor

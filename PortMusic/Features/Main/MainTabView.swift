@@ -106,6 +106,10 @@ public struct MainTabView: View {
     @State private var showMenuDrawer: Bool = false
     @State private var showUserProfileSheet: Bool = false
     @State private var showSettingsSheet: Bool = false
+    @State private var homePath: [AppRoute] = []
+    @State private var libraryPath: [AppRoute] = []
+    @State private var radioPath: [AppRoute] = []
+    @State private var newReleasesPath: [AppRoute] = []
     @State private var searchPath: [AppRoute] = []
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var session = SessionManager.shared
@@ -415,6 +419,25 @@ public struct MainTabView: View {
             await player.syncLastPlayedFromServerIfNeeded(serverURL: serverURL, token: SessionManager.shared.currentToken)
             await SessionManager.shared.refreshUserProfile()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .portMusicNavigateToArtist)) { notif in
+            guard let rawName = notif.userInfo?["name"] as? String else { return }
+            let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.lowercased() != "unbekannter interpret" else { return }
+            let cover = notif.userInfo?["coverUrl"] as? String
+            let route = AppRoute.artist(name: trimmed, coverUrl: cover)
+            switch activeLiquidTab {
+            case .home:
+                if homePath.last != route { homePath.append(route) }
+            case .library:
+                if libraryPath.last != route { libraryPath.append(route) }
+            case .radio:
+                if radioPath.last != route { radioPath.append(route) }
+            case .search:
+                if searchPath.last != route { searchPath.append(route) }
+            case .newReleases:
+                if newReleasesPath.last != route { newReleasesPath.append(route) }
+            }
+        }
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
     }
 
@@ -512,21 +535,21 @@ public struct MainTabView: View {
     private func tabContent(for tab: LiquidTabID) -> some View {
         switch tab {
         case .home:
-            NavigationStack {
+            NavigationStack(path: $homePath) {
                 HomeView(serverURL: serverURL, user: user)
                     .navigationDestination(for: AppRoute.self) { route in
                         destinationForRoute(route)
                     }
             }
         case .library:
-            NavigationStack {
+            NavigationStack(path: $libraryPath) {
                 LibraryView(serverURL: serverURL, user: user)
                     .navigationDestination(for: AppRoute.self) { route in
                         destinationForRoute(route)
                     }
             }
         case .radio:
-            NavigationStack {
+            NavigationStack(path: $radioPath) {
                 RadioBrowserView(serverURL: serverURL)
                     .navigationDestination(for: AppRoute.self) { route in
                         destinationForRoute(route)
@@ -540,7 +563,7 @@ public struct MainTabView: View {
                     }
             }
         case .newReleases:
-            NavigationStack {
+            NavigationStack(path: $newReleasesPath) {
                 NewReleasesView(serverURL: serverURL)
                     .navigationDestination(for: AppRoute.self) { route in
                         destinationForRoute(route)
