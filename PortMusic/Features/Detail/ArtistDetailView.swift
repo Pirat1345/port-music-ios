@@ -6,6 +6,7 @@ public struct ArtistDetailView: View {
     public let initialCover: String?
     public let serverURL: String
 
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @ObservedObject private var sessionManager = SessionManager.shared
@@ -20,6 +21,7 @@ public struct ArtistDetailView: View {
     @State private var bioExpanded: Bool = false
     @State private var showAllTracksSheet: Bool = false
     @State private var selectedVideo: DiscoveryArtistVideoItem? = nil
+    @State private var showStickyTopBar: Bool = false
 
     private let savedArtistsKey = "port_music_saved_artists"
 
@@ -197,7 +199,7 @@ public struct ArtistDetailView: View {
 
     public var body: some View {
         ScrollViewReader { scrollProxy in
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.black
                     .ignoresSafeArea()
 
@@ -274,15 +276,30 @@ public struct ArtistDetailView: View {
                         Spacer(minLength: 130)
                     }
                 }
+                .coordinateSpace(name: "artist_scroll")
                 .ignoresSafeArea(edges: .top)
                 .refreshable {
                     await loadArtistData()
                 }
+                .onPreferenceChange(ArtistPlayButtonMaxYPreferenceKey.self) { maxY in
+                    guard let maxY else { return }
+                    let threshold = topSafeAreaInset + 60
+                    let shouldShow = maxY <= threshold
+                    if shouldShow != showStickyTopBar {
+                        withAnimation(.easeOut(duration: 0.22)) {
+                            showStickyTopBar = shouldShow
+                        }
+                    }
+                }
+
+                stickyTopBarOverlay
             }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .background(InteractivePopGestureEnabler())
         .preferredColorScheme(.dark)
         .tint(.white)
         .task(id: artistName) {
@@ -309,6 +326,86 @@ public struct ArtistDetailView: View {
         .sheet(item: $selectedVideo) { video in
             ArtistVideoPlayerSheet(video: video)
         }
+    }
+
+    // MARK: - Sticky Top Bar (Zurück + Play + Künstlername beim Scrollen)
+    private func toggleArtistPlayPause() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if isArtistCurrentlyPlaying {
+            player.togglePlayPause()
+        } else {
+            playAllTopTracks(shuffle: false)
+        }
+    }
+
+    private var stickyTopBarOverlay: some View {
+        HStack(spacing: 12) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(showStickyTopBar ? Color.white.opacity(0.10) : Color.black.opacity(0.45))
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(showStickyTopBar ? 0.14 : 0.18), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Zurück")
+
+            HStack(spacing: 10) {
+                Button(action: toggleArtistPlayPause) {
+                    Image(systemName: isArtistCurrentlyPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.black)
+                        .offset(x: isArtistCurrentlyPlaying ? 0 : 1)
+                        .frame(width: 34, height: 34)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                        .shadow(color: Color.black.opacity(0.35), radius: 6, y: 2)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(effectiveTrackItems.isEmpty)
+                .opacity(effectiveTrackItems.isEmpty ? 0.55 : 1.0)
+                .accessibilityLabel(isArtistCurrentlyPlaying ? "Pause" : "Wiedergabe")
+
+                Text(displayName)
+                    .font(.system(size: 15, weight: .black, design: .serif))
+                    .tracking(2.0)
+                    .textCase(.uppercase)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .opacity(showStickyTopBar ? 1 : 0)
+            .offset(y: showStickyTopBar ? 0 : -6)
+            .scaleEffect(showStickyTopBar ? 1 : 0.95, anchor: .leading)
+            .allowsHitTesting(showStickyTopBar)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 54)
+        .frame(maxWidth: .infinity)
+        .background(
+            ZStack(alignment: .bottom) {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.62))
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(height: 0.5)
+            }
+            .ignoresSafeArea(edges: .top)
+            .opacity(showStickyTopBar ? 1 : 0)
+            .allowsHitTesting(showStickyTopBar)
+        )
     }
 
     // MARK: - Hero Banner Header (Octave Full-Bleed Top + Serif Font)
@@ -402,14 +499,7 @@ public struct ArtistDetailView: View {
                     }
 
                     // Play / Pause All (Weißer Octave Hero Button)
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        if isArtistCurrentlyPlaying {
-                            player.togglePlayPause()
-                        } else {
-                            playAllTopTracks(shuffle: false)
-                        }
-                    }) {
+                    Button(action: toggleArtistPlayPause) {
                         Image(systemName: isArtistCurrentlyPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(.black)
@@ -421,6 +511,14 @@ public struct ArtistDetailView: View {
                     }
                     .disabled(effectiveTrackItems.isEmpty)
                     .opacity(effectiveTrackItems.isEmpty ? 0.55 : 1.0)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: ArtistPlayButtonMaxYPreferenceKey.self,
+                                value: geo.size.height > 0 ? geo.frame(in: .named("artist_scroll")).maxY : nil
+                            )
+                        }
+                    )
 
                     // Shuffle
                     Button(action: {
@@ -1717,6 +1815,67 @@ private struct ArtistVideoPlayerSheet: View {
             .onDisappear {
                 avPlayer?.pause()
                 avPlayer = nil
+            }
+        }
+    }
+}
+
+// MARK: - Scroll & Navigation Helpers
+private struct ArtistPlayButtonMaxYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        if let next = nextValue() {
+            value = next
+        }
+    }
+}
+
+private struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
+    func makeCoordinator() -> PopGestureCoordinator {
+        PopGestureCoordinator()
+    }
+
+    func makeUIViewController(context: Context) -> PopEnablerViewController {
+        let vc = PopEnablerViewController()
+        vc.coordinator = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: PopEnablerViewController, context: Context) {}
+
+    final class PopGestureCoordinator: NSObject, UIGestureRecognizerDelegate {
+        weak var navigationController: UINavigationController?
+        weak var previousDelegate: UIGestureRecognizerDelegate?
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let nav = navigationController else { return false }
+            return nav.viewControllers.count > 1
+        }
+    }
+
+    final class PopEnablerViewController: UIViewController {
+        weak var coordinator: PopGestureCoordinator?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard let nav = navigationController,
+                  let pop = nav.interactivePopGestureRecognizer,
+                  let coordinator else { return }
+            coordinator.navigationController = nav
+            if pop.delegate !== coordinator {
+                coordinator.previousDelegate = pop.delegate
+                pop.delegate = coordinator
+            }
+            pop.isEnabled = true
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            guard let nav = navigationController,
+                  let pop = nav.interactivePopGestureRecognizer,
+                  let coordinator else { return }
+            if pop.delegate === coordinator {
+                pop.delegate = coordinator.previousDelegate
             }
         }
     }
