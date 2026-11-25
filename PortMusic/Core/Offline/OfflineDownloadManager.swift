@@ -320,6 +320,20 @@ public final class OfflineDownloadManager: ObservableObject {
         records.values.reduce(0) { $0 + $1.sizeBytes }
     }
 
+    public func podcastsStorageBytes() -> Int64 {
+        records.values.reduce(0) { sum, rec in
+            let t = rec.track
+            let isPod = t.id.hasPrefix("pod_")
+                || (t.sourceUrl?.hasPrefix("/api/podcasts/stream") == true)
+                || t.album == "Podcast"
+            return sum + (isPod ? rec.sizeBytes : 0)
+        }
+    }
+
+    public func songsStorageBytes() -> Int64 {
+        max(0, totalStorageBytes() - podcastsStorageBytes())
+    }
+
     public func formattedTotalStorage() -> String {
         let bytes = Double(totalStorageBytes())
         if bytes < 1024 * 1024 {

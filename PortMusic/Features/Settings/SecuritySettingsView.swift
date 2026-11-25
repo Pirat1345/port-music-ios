@@ -176,8 +176,8 @@ public struct SecuritySettingsView: View {
         }
 
         let payload: [String: String] = [
-            "current_password": currentPassword,
-            "password": newPassword
+            "currentPassword": currentPassword,
+            "newPassword": newPassword
         ]
 
         guard let httpBody = try? JSONSerialization.data(withJSONObject: payload) else {

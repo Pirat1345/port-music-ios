@@ -367,10 +367,12 @@ public struct HomeView: View {
                 ForEach(userPlaylists.prefix(maxPlaylists)) { pl in
                     NavigationLink(value: AppRoute.playlist(id: pl.id, title: pl.title, coverUrl: pl.cover)) {
                         HStack(spacing: 10) {
-                            PortCoverImage(
+                            PlaylistArtworkView(
                                 coverUrl: pl.cover,
-                                serverURL: serverURL,
-                                placeholderIcon: "music.note.list"
+                                trackCovers: pl.trackCovers,
+                                cornerRadius: 0,
+                                iconSize: 18,
+                                serverURL: serverURL
                             )
                             .frame(width: 50, height: 50)
                             .clipped()
@@ -847,25 +849,61 @@ public struct HomeView: View {
                         title: pl.title,
                         coverUrl: pl.cover
                     )) {
-                        PortTrackCard(
-                            title: pl.title,
-                            subtitle: sub,
-                            coverUrl: pl.cover,
-                            serverURL: serverURL,
-                            onTap: nil,
-                            onPlay: {
-                                Task {
-                                    if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: pl.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
-                                        let trks = detail.tracks.map { $0.toTrack() }
-                                        if let first = trks.first {
-                                            await MainActor.run {
-                                                player.play(track: first, from: trks, serverURL: serverURL)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ZStack(alignment: .bottomTrailing) {
+                                PlaylistArtworkView(
+                                    coverUrl: pl.cover,
+                                    trackCovers: pl.trackCovers,
+                                    cornerRadius: 14,
+                                    iconSize: 34,
+                                    serverURL: serverURL
+                                )
+                                .frame(width: 145, height: 145)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                                )
+
+                                Button(action: {
+                                    Task {
+                                        if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: pl.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                            let trks = detail.tracks.map { $0.toTrack() }
+                                            if let first = trks.first {
+                                                await MainActor.run {
+                                                    player.play(track: first, from: trks, serverURL: serverURL)
+                                                }
                                             }
                                         }
                                     }
+                                }) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.white)
+                                            .frame(width: 38, height: 38)
+                                            .shadow(color: Color.black.opacity(0.40), radius: 6, y: 2)
+                                        Image(systemName: "play.fill")
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundColor(.black)
+                                            .offset(x: 1)
+                                    }
                                 }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(8)
                             }
-                        )
+                            .frame(width: 145, height: 145)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pl.title)
+                                    .font(.system(size: 13.5, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Text(sub)
+                                    .font(.system(size: 11.5))
+                                    .foregroundColor(Color.white.opacity(0.55))
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 145, alignment: .leading)
+                        }
                     }
                     .buttonStyle(PlainButtonStyle())
                 }

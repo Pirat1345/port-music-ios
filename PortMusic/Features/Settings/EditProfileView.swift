@@ -115,7 +115,7 @@ public struct EditProfileView: View {
 
         var payload: [String: String] = [:]
         if !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            payload["display_name"] = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            payload["displayName"] = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             payload["email"] = email.trimmingCharacters(in: .whitespacesAndNewlines)

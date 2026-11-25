@@ -10,7 +10,14 @@ public struct SettingsMainView: View {
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @ObservedObject private var sessionManager = SessionManager.shared
 
+    @AppStorage("ui_haptics_enabled") private var hapticsEnabled: Bool = true
+    @AppStorage("ui_keep_screen_awake") private var keepScreenAwake: Bool = false
+    @AppStorage("navbar_icons_only") private var iconsOnly: Bool = false
+    @AppStorage("navbar_scroll_minimize") private var scrollMinimize: Bool = true
+    @AppStorage("navbar_custom_tabs") private var customTabsRaw: String = "home,library,radio,search"
+
     @State private var searchQuery: String = ""
+    @State private var showNavbarSheet: Bool = false
     @State private var showLogoutAlert: Bool = false
 
     public init(user: UserProfile, serverURL: String, onLogout: @escaping () -> Void) {
@@ -19,297 +26,315 @@ public struct SettingsMainView: View {
         self.onLogout = onLogout
     }
 
-    private enum SettingsDestination {
-        case playback
-        case equalizer
-        case appearance
-        case playerLayout
-        case downloads
-        case profile
-        case devices
-        case language
-        case security
-        case servers
-        case debug
+    private var activeUser: UserProfile {
+        sessionManager.currentUser ?? user
     }
 
-    private struct SettingsNavRow: Identifiable {
-        let id: String
-        let title: String
-        let subtitle: String
-        let icon: String
-        let destination: SettingsDestination
-        let trailingBadge: String?
-    }
-
-    private struct SettingsNavGroup: Identifiable {
-        let id: String
-        let title: String
-        let rows: [SettingsNavRow]
-    }
-
-    private var groups: [SettingsNavGroup] {
-        let activeServer = profileManager.activeServerURL.isEmpty ? serverURL : profileManager.activeServerURL
-        let netLabel = sessionManager.isOfflineMode ? "Offline" : sessionManager.networkInterface.rawValue
-
-        let allGroups: [SettingsNavGroup] = [
-            SettingsNavGroup(
-                id: "audio",
-                title: "Audio und Wiedergabe",
-                rows: [
-                    SettingsNavRow(
-                        id: "playback",
-                        title: "Wiedergabe",
-                        subtitle: "Autoplay, Überspringen und Audioqualität",
-                        icon: "waveform",
-                        destination: .playback,
-                        trailingBadge: nil
-                    ),
-                    SettingsNavRow(
-                        id: "equalizer",
-                        title: "Equalizer & Klang",
-                        subtitle: "Mobile Audio-Engine und Normalisierung",
-                        icon: "slider.horizontal.3",
-                        destination: .equalizer,
-                        trailingBadge: nil
-                    ),
-                ]
-            ),
-            SettingsNavGroup(
-                id: "appearance",
-                title: "Erscheinungsbild",
-                rows: [
-                    SettingsNavRow(
-                        id: "appearance",
-                        title: "Design & Bedienung",
-                        subtitle: "Navigationsleiste, Akzente, Haptik & Bildschirm",
-                        icon: "paintbrush",
-                        destination: .appearance,
-                        trailingBadge: nil
-                    ),
-                    SettingsNavRow(
-                        id: "player-layout",
-                        title: "Player-Layout",
-                        subtitle: "Player-Modi und Anzeigeoptionen",
-                        icon: "play.rectangle",
-                        destination: .playerLayout,
-                        trailingBadge: nil
-                    ),
-                ]
-            ),
-            SettingsNavGroup(
-                id: "library",
-                title: "Mediathek und Speicher",
-                rows: [
-                    SettingsNavRow(
-                        id: "downloads",
-                        title: "Offline-Downloads",
-                        subtitle: "\(offlineManager.downloadedTrackIds.count) gespeicherte Medien · \(offlineManager.formattedTotalStorage())",
-                        icon: "arrow.down.circle",
-                        destination: .downloads,
-                        trailingBadge: nil
-                    ),
-                ]
-            ),
-            SettingsNavGroup(
-                id: "account",
-                title: "Konto und Zugriff",
-                rows: [
-                    SettingsNavRow(
-                        id: "profile",
-                        title: "Mein Profil",
-                        subtitle: "Profilbild, Name und Kontoinformationen",
-                        icon: "person",
-                        destination: .profile,
-                        trailingBadge: nil
-                    ),
-                    SettingsNavRow(
-                        id: "devices",
-                        title: "Verbundene Geräte",
-                        subtitle: "Aktive Sitzungen anzeigen und beenden",
-                        icon: "laptopcomputer.and.iphone",
-                        destination: .devices,
-                        trailingBadge: nil
-                    ),
-                    SettingsNavRow(
-                        id: "language",
-                        title: "Sprache",
-                        subtitle: "Sprache der Benutzeroberfläche",
-                        icon: "globe",
-                        destination: .language,
-                        trailingBadge: nil
-                    ),
-                    SettingsNavRow(
-                        id: "security",
-                        title: "Sicherheit",
-                        subtitle: "Zwei-Faktor-Authentifizierung und Passwort",
-                        icon: "checkmark.shield",
-                        destination: .security,
-                        trailingBadge: nil
-                    ),
-                ]
-            ),
-            SettingsNavGroup(
-                id: "system",
-                title: "Verwaltung und System",
-                rows: [
-                    SettingsNavRow(
-                        id: "servers",
-                        title: "Server & Verbindung",
-                        subtitle: activeServer.isEmpty ? "Server konfigurieren" : activeServer,
-                        icon: "server.rack",
-                        destination: .servers,
-                        trailingBadge: nil
-                    ),
-                    SettingsNavRow(
-                        id: "debug",
-                        title: "Diagnose (Debug)",
-                        subtitle: "Netzwerkstatus, Playback- & Stream-Protokoll",
-                        icon: "terminal",
-                        destination: .debug,
-                        trailingBadge: netLabel
-                    ),
-                ]
-            ),
-        ]
-
-        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return allGroups }
-        return allGroups.compactMap { group in
-            let matched = group.rows.filter {
-                $0.title.lowercased().contains(q) || $0.subtitle.lowercased().contains(q)
-            }
-            return matched.isEmpty ? nil : SettingsNavGroup(id: group.id, title: group.title, rows: matched)
+    private var activeServerHost: String {
+        let raw = profileManager.activeServerURL.isEmpty ? serverURL : profileManager.activeServerURL
+        if let u = URL(string: raw), let host = u.host {
+            return u.port.map { "\(host):\($0)" } ?? host
         }
+        return raw.isEmpty ? "Nicht eingerichtet" : raw
     }
 
     private var appVersionDisplay: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "Version \(short) (\(build)) · Port Music iOS"
+        return "\(short) (\(build))"
+    }
+
+    private var networkShortLabel: String {
+        if !sessionManager.isPathSatisfied { return "Kein Netz" }
+        switch sessionManager.networkInterface {
+        case .wifi: return "WLAN"
+        case .cellular: return "Mobilfunk"
+        case .wiredEthernet: return "Ethernet"
+        case .other: return "Verbunden"
+        case .disconnected: return "Kein Netz"
+        }
+    }
+
+    private func matches(_ text: String...) -> Bool {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return true }
+        return text.contains { $0.lowercased().contains(q) }
     }
 
     public var body: some View {
         NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
+            List {
+                // 1. Apple-ID-Stil Konto-Banner (Namen, Mail, Passwort, 2FA & Bild ändern)
+                if matches("profil", "konto", "name", "email", "mail", "passwort", "2fa", "bild", "avatar", activeUser.username, activeUser.displayName ?? "") {
+                    Section {
+                        NavigationLink {
+                            AccountSettingsView(user: activeUser, serverURL: serverURL)
+                        } label: {
+                            HStack(spacing: 14) {
+                                PortUserAvatarView(
+                                    rawAvatar: activeUser.avatar,
+                                    username: activeUser.username,
+                                    serverURL: serverURL,
+                                    size: 58
+                                )
+                                .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.8))
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        // Web-ähnliche Überschrift + Suchfeld
-                        VStack(alignment: .leading, spacing: 14) {
-                            searchFieldBar
-                            profileBannerCard
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 8)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(activeUser.displayName ?? activeUser.username)
+                                        .font(.system(size: 19, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
 
-                        if groups.isEmpty {
-                            VStack(spacing: 10) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(Color.white.opacity(0.30))
-                                Text("Keine passenden Einstellungen gefunden")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(Color.white.opacity(0.55))
+                                    Text("Name, E-Mail, Passwort, 2FA & Bild")
+                                        .font(.system(size: 12.5))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 40)
-                        } else {
-                            ForEach(groups) { group in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(group.title)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(Color.white.opacity(0.48))
-                                        .textCase(.uppercase)
-                                        .tracking(0.8)
-                                        .padding(.horizontal, 22)
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .listRowBackground(Color(white: 0.11))
+                }
 
-                                    VStack(spacing: 0) {
-                                        ForEach(Array(group.rows.enumerated()), id: \.element.id) { idx, row in
-                                            NavigationLink {
-                                                destinationView(for: row.destination)
-                                            } label: {
-                                                settingsRowContent(row)
-                                            }
-                                            .buttonStyle(PlainButtonStyle())
+                // 2. Auf diesem Gerät (Separate On-Device-Kategorie: Downloads, Server & Netzwerkstatus)
+                let showDownloads = matches("offline", "downloads", "speicher", "cache", "wlan", "gerät", "on device")
+                let showServer = matches("server", "verbindung", "adresse", "host", "ip", "on device")
+                let showDebug = matches("debug", "diagnose", "netzwerk", "status", "wlan", "mobil", "internet", "log", "on device")
 
-                                            if idx < group.rows.count - 1 {
-                                                Divider()
-                                                    .background(Color.white.opacity(0.07))
-                                                    .padding(.leading, 56)
-                                            }
-                                        }
-                                    }
-                                    .background(Color(hex: "#111114"))
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                                    )
-                                    .padding(.horizontal, 18)
+                if showDownloads || showServer || showDebug {
+                    Section(
+                        header: Text("Auf diesem Gerät"),
+                        footer: Text("Lokale Downloads, gespeicherte Server-Adressen sowie Netzwerk- und Stream-Diagnose bleiben direkt auf diesem iPhone.")
+                    ) {
+                        if showDownloads {
+                            NavigationLink {
+                                SettingsDownloadsView(serverURL: serverURL)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("arrow.down.circle.fill", color: Color(hex: "#0a84ff"))
+                                    Text("Offline-Downloads")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Text(offlineManager.formattedTotalStorage())
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.secondary)
                                 }
                             }
                         }
 
-                        // Über & Abmelden
-                        VStack(spacing: 12) {
+                        if showServer {
+                            NavigationLink {
+                                ServerManagementView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("server.rack", color: Color(hex: "#30d158"))
+                                    Text("Server & Verbindung")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Text(activeServerHost)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+
+                        if showDebug {
+                            NavigationLink {
+                                SettingsDebugView(serverURL: serverURL)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("antenna.radiowaves.left.and.right", color: Color(hex: "#ff9f0a"))
+                                    Text("Diagnose (Debug)")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Text(networkShortLabel)
+                                        .font(.system(size: 13.5, weight: .medium))
+                                        .foregroundColor(sessionManager.isPathSatisfied ? Color(hex: "#30d158") : Color(hex: "#ff453a"))
+                                }
+                            }
+                        }
+                    }
+                    .listRowBackground(Color(white: 0.11))
+                }
+
+                // 3. Audio & Wiedergabe
+                let showPlayback = matches("wiedergabe", "autoplay", "qualität", "audio", "überspringen")
+                let showEqualizer = matches("equalizer", "klang", "normalisierung", "lautstärke")
+
+                if showPlayback || showEqualizer {
+                    Section(header: Text("Audio & Wiedergabe")) {
+                        if showPlayback {
+                            NavigationLink {
+                                SettingsPlaybackView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("waveform", color: Color(hex: "#ff375f"))
+                                    Text("Wiedergabe & Qualität")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+
+                        if showEqualizer {
+                            NavigationLink {
+                                SettingsEqualizerView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("slider.horizontal.3", color: Color(hex: "#5e5ce6"))
+                                    Text("Klang & Normalisierung")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                    }
+                    .listRowBackground(Color(white: 0.11))
+                }
+
+                // 4. Darstellung & Bedienung
+                let showNavbar = matches("navigationsleiste", "tabs", "leiste", "darstellung")
+                let showPlayerLayout = matches("player", "layout", "cover")
+                let showLanguage = matches("sprache", "deutsch", "english")
+                let showToggles = matches("haptik", "vibration", "display", "bildschirm", "aktiv")
+
+                if showNavbar || showPlayerLayout || showLanguage || showToggles {
+                    Section(header: Text("Darstellung & Bedienung")) {
+                        if showNavbar {
+                            Button(action: { showNavbarSheet = true }) {
+                                HStack(spacing: 12) {
+                                    appleIcon("dock.rectangle", color: Color(hex: "#0a84ff"))
+                                    Text("Navigationsleiste")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(Color(white: 0.40))
+                                }
+                            }
+                        }
+
+                        if showPlayerLayout {
+                            NavigationLink {
+                                SettingsPlayerLayoutView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("play.rectangle.fill", color: Color(hex: "#bf5af2"))
+                                    Text("Player-Layout")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+
+                        if showLanguage {
+                            NavigationLink {
+                                SettingsLanguageView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("globe", color: Color(hex: "#64d2ff"))
+                                    Text("Sprache")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+
+                        if showToggles {
+                            Toggle(isOn: $hapticsEnabled) {
+                                HStack(spacing: 12) {
+                                    appleIcon("iphone.radiowaves.left.and.right", color: Color(hex: "#5e5ce6"))
+                                    Text("Haptisches Feedback")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .tint(Color(hex: "#30d158"))
+
+                            Toggle(isOn: $keepScreenAwake) {
+                                HStack(spacing: 12) {
+                                    appleIcon("sun.max.fill", color: Color(hex: "#ff9f0a"))
+                                    Text("Display aktiv halten")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .tint(Color(hex: "#30d158"))
+                            .onChange(of: keepScreenAwake) { enabled in
+                                UIApplication.shared.isIdleTimerDisabled = enabled
+                            }
+                        }
+                    }
+                    .listRowBackground(Color(white: 0.11))
+                }
+
+                // 5. Sicherheit & Info
+                let showDevices = matches("geräte", "sitzungen", "sessions", "abmelden")
+                let showAbout = matches("über", "version", "info", "port music")
+
+                if showDevices || showAbout {
+                    Section(header: Text("Geräte & Info")) {
+                        if showDevices {
+                            NavigationLink {
+                                DeviceManagementView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("laptopcomputer.and.iphone", color: Color(hex: "#64d2ff"))
+                                    Text("Angemeldete Geräte")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+
+                        if showAbout {
                             HStack(spacing: 12) {
-                                Image(systemName: "info.circle")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(Color.white.opacity(0.50))
+                                appleIcon("info.circle.fill", color: Color(white: 0.42))
+                                Text("Version")
+                                    .foregroundColor(.white)
+                                Spacer()
                                 Text(appVersionDisplay)
-                                    .font(.system(size: 12.5))
-                                    .foregroundColor(Color.white.opacity(0.50))
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .listRowBackground(Color(white: 0.11))
+                }
+
+                // 6. Abmelden
+                if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Section {
+                        Button(role: .destructive) {
+                            showLogoutAlert = true
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("Abmelden")
+                                    .font(.system(size: 16, weight: .medium))
                                 Spacer()
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(Color(hex: "#111114"))
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                            )
-
-                            Button(action: {
-                                showLogoutAlert = true
-                            }) {
-                                HStack {
-                                    Spacer()
-                                    Text("Abmelden")
-                                        .font(.system(size: 15.5, weight: .semibold))
-                                        .foregroundColor(Color(hex: "#ff5a5a"))
-                                    Spacer()
-                                }
-                                .padding(.vertical, 14)
-                                .background(Color(hex: "#ef4444").opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(Color(hex: "#ef4444").opacity(0.24), lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(PlainButtonStyle())
                         }
-                        .padding(.horizontal, 18)
-
-                        Spacer(minLength: 40)
                     }
+                    .listRowBackground(Color(white: 0.11))
                 }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.black.ignoresSafeArea())
+            .searchable(text: $searchQuery, placement: .navigationBarDrawer(displayMode: .always), prompt: "Einstellungen durchsuchen")
             .navigationTitle("Einstellungen")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
+                    Button("Fertig") {
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(Color.white.opacity(0.55))
                     }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
                 }
+            }
+            .sheet(isPresented: $showNavbarSheet) {
+                NavbarSettingsSheet(
+                    iconsOnly: $iconsOnly,
+                    scrollMinimize: $scrollMinimize,
+                    customTabsRaw: $customTabsRaw
+                )
             }
             .alert("Abmelden?", isPresented: $showLogoutAlert) {
                 Button("Abbrechen", role: .cancel) {}
@@ -325,158 +350,14 @@ public struct SettingsMainView: View {
         .tint(.white)
     }
 
-    private var searchFieldBar: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Color.white.opacity(0.45))
-
-            TextField("Einstellungen durchsuchen...", text: $searchQuery)
-                .font(.system(size: 14.5))
+    private func appleIcon(_ systemName: String, color: Color) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(color)
+                .frame(width: 29, height: 29)
+            Image(systemName: systemName)
+                .font(.system(size: 14.5, weight: .semibold))
                 .foregroundColor(.white)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-
-            if !searchQuery.isEmpty {
-                Button(action: { searchQuery = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color.white.opacity(0.45))
-                }
-            }
-        }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 10)
-        .background(Color(hex: "#111114"))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private var profileBannerCard: some View {
-        NavigationLink {
-            EditProfileView(user: user, serverURL: serverURL)
-        } label: {
-            HStack(spacing: 14) {
-                PortUserAvatarView(
-                    rawAvatar: user.avatar,
-                    username: user.username,
-                    serverURL: serverURL,
-                    size: 52
-                )
-                .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 1))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(user.displayName ?? user.username)
-                            .font(.system(size: 16.5, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-
-                        Text((user.role ?? "user").uppercased())
-                            .font(.system(size: 9.5, weight: .bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.10))
-                            .clipShape(Capsule())
-                            .foregroundColor(Color.white.opacity(0.75))
-                    }
-
-                    Text(user.email?.isEmpty == false ? (user.email ?? "") : "@\(user.username)")
-                        .font(.system(size: 12.5))
-                        .foregroundColor(Color.white.opacity(0.55))
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.32))
-            }
-            .padding(14)
-            .background(Color(hex: "#111114"))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    private func settingsRowContent(_ row: SettingsNavRow) -> some View {
-        HStack(spacing: 13) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-                    .frame(width: 34, height: 34)
-                Image(systemName: row.icon)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.88))
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                Text(row.subtitle)
-                    .font(.system(size: 12))
-                    .foregroundColor(Color.white.opacity(0.50))
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            if let badge = row.trailingBadge {
-                Text(badge)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(sessionManager.isPathSatisfied ? Color(hex: "#57e389") : Color(hex: "#ff5a5a"))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        (sessionManager.isPathSatisfied ? Color(hex: "#57e389") : Color(hex: "#ff5a5a"))
-                            .opacity(0.14)
-                    )
-                    .clipShape(Capsule())
-            }
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Color.white.opacity(0.28))
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-    }
-
-    @ViewBuilder
-    private func destinationView(for dest: SettingsDestination) -> some View {
-        switch dest {
-        case .playback:
-            SettingsPlaybackView()
-        case .equalizer:
-            SettingsEqualizerView()
-        case .appearance:
-            SettingsAppearanceView()
-        case .playerLayout:
-            SettingsPlayerLayoutView()
-        case .downloads:
-            SettingsDownloadsView()
-        case .profile:
-            EditProfileView(user: user, serverURL: serverURL)
-        case .devices:
-            DeviceManagementView()
-        case .language:
-            SettingsLanguageView()
-        case .security:
-            SecuritySettingsView()
-        case .servers:
-            ServerManagementView()
-        case .debug:
-            SettingsDebugView(serverURL: serverURL)
         }
     }
 }
