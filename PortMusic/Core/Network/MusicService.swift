@@ -6,6 +6,10 @@ public final class MusicService {
     private let session: URLSession
     private let discoverySession: URLSession
     private let artistCacheStorageKey = "port_music_artist_detail_cache_v1"
+    private let curatedRadioCacheKey = "port_music_curated_radio_cache_v1"
+    private let radioFavoritesCacheKey = "port_music_radio_favorites_cache_v1"
+    private let podcastChartsCacheKey = "port_music_podcast_charts_cache_v1"
+    private let podcastFeedCacheKey = "port_music_podcast_feeds_cache_v1"
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -31,8 +35,11 @@ public final class MusicService {
     public func streamURL(for track: Track, serverURL: String) -> URL? {
         let base = cleanURL(serverURL)
 
-        // Live-Radio-Sender explizit ueber /api/radio/stream routen (niemals fuer normale Songs!)
+        // Live-Radio-Sender explizit ueber /api/radio/stream routen (HLS .m3u8 direkt fuer AVPlayer)
         if track.isLive, let src = track.sourceUrl, !src.isEmpty {
+            if src.lowercased().contains(".m3u8"), let directHls = URL(string: src) {
+                return directHls
+            }
             if src.hasPrefix("http://") || src.hasPrefix("https://") {
                 var comps = URLComponents(string: "\(base)/api/radio/stream")
                 comps?.queryItems = [URLQueryItem(name: "url", value: src)]
@@ -429,9 +436,90 @@ public final class MusicService {
     }
 
     // MARK: - Podcasts API (/api/podcasts/*)
-    public func fetchPodcastCharts(limit: Int = 25, serverURL: String, token: String?) async -> [PodcastItem] {
+    public func cachedPodcastCharts(genre: Int? = nil) -> [PodcastItem] {
+        let key = genre.map { "genre_\($0)" } ?? "all"
+        guard let data = UserDefaults.standard.data(forKey: podcastChartsCacheKey),
+              let dict = try? JSONDecoder().decode([String: [PodcastItem]].self, from: data),
+              let list = dict[key] else {
+            return []
+        }
+        return list
+    }
+
+    private func persistPodcastCharts(_ list: [PodcastItem], genre: Int?) {
+        let key = genre.map { "genre_\($0)" } ?? "all"
+        var dict: [String: [PodcastItem]] = [:]
+        if let data = UserDefaults.standard.data(forKey: podcastChartsCacheKey),
+           let existing = try? JSONDecoder().decode([String: [PodcastItem]].self, from: data) {
+            dict = existing
+        }
+        dict[key] = list
+        if let encoded = try? JSONEncoder().encode(dict) {
+            UserDefaults.standard.set(encoded, forKey: podcastChartsCacheKey)
+        }
+    }
+
+    public func cachedPodcastFeed(id: String? = nil, feedUrl: String? = nil) -> PodcastFeedDetail? {
+        guard let data = UserDefaults.standard.data(forKey: podcastFeedCacheKey),
+              let dict = try? JSONDecoder().decode([String: PodcastFeedDetail].self, from: data) else {
+            return nil
+        }
+        if let fUrl = feedUrl?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !fUrl.isEmpty, let found = dict[fUrl] {
+            return found
+        }
+        if let pId = id?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !pId.isEmpty, let found = dict[pId] {
+            return found
+        }
+        return nil
+    }
+
+    private func persistPodcastFeed(_ detail: PodcastFeedDetail, id: String?, feedUrl: String?) {
+        var dict: [String: PodcastFeedDetail] = [:]
+        if let data = UserDefaults.standard.data(forKey: podcastFeedCacheKey),
+           let existing = try? JSONDecoder().decode([String: PodcastFeedDetail].self, from: data) {
+            dict = existing
+        }
+        let keys = [
+            id?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            feedUrl?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            detail.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            detail.feedUrl.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        ].compactMap { $0 }.filter { !$0.isEmpty }
+        for k in keys {
+            dict[k] = detail
+        }
+        if dict.count > 30 {
+            let keepKeys = Array(dict.keys.prefix(20))
+            var compact: [String: PodcastFeedDetail] = [:]
+            for k in keepKeys { compact[k] = dict[k] }
+            for k in keys { compact[k] = detail }
+            dict = compact
+        }
+        if let encoded = try? JSONEncoder().encode(dict) {
+            UserDefaults.standard.set(encoded, forKey: podcastFeedCacheKey)
+        }
+    }
+
+    public func fetchPodcastCharts(genre: Int? = nil, limit: Int = 25, serverURL: String, token: String?) async -> [PodcastItem] {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return cachedPodcastCharts(genre: genre)
+        }
         let base = cleanURL(serverURL)
-        guard let url = URL(string: "\(base)/api/podcasts/charts?country=de&limit=\(limit)") else { return [] }
+        guard var comps = URLComponents(string: "\(base)/api/podcasts/charts") else {
+            return cachedPodcastCharts(genre: genre)
+        }
+        var qItems = [
+            URLQueryItem(name: "country", value: "de"),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        if let g = genre {
+            qItems.append(URLQueryItem(name: "genre", value: "\(g)"))
+        }
+        comps.queryItems = qItems
+        guard let url = comps.url else { return cachedPodcastCharts(genre: genre) }
+
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.timeoutInterval = 12.0
@@ -441,15 +529,22 @@ public final class MusicService {
         }
         guard let (data, resp) = try? await discoverySession.data(for: req),
               let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
-              let wrapper = try? JSONDecoder().decode([String: [PodcastItem]].self, from: data) else {
-            return []
+              let wrapper = try? JSONDecoder().decode([String: [PodcastItem]].self, from: data),
+              let results = wrapper["results"] else {
+            return cachedPodcastCharts(genre: genre)
         }
-        return wrapper["results"] ?? []
+        if !results.isEmpty {
+            persistPodcastCharts(results, genre: genre)
+        }
+        return results
     }
 
     public func searchPodcasts(query: String, serverURL: String, token: String?) async -> [PodcastItem] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return []
+        }
         let base = cleanURL(serverURL)
         guard var comps = URLComponents(string: "\(base)/api/podcasts/search") else { return [] }
         comps.queryItems = [URLQueryItem(name: "q", value: trimmed), URLQueryItem(name: "country", value: "DE")]
@@ -469,20 +564,16 @@ public final class MusicService {
         return wrapper["results"] ?? []
     }
 
-    public func fetchPodcastFeed(id: String? = nil, feedUrl: String? = nil, serverURL: String, token: String?) async -> PodcastFeedDetail? {
+    public func resolvePodcastURL(url inputUrl: String, serverURL: String, token: String?) async -> PodcastResolveResult? {
+        let trimmed = inputUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
         let base = cleanURL(serverURL)
-        guard var comps = URLComponents(string: "\(base)/api/podcasts/feed") else { return nil }
-        if let fUrl = feedUrl, !fUrl.isEmpty {
-            comps.queryItems = [URLQueryItem(name: "url", value: fUrl)]
-        } else if let pId = id, !pId.isEmpty {
-            comps.queryItems = [URLQueryItem(name: "id", value: pId)]
-        } else {
-            return nil
-        }
+        guard var comps = URLComponents(string: "\(base)/api/podcasts/resolve") else { return nil }
+        comps.queryItems = [URLQueryItem(name: "url", value: trimmed)]
         guard let url = comps.url else { return nil }
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
-        req.timeoutInterval = 18.0
+        req.timeoutInterval = 14.0
         if let tok = token, !tok.isEmpty {
             req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
             req.setValue(tok, forHTTPHeaderField: "x-session-token")
@@ -491,7 +582,39 @@ public final class MusicService {
               let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             return nil
         }
-        return try? JSONDecoder().decode(PodcastFeedDetail.self, from: data)
+        return try? JSONDecoder().decode(PodcastResolveResult.self, from: data)
+    }
+
+    public func fetchPodcastFeed(id: String? = nil, feedUrl: String? = nil, serverURL: String, token: String?) async -> PodcastFeedDetail? {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return cachedPodcastFeed(id: id, feedUrl: feedUrl)
+        }
+        let base = cleanURL(serverURL)
+        guard var comps = URLComponents(string: "\(base)/api/podcasts/feed") else {
+            return cachedPodcastFeed(id: id, feedUrl: feedUrl)
+        }
+        if let fUrl = feedUrl, !fUrl.isEmpty {
+            comps.queryItems = [URLQueryItem(name: "url", value: fUrl)]
+        } else if let pId = id, !pId.isEmpty {
+            comps.queryItems = [URLQueryItem(name: "id", value: pId)]
+        } else {
+            return cachedPodcastFeed(id: id, feedUrl: feedUrl)
+        }
+        guard let url = comps.url else { return cachedPodcastFeed(id: id, feedUrl: feedUrl) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.timeoutInterval = 18.0
+        if let tok = token, !tok.isEmpty {
+            req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            req.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+        guard let (data, resp) = try? await discoverySession.data(for: req),
+              let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let detail = try? JSONDecoder().decode(PodcastFeedDetail.self, from: data) else {
+            return cachedPodcastFeed(id: id, feedUrl: feedUrl)
+        }
+        persistPodcastFeed(detail, id: id, feedUrl: feedUrl)
+        return detail
     }
 
     public func syncSavedArtistState(artistName: String, isSaved: Bool, serverURL: String, token: String?) async {
@@ -2016,10 +2139,172 @@ public final class MusicService {
         }
     }
 
-    // MARK: - Radio Favorites (/api/radio/favorites)
-    public func fetchRadioFavorites(serverURL: String, token: String?) async -> [LibraryRadioStation] {
+    // MARK: - Curated & Directory Radio API (/api/radio/*)
+    public func cachedCuratedRadio() -> CuratedRadioResponse? {
+        guard let data = UserDefaults.standard.data(forKey: curatedRadioCacheKey),
+              let decoded = try? JSONDecoder().decode(CuratedRadioResponse.self, from: data) else {
+            return nil
+        }
+        return decoded
+    }
+
+    public func fetchCuratedRadio(serverURL: String, token: String?) async -> CuratedRadioResponse? {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return cachedCuratedRadio()
+        }
         let base = cleanURL(serverURL)
-        guard let url = URL(string: "\(base)/api/radio/favorites") else { return [] }
+        guard let url = URL(string: "\(base)/api/radio/stations") else { return cachedCuratedRadio() }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15.0
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        do {
+            let (data, response) = try await discoverySession.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let decoded = try? JSONDecoder().decode(CuratedRadioResponse.self, from: data) else {
+                return cachedCuratedRadio()
+            }
+            if let encoded = try? JSONEncoder().encode(decoded) {
+                UserDefaults.standard.set(encoded, forKey: curatedRadioCacheKey)
+            }
+            return decoded
+        } catch {
+            return cachedCuratedRadio()
+        }
+    }
+
+    public func fetchTopRadioStations(country: String = "", limit: Int = 60, offset: Int = 0, serverURL: String, token: String?) async -> [RadioBrowserStation] {
+        var items = [
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "offset", value: "\(offset)")
+        ]
+        if !country.isEmpty {
+            items.append(URLQueryItem(name: "country", value: country))
+        }
+        return await performRadioDirectoryQuery(endpoint: "/api/radio/top", queryItems: items, serverURL: serverURL, token: token)
+    }
+
+    public func searchRadioStations(query: String, country: String = "", limit: Int = 60, offset: Int = 0, serverURL: String, token: String?) async -> [RadioBrowserStation] {
+        var items = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "offset", value: "\(offset)")
+        ]
+        if !country.isEmpty {
+            items.append(URLQueryItem(name: "country", value: country))
+        }
+        return await performRadioDirectoryQuery(endpoint: "/api/radio/search", queryItems: items, serverURL: serverURL, token: token)
+    }
+
+    public func fetchRadioStationsByTag(tag: String, country: String = "", limit: Int = 60, offset: Int = 0, serverURL: String, token: String?) async -> [RadioBrowserStation] {
+        var items = [
+            URLQueryItem(name: "tag", value: tag),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "offset", value: "\(offset)")
+        ]
+        if !country.isEmpty {
+            items.append(URLQueryItem(name: "country", value: country))
+        }
+        return await performRadioDirectoryQuery(endpoint: "/api/radio/bytag", queryItems: items, serverURL: serverURL, token: token)
+    }
+
+    private func performRadioDirectoryQuery(endpoint: String, queryItems: [URLQueryItem], serverURL: String, token: String?) async -> [RadioBrowserStation] {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return []
+        }
+        let base = cleanURL(serverURL)
+        guard var comps = URLComponents(string: "\(base)\(endpoint)") else { return [] }
+        comps.queryItems = queryItems
+        guard let url = comps.url else { return [] }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15.0
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        do {
+            let (data, response) = try await discoverySession.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let decoded = try? JSONDecoder().decode(RadioStationsListResponse.self, from: data) else {
+                return []
+            }
+            return decoded.stations
+        } catch {
+            return []
+        }
+    }
+
+    public func fetchRadioMixTracks(mixId: Int, mixTitle: String, fallbackCover: String?, serverURL: String, token: String?) async -> [Track] {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return []
+        }
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/radio/mix/\(mixId)") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15.0
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        do {
+            let (data, response) = try await discoverySession.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let rawTracks = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) else {
+                return []
+            }
+            return rawTracks.map { item in
+                Track(
+                    id: item.id,
+                    title: item.title,
+                    artist: item.artist,
+                    album: item.album ?? mixTitle,
+                    duration: item.duration ?? "0:00",
+                    durationSeconds: Double(item.durationSeconds ?? 0),
+                    coverUrl: item.cover ?? fallbackCover,
+                    isLive: false,
+                    isExplicit: item.isExplicit ?? false
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+
+    // MARK: - Radio Favorites (/api/radio/favorites)
+    public func cachedRadioFavorites() -> [LibraryRadioStation] {
+        guard let data = UserDefaults.standard.data(forKey: radioFavoritesCacheKey),
+              let decoded = try? JSONDecoder().decode([LibraryRadioStation].self, from: data) else {
+            return []
+        }
+        return decoded
+    }
+
+    private func persistRadioFavoritesCache(_ stations: [LibraryRadioStation]) {
+        if let encoded = try? JSONEncoder().encode(stations) {
+            UserDefaults.standard.set(encoded, forKey: radioFavoritesCacheKey)
+        }
+    }
+
+    public func fetchRadioFavorites(serverURL: String, token: String?) async -> [LibraryRadioStation] {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return cachedRadioFavorites()
+        }
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/radio/favorites") else { return cachedRadioFavorites() }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -2034,21 +2319,23 @@ public final class MusicService {
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let stationsData = json["stations"],
-                  let rawData = try? JSONSerialization.data(withJSONObject: stationsData) else {
-                return []
+                  let rawData = try? JSONSerialization.data(withJSONObject: stationsData),
+                  let list = try? JSONDecoder().decode([LibraryRadioStation].self, from: rawData) else {
+                return cachedRadioFavorites()
             }
-            return (try? JSONDecoder().decode([LibraryRadioStation].self, from: rawData)) ?? []
+            persistRadioFavoritesCache(list)
+            return list
         } catch {
-            return []
+            return cachedRadioFavorites()
         }
     }
 
     public func toggleRadioFavorite(station: LibraryRadioStation, isFavorite: Bool, serverURL: String, token: String?) async -> Bool {
         let base = cleanURL(serverURL)
-        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#"))
         let encodedId = station.id.addingPercentEncoding(withAllowedCharacters: allowed) ?? station.id
 
-        let urlString = isFavorite ? "\(base)/api/radio/favorites/\(encodedId)" : "\(base)/api/radio/favorites"
+        let urlString = isFavorite ? "\(base)/api/radio/favorites?id=\(encodedId)" : "\(base)/api/radio/favorites"
         guard let url = URL(string: urlString) else { return false }
 
         var request = URLRequest(url: url)
@@ -2060,12 +2347,20 @@ public final class MusicService {
         }
         if !isFavorite {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try? JSONEncoder().encode(station)
+            request.httpBody = try? JSONEncoder().encode(["station": station])
         }
 
         do {
-            let (_, response) = try await session.data(for: request)
-            return (response as? HTTPURLResponse).map { (200...299).contains($0.statusCode) } ?? false
+            let (data, response) = try await session.data(for: request)
+            let ok = (response as? HTTPURLResponse).map { (200...299).contains($0.statusCode) } ?? false
+            if ok,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let stationsData = json["stations"],
+               let rawData = try? JSONSerialization.data(withJSONObject: stationsData),
+               let updated = try? JSONDecoder().decode([LibraryRadioStation].self, from: rawData) {
+                persistRadioFavoritesCache(updated)
+            }
+            return ok
         } catch {
             return false
         }

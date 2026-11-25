@@ -279,6 +279,14 @@ public final class OfflineDownloadManager: ObservableObject {
             .map { enrichTrackWithLocalCover($0) }
     }
 
+    public func allDownloadedPodcastEpisodes() -> [Track] {
+        allDownloadedTracks().filter {
+            $0.id.hasPrefix("pod_")
+                || ($0.sourceUrl?.hasPrefix("/api/podcasts/stream") == true)
+                || $0.album == "Podcast"
+        }
+    }
+
     public func downloadedTracks(forPlaylistId playlistId: String) -> [Track] {
         records.values
             .filter { $0.playlistIds.contains(playlistId) }
@@ -374,35 +382,49 @@ public final class OfflineDownloadManager: ObservableObject {
         var candidates: [URL] = []
         let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
         let encodedId = track.id.addingPercentEncoding(withAllowedCharacters: allowed) ?? track.id
+        let isPodcastEpisode = track.id.hasPrefix("pod_")
+            || (track.sourceUrl?.hasPrefix("/api/podcasts/stream") == true)
+            || track.album == "Podcast"
 
-        // 0. Falls lokale Server-Datei ueber sourceUrl bekannt ist
-        if let src = track.sourceUrl, src.hasPrefix("/api/files/audio/"),
-           let uDirect = URL(string: "\(base)\(src)") {
-            candidates.pushCandidate(uDirect)
+        if isPodcastEpisode {
+            // Podcast-Folgen direkt über den Podcast-Stream-Endpunkt herunterladen (niemals Musik-Endpunkte abfragen)
+            if let uPodStream = MusicService.shared.streamURL(for: track, serverURL: base) {
+                candidates.pushCandidate(uPodStream)
+            }
+            if let src = track.sourceUrl, (src.hasPrefix("http://") || src.hasPrefix("https://")),
+               let uDirectPod = URL(string: src) {
+                candidates.pushCandidate(uDirectPod)
+            }
+        } else {
+            // 0. Falls lokale Server-Datei ueber sourceUrl bekannt ist
+            if let src = track.sourceUrl, src.hasPrefix("/api/files/audio/"),
+               let uDirect = URL(string: "\(base)\(src)") {
+                candidates.pushCandidate(uDirect)
+            }
+
+            // 1. Primaerer Download-Endpunkt mit Metadaten (fuer sauberes M4A im Backend)
+            if var dlComponents = URLComponents(string: "\(base)/api/tracks/\(encodedId)/download") {
+                var qItems: [URLQueryItem] = [
+                    URLQueryItem(name: "title", value: track.title),
+                    URLQueryItem(name: "artist", value: track.artist)
+                ]
+                if let alb = track.album, !alb.isEmpty { qItems.append(URLQueryItem(name: "album", value: alb)) }
+                if let cov = track.coverUrl ?? track.cover, !cov.isEmpty { qItems.append(URLQueryItem(name: "cover", value: cov)) }
+                if track.durationSeconds > 0 { qItems.append(URLQueryItem(name: "duration", value: "\(track.durationSeconds)")) }
+                dlComponents.queryItems = qItems
+                if let uDl = dlComponents.url { candidates.pushCandidate(uDl) }
+            }
+
+            // 2. Stream-Endpunkt mit vollen Metadaten als Fallback
+            if let uStream = MusicService.shared.streamURL(for: track, serverURL: base) {
+                candidates.pushCandidate(uStream)
+            }
+
+            // 3. Lokale Server-Dateien (Uploads)
+            if let uFile = URL(string: "\(base)/api/files/audio/\(encodedId)") { candidates.pushCandidate(uFile) }
+            if let uFile2 = URL(string: "\(base)/api/files/\(encodedId)") { candidates.pushCandidate(uFile2) }
+            if let uAudio = URL(string: "\(base)/audio/320/\(encodedId)") { candidates.pushCandidate(uAudio) }
         }
-
-        // 1. Primaerer Download-Endpunkt mit Metadaten (fuer sauberes M4A im Backend)
-        if var dlComponents = URLComponents(string: "\(base)/api/tracks/\(encodedId)/download") {
-            var qItems: [URLQueryItem] = [
-                URLQueryItem(name: "title", value: track.title),
-                URLQueryItem(name: "artist", value: track.artist)
-            ]
-            if let alb = track.album, !alb.isEmpty { qItems.append(URLQueryItem(name: "album", value: alb)) }
-            if let cov = track.coverUrl ?? track.cover, !cov.isEmpty { qItems.append(URLQueryItem(name: "cover", value: cov)) }
-            if track.durationSeconds > 0 { qItems.append(URLQueryItem(name: "duration", value: "\(track.durationSeconds)")) }
-            dlComponents.queryItems = qItems
-            if let uDl = dlComponents.url { candidates.pushCandidate(uDl) }
-        }
-
-        // 2. Stream-Endpunkt mit vollen Metadaten als Fallback
-        if let uStream = MusicService.shared.streamURL(for: track, serverURL: base) {
-            candidates.pushCandidate(uStream)
-        }
-
-        // 3. Lokale Server-Dateien (Uploads)
-        if let uFile = URL(string: "\(base)/api/files/audio/\(encodedId)") { candidates.pushCandidate(uFile) }
-        if let uFile2 = URL(string: "\(base)/api/files/\(encodedId)") { candidates.pushCandidate(uFile2) }
-        if let uAudio = URL(string: "\(base)/audio/320/\(encodedId)") { candidates.pushCandidate(uAudio) }
 
         var downloadedData: Data? = nil
         var detectedMime: String? = nil

@@ -35,13 +35,13 @@ public enum MainTabItem: Int, CaseIterable {
     }
 }
 
-// MARK: - Rich Liquid Glass Tab Model (Home, Library, Radio, Search)
+// MARK: - Rich Liquid Glass Tab Model (Home, Library, Radio, Search, Podcasts)
 public enum LiquidTabID: String, CaseIterable, Identifiable {
     case home = "home"
     case library = "library"
     case radio = "radio"
     case search = "search"
-    case newReleases = "new"
+    case podcasts = "podcasts"
 
     public var id: String { rawValue }
 
@@ -51,7 +51,7 @@ public enum LiquidTabID: String, CaseIterable, Identifiable {
         case .library: return "Bibliothek"
         case .radio: return "Radio"
         case .search: return "Suche"
-        case .newReleases: return "Entdecken"
+        case .podcasts: return "Podcasts"
         }
     }
 
@@ -65,8 +65,8 @@ public enum LiquidTabID: String, CaseIterable, Identifiable {
             return "dot.radiowaves.left.and.right"
         case .search:
             return "magnifyingglass"
-        case .newReleases:
-            return isSelected ? "square.grid.2x2.fill" : "square.grid.2x2"
+        case .podcasts:
+            return isSelected ? "mic.fill" : "mic"
         }
     }
 }
@@ -92,7 +92,10 @@ public struct MainTabView: View {
 
     private var currentTabsList: [LiquidTabID] {
         let rawIds = customTabsRaw.split(separator: ",").map(String.init)
-        let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
+        let parsed = rawIds.compactMap { id -> LiquidTabID? in
+            if id == "new" { return .podcasts }
+            return LiquidTabID(rawValue: id)
+        }
         var unique: [LiquidTabID] = []
         for t in parsed {
             if !unique.contains(t) {
@@ -109,7 +112,7 @@ public struct MainTabView: View {
     @State private var homePath: [AppRoute] = []
     @State private var libraryPath: [AppRoute] = []
     @State private var radioPath: [AppRoute] = []
-    @State private var newReleasesPath: [AppRoute] = []
+    @State private var podcastsPath: [AppRoute] = []
     @State private var searchPath: [AppRoute] = []
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var session = SessionManager.shared
@@ -404,7 +407,7 @@ public struct MainTabView: View {
             }
             let targetItem: MainTabItem
             switch newTab {
-            case .home, .newReleases, .radio:
+            case .home, .podcasts, .radio:
                 targetItem = .home
             case .library:
                 targetItem = .library
@@ -434,8 +437,8 @@ public struct MainTabView: View {
                 if radioPath.last != route { radioPath.append(route) }
             case .search:
                 if searchPath.last != route { searchPath.append(route) }
-            case .newReleases:
-                if newReleasesPath.last != route { newReleasesPath.append(route) }
+            case .podcasts:
+                if podcastsPath.last != route { podcastsPath.append(route) }
             }
         }
         .fullScreenCover(isPresented: .constant(false)) { EmptyView() }
@@ -473,7 +476,7 @@ public struct MainTabView: View {
             activeLiquidTab = tab
             let targetItem: MainTabItem
             switch tab {
-            case .home, .newReleases, .radio:
+            case .home, .podcasts, .radio:
                 targetItem = .home
             case .library:
                 targetItem = .library
@@ -515,6 +518,10 @@ public struct MainTabView: View {
             AlbumDetailView(albumId: id, initialTitle: title, initialArtist: artist, initialCover: coverUrl, serverURL: serverURL)
         case .playlist(let id, let title, let coverUrl):
             PlaylistDetailView(playlistId: id, initialTitle: title, initialCover: coverUrl, serverURL: serverURL)
+        case .podcast(let id, let title, let artist, let coverUrl, let feedUrl):
+            PodcastDetailView(podcastId: id, initialTitle: title, initialArtist: artist, initialCover: coverUrl, feedUrl: feedUrl, serverURL: serverURL)
+        case .podcastCategory(let genreId, let title, let subtitle):
+            PodcastCategoryView(genreId: genreId, title: title, subtitle: subtitle, serverURL: serverURL)
         case .likedSongs:
             LikedSongsView(serverURL: serverURL)
         case .libraryCategory(let category):
@@ -562,9 +569,9 @@ public struct MainTabView: View {
                         destinationForRoute(route)
                     }
             }
-        case .newReleases:
-            NavigationStack(path: $newReleasesPath) {
-                NewReleasesView(serverURL: serverURL)
+        case .podcasts:
+            NavigationStack(path: $podcastsPath) {
+                PodcastsDiscoverView(serverURL: serverURL)
                     .navigationDestination(for: AppRoute.self) { route in
                         destinationForRoute(route)
                     }
@@ -775,7 +782,7 @@ struct NavbarSettingsSheet: View {
 
     private var inactiveTabs: [LiquidTabID] {
         let current = Set(localTabs)
-        let all: [LiquidTabID] = [.home, .library, .radio, .search, .newReleases]
+        let all: [LiquidTabID] = [.home, .library, .radio, .podcasts, .search]
         return all.filter { !current.contains($0) }
     }
 
@@ -977,7 +984,10 @@ struct NavbarSettingsSheet: View {
                 localIconsOnly = iconsOnly
                 localScrollMinimize = scrollMinimize
                 let rawIds = customTabsRaw.split(separator: ",").map(String.init)
-                let parsed = rawIds.compactMap { LiquidTabID(rawValue: $0) }
+                let parsed = rawIds.compactMap { id -> LiquidTabID? in
+                    if id == "new" { return .podcasts }
+                    return LiquidTabID(rawValue: id)
+                }
                 var unique: [LiquidTabID] = []
                 for t in parsed {
                     if !unique.contains(t) {

@@ -1405,7 +1405,7 @@ public struct PodcastItem: Codable, Identifiable, Equatable, Hashable {
     }
 }
 
-public struct PodcastEpisodeItem: Decodable, Identifiable, Equatable {
+public struct PodcastEpisodeItem: Codable, Identifiable, Equatable {
     public let id: String
     public let title: String
     public let description: String
@@ -1420,6 +1420,24 @@ public struct PodcastEpisodeItem: Decodable, Identifiable, Equatable {
         case durationSeconds, duration_seconds
         case audioUrl, audio_url
         case cover
+    }
+
+    public init(
+        id: String,
+        title: String,
+        description: String = "",
+        publishedAt: String = "",
+        durationSeconds: Int = 0,
+        audioUrl: String = "",
+        cover: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.publishedAt = publishedAt
+        self.durationSeconds = durationSeconds
+        self.audioUrl = audioUrl
+        self.cover = cover
     }
 
     public init(from decoder: Decoder) throws {
@@ -1438,9 +1456,20 @@ public struct PodcastEpisodeItem: Decodable, Identifiable, Equatable {
             ?? ""
         self.cover = try? c.decodeIfPresent(String.self, forKey: .cover)
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encode(description, forKey: .description)
+        try c.encode(publishedAt, forKey: .publishedAt)
+        try c.encode(durationSeconds, forKey: .durationSeconds)
+        try c.encode(audioUrl, forKey: .audioUrl)
+        try c.encodeIfPresent(cover, forKey: .cover)
+    }
 }
 
-public struct PodcastFeedDetail: Decodable {
+public struct PodcastFeedDetail: Codable {
     public let id: String
     public let title: String
     public let author: String
@@ -1452,6 +1481,24 @@ public struct PodcastFeedDetail: Decodable {
     enum CodingKeys: String, CodingKey {
         case id, title, author, description, cover
         case feedUrl, feed_url, episodes
+    }
+
+    public init(
+        id: String,
+        title: String,
+        author: String = "",
+        description: String = "",
+        cover: String = "",
+        feedUrl: String = "",
+        episodes: [PodcastEpisodeItem] = []
+    ) {
+        self.id = id
+        self.title = title
+        self.author = author
+        self.description = description
+        self.cover = cover
+        self.feedUrl = feedUrl
+        self.episodes = episodes
     }
 
     public init(from decoder: Decoder) throws {
@@ -1466,6 +1513,154 @@ public struct PodcastFeedDetail: Decodable {
             ?? ""
         self.episodes = (try? c.decodeIfPresent([PodcastEpisodeItem].self, forKey: .episodes)) ?? []
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encode(author, forKey: .author)
+        try c.encode(description, forKey: .description)
+        try c.encode(cover, forKey: .cover)
+        try c.encode(feedUrl, forKey: .feedUrl)
+        try c.encode(episodes, forKey: .episodes)
+    }
+}
+
+public struct PodcastResolveResult: Codable {
+    public let status: String?
+    public let source: String?
+    public let title: String?
+    public let artist: String?
+    public let feedUrl: String?
+    public let cover: String?
+    public let message: String?
+}
+
+public struct PodcastResumeInfo: Codable, Equatable {
+    public let podcastId: String
+    public let podcastTitle: String
+    public let podcastFeedUrl: String?
+    public let episodeId: String
+    public let episodeTitle: String
+    public let cover: String?
+    public let audioUrl: String?
+    public let positionSeconds: Double
+    public let durationSeconds: Double
+    public let progress: Double
+    public let updatedAt: Double
+}
+
+public struct PodcastEpisodeProgress: Codable, Equatable {
+    public let episodeId: String
+    public let podcastId: String?
+    public let positionSeconds: Double
+    public let durationSeconds: Double
+    public let progress: Double
+    public let isCompleted: Bool
+    public let updatedAt: Double
+}
+
+// MARK: - Curated & Directory Radio Models (/api/radio/*)
+public struct RadioBrowserStation: Codable, Identifiable, Equatable, Hashable {
+    public let id: String
+    public let name: String
+    public let url: String?
+    public let favicon: String?
+    public let tags: [String]?
+    public let country: String?
+    public let codec: String?
+    public let bitrate: Int?
+    public let votes: Int?
+    public let hls: Bool?
+    public let description: String?
+    public let time: String?
+    public let badge: String?
+
+    public func toLibraryStation() -> LibraryRadioStation {
+        LibraryRadioStation(
+            id: id,
+            name: name,
+            url: url ?? "",
+            favicon: favicon,
+            tags: tags,
+            country: country,
+            codec: codec,
+            bitrate: bitrate
+        )
+    }
+}
+
+public struct RadioStationsListResponse: Codable {
+    public let stations: [RadioBrowserStation]
+    public let hasMore: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case stations
+        case hasMore = "has_more"
+    }
+}
+
+public struct RadioHeroStation: Codable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let subtitle: String
+    public let time: String
+    public let badge: String
+    public let cover: String
+    public let streamUrl: String
+    public let hls: Bool?
+    public let scheduleUrl: String?
+}
+
+public struct RadioOnAirStation: Codable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let time: String
+    public let cover: String
+    public let streamUrl: String
+    public let hls: Bool?
+}
+
+public struct RadioShelfItem: Codable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let subtitle: String
+    public let cover: String
+    public let streamUrl: String
+    public let hls: Bool?
+    public let radioField: String?
+    public let artistCollages: [String]?
+}
+
+public struct RadioShelf: Codable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let subtitle: String
+    public let items: [RadioShelfItem]
+}
+
+public struct RadioFeaturedMix: Codable, Identifiable, Equatable {
+    public let id: String
+    public let deezerRadioId: Int?
+    public let title: String
+    public let subtitle: String
+    public let cover: String
+    public let gradient: String?
+}
+
+public struct RadioExploreCategory: Codable, Identifiable, Equatable {
+    public let id: String
+    public let name: String
+    public let tag: String
+}
+
+public struct CuratedRadioResponse: Codable {
+    public let heroes: [RadioHeroStation]
+    public let onAirNow: [RadioOnAirStation]
+    public let stationsForYou: [RadioShelfItem]
+    public let shelves: [RadioShelf]
+    public let featuredMixes: [RadioFeaturedMix]
+    public let explore: [RadioExploreCategory]
 }
 
 public struct PlaylistImportPreview: Codable {

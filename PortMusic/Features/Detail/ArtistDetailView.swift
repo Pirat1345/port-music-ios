@@ -421,8 +421,10 @@ public struct ArtistDetailView: View {
 
         return ZStack(alignment: .bottom) {
             GeometryReader { geo in
+                let minY = geo.frame(in: .named("artist_scroll")).minY
+                let pullDown = max(0, minY)
                 let width = geo.size.width
-                let height = max(geo.size.height, heroHeight)
+                let stretchedHeight = max(geo.size.height, heroHeight) + pullDown
 
                 ZStack {
                     Color(hex: "#121214")
@@ -432,7 +434,7 @@ public struct ArtistDetailView: View {
                             img
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: width, height: height, alignment: .top)
+                                .frame(width: width, height: stretchedHeight, alignment: .top)
                                 .clipped()
                         } placeholder: {
                             Color(hex: "#18181b")
@@ -458,6 +460,8 @@ public struct ArtistDetailView: View {
                         endPoint: .bottom
                     )
                 }
+                .frame(width: width, height: stretchedHeight)
+                .offset(y: -pullDown)
             }
             .frame(height: heroHeight)
 

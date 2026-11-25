@@ -41,6 +41,7 @@ public final class AudioPlayerManager: ObservableObject {
     public private(set) var currentServerURL: String? = nil
     private var lastPreviousTapTime: Date? = nil
     private var isNavigatingBackward: Bool = false
+    private var pendingSeekTime: Double? = nil
     private let recentTracksStorageKey = "port_music_recent_tracks"
 
     // MARK: - Internal Player Properties
@@ -242,7 +243,7 @@ public final class AudioPlayerManager: ObservableObject {
         return nil
     }
 
-    public func play(track: Track, from contextQueue: [Track] = [], serverURL: String? = nil) {
+    public func play(track: Track, from contextQueue: [Track] = [], serverURL: String? = nil, startAt: Double? = nil) {
         if let sUrl = serverURL, !sUrl.isEmpty {
             self.currentServerURL = sUrl
         }
@@ -298,12 +299,14 @@ public final class AudioPlayerManager: ObservableObject {
         }
 
         self.currentTrack = track
-        self.currentTime = 0.0
-        self.duration = parseDurationSeconds(from: track)
+        let initialSeek = (startAt ?? 0.0) > 1.0 && !track.isLive ? startAt : nil
+        self.pendingSeekTime = initialSeek
+        self.currentTime = initialSeek ?? 0.0
+        self.duration = track.isLive ? 0.0 : parseDurationSeconds(from: track)
         self.isBuffering = true
 
-        // Background-Metadaten-Anreicherung falls Dauer unbekannt (0s) und online
-        if self.duration <= 0 && !SessionManager.shared.isOfflineMode {
+        // Background-Metadaten-Anreicherung falls Dauer unbekannt (0s) und online (niemals fuer Live-Radio)
+        if !track.isLive && self.duration <= 0 && !SessionManager.shared.isOfflineMode {
             let searchQ = "\(track.title) \(track.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
             if !searchQ.isEmpty {
                 let trackId = track.id
@@ -464,6 +467,14 @@ public final class AudioPlayerManager: ObservableObject {
         guard let player = avPlayer else { return }
         self.isPlaying = false
         player.pause()
+        if let track = currentTrack {
+            PodcastProgressStore.shared.recordProgress(
+                track: track,
+                positionSeconds: currentTime,
+                durationSeconds: duration,
+                forcePersist: true
+            )
+        }
         updateNowPlayingInfo()
         persistPlayerState()
     }
@@ -807,9 +818,15 @@ public final class AudioPlayerManager: ObservableObject {
                 case .readyToPlay:
                     self.isBuffering = false
                     let dur = observedItem.duration.seconds
-                    let resolved = self.resolveAuthoritativeDuration(knownTrack: self.currentTrack, audioDuration: dur)
-                    if resolved > 0 && (self.duration <= 0 || self.duration > resolved * 1.7) {
-                        self.duration = resolved
+                    if self.currentTrack?.isLive != true {
+                        let resolved = self.resolveAuthoritativeDuration(knownTrack: self.currentTrack, audioDuration: dur)
+                        if resolved > 0 && (self.duration <= 0 || self.duration > resolved * 1.7) {
+                            self.duration = resolved
+                        }
+                    }
+                    if let seekTarget = self.pendingSeekTime {
+                        self.pendingSeekTime = nil
+                        self.seek(to: seekTarget)
                     }
                     self.updateNowPlayingInfo()
                 case .failed:
@@ -823,7 +840,16 @@ public final class AudioPlayerManager: ObservableObject {
                     let hasOfflineTracks = self.queue.contains(where: { downloader.isDownloaded(trackId: $0.id) })
                         || !downloader.allDownloadedTracks().isEmpty
                     if !SessionManager.shared.isOfflineMode || hasOfflineTracks {
-                        self.next()
+                        if let track = self.currentTrack {
+                PodcastProgressStore.shared.recordProgress(
+                    track: track,
+                    positionSeconds: self.duration,
+                    durationSeconds: self.duration,
+                    isCompleted: true,
+                    forcePersist: true
+                )
+            }
+            self.next()
                     } else {
                         self.isPlaying = false
                     }
@@ -869,8 +895,15 @@ public final class AudioPlayerManager: ObservableObject {
             let sec = time.seconds
             if !sec.isNaN {
                 self.currentTime = sec
+                if let track = self.currentTrack, self.isPlaying {
+                    PodcastProgressStore.shared.recordProgress(
+                        track: track,
+                        positionSeconds: sec,
+                        durationSeconds: self.duration
+                    )
+                }
                 // Automatischer Übergang zum nächsten Track wenn das reale Songende erreicht ist (keine 3 Minuten Stille)
-                if self.isPlaying && self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
+                if self.isPlaying && self.currentTrack?.isLive != true && self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
                     self.playerItemDidReachEnd()
                     return
                 }
@@ -898,11 +931,29 @@ public final class AudioPlayerManager: ObservableObject {
                 if self.currentTime > 30.0 && self.currentTime >= (self.duration * 0.42) && self.currentTime <= (self.duration * 0.58) {
                     print("AudioPlayerManager: fMP4-Timescale-Verdopplung bei EOF erkannt (\(self.currentTime)/\(self.duration)). Dauer korrigiert, springe zum nächsten Titel.")
                     self.duration = self.currentTime
-                    self.next()
+                    if let track = self.currentTrack {
+                PodcastProgressStore.shared.recordProgress(
+                    track: track,
+                    positionSeconds: self.duration,
+                    durationSeconds: self.duration,
+                    isCompleted: true,
+                    forcePersist: true
+                )
+            }
+            self.next()
                     return
                 }
                 print("AudioPlayerManager: Premature stream end at \(self.currentTime)/\(self.duration), skipping ignored")
                 return
+            }
+            if let track = self.currentTrack {
+                PodcastProgressStore.shared.recordProgress(
+                    track: track,
+                    positionSeconds: self.duration,
+                    durationSeconds: self.duration,
+                    isCompleted: true,
+                    forcePersist: true
+                )
             }
             self.next()
         }
@@ -922,16 +973,43 @@ public final class AudioPlayerManager: ObservableObject {
                 if self.currentTime > 30.0 && self.currentTime >= (self.duration * 0.42) && self.currentTime <= (self.duration * 0.58) {
                     print("AudioPlayerManager: fMP4-Timescale-Verdopplung bei Stream-Ende erkannt (\(self.currentTime)/\(self.duration)). Korrigiere und springe weiter.")
                     self.duration = self.currentTime
-                    self.next()
+                    if let track = self.currentTrack {
+                PodcastProgressStore.shared.recordProgress(
+                    track: track,
+                    positionSeconds: self.duration,
+                    durationSeconds: self.duration,
+                    isCompleted: true,
+                    forcePersist: true
+                )
+            }
+            self.next()
                     return
                 }
                 if SessionManager.shared.isOfflineMode && !self.isPlayingOffline {
                     print("AudioPlayerManager: Verbindung während Wiedergabe unterbrochen, wechsle auf nächsten Offline-Song.")
-                    self.next()
+                    if let track = self.currentTrack {
+                PodcastProgressStore.shared.recordProgress(
+                    track: track,
+                    positionSeconds: self.duration,
+                    durationSeconds: self.duration,
+                    isCompleted: true,
+                    forcePersist: true
+                )
+            }
+            self.next()
                     return
                 }
                 print("AudioPlayerManager: Premature stream failure at \(self.currentTime)/\(self.duration), skipping ignored")
                 return
+            }
+            if let track = self.currentTrack {
+                PodcastProgressStore.shared.recordProgress(
+                    track: track,
+                    positionSeconds: self.duration,
+                    durationSeconds: self.duration,
+                    isCompleted: true,
+                    forcePersist: true
+                )
             }
             self.next()
         }
@@ -1024,6 +1102,10 @@ public final class AudioPlayerManager: ObservableObject {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
+
+        if track.isLive {
+            info[MPNowPlayingInfoPropertyIsLiveStream] = true
+        }
 
         if let album = track.album, !album.isEmpty {
             info[MPMediaItemPropertyAlbumTitle] = album
