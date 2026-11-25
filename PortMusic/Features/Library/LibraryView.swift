@@ -25,7 +25,7 @@ public struct LibraryView: View {
     // Web Library Parity: Action Modals & Customizable Category Order
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var showImportPlaylistSheet: Bool = false
-    @State private var isEditingCategories: Bool = false
+    @State private var showEditCategoriesSheet: Bool = false
     @State private var categoriesConfig: [LibraryCategoryConfig] = LibraryView.defaultCategories()
 
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
@@ -126,6 +126,15 @@ public struct LibraryView: View {
                 Task { await loadLibraryData() }
             }
         }
+        .sheet(isPresented: $showEditCategoriesSheet) {
+            LibraryCategoriesEditSheet(
+                categories: $categoriesConfig,
+                defaultProvider: Self.defaultCategories,
+                onPersist: { updated in
+                    persistCategories(updated)
+                }
+            )
+        }
     }
 
     // MARK: - Header Section
@@ -154,23 +163,21 @@ public struct LibraryView: View {
             HStack(spacing: 8) {
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                        isEditingCategories.toggle()
-                    }
+                    showEditCategoriesSheet = true
                 }) {
                     HStack(spacing: 5) {
-                        Image(systemName: isEditingCategories ? "checkmark" : "slider.horizontal.3")
+                        Image(systemName: "slider.horizontal.3")
                             .font(.system(size: 12, weight: .semibold))
-                        Text(isEditingCategories ? "Fertig" : "Bearbeiten")
+                        Text("Bearbeiten")
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .foregroundColor(isEditingCategories ? .black : .white)
+                    .foregroundColor(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .background(isEditingCategories ? Color.white : Color.white.opacity(0.08))
+                    .background(Color.white.opacity(0.08))
                     .clipShape(Capsule())
                     .overlay(
-                        Capsule().stroke(Color.white.opacity(isEditingCategories ? 0 : 0.14), lineWidth: 1)
+                        Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -346,149 +353,54 @@ public struct LibraryView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Category Links Section (Editable Order & Visibility matching Web)
+    // MARK: - Category Links Section (Editable via Apple Drag & Drop Sheet)
     private var categoryLinksSection: some View {
-        let visibleCats = categoriesConfig.filter { isEditingCategories || $0.visible }
+        let visibleCats = categoriesConfig.filter { $0.visible }
 
-        return VStack(spacing: 8) {
-            if isEditingCategories {
-                HStack {
-                    Text("Bereiche ein-/ausblenden & sortieren")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.50))
-                    Spacer()
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        let defaults = Self.defaultCategories()
-                        categoriesConfig = defaults
-                        persistCategories(defaults)
-                    }) {
-                        Text("Zurücksetzen")
-                            .font(.system(size: 12, weight: .semibold))
+        return VStack(spacing: 0) {
+            ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
+                NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
+                    HStack(spacing: 14) {
+                        Image(systemName: cat.iconName)
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(Color(hex: "#fc3c44"))
-                    }
-                }
-                .padding(.bottom, 2)
-            }
+                            .frame(width: 24, alignment: .center)
 
-            VStack(spacing: 0) {
-                ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
-                    if isEditingCategories {
-                        editableCategoryRow(cat: cat, index: index, total: visibleCats.count)
-                    } else {
-                        NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
-                            HStack(spacing: 14) {
-                                Image(systemName: cat.iconName)
-                                    .font(.system(size: 18, weight: .medium))
-                                    .foregroundColor(Color(hex: "#fc3c44"))
-                                    .frame(width: 24, alignment: .center)
+                        Text(cat.label)
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundColor(.white)
 
-                                Text(cat.label)
-                                    .font(.system(size: 17, weight: .regular))
-                                    .foregroundColor(.white)
+                        Spacer()
 
-                                Spacer()
-
-                                if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
-                                    Text("\(offlineManager.downloadedTrackIds.count)")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(Color.white.opacity(0.45))
-                                }
-
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(Color.white.opacity(0.32))
-                            }
-                            .padding(.vertical, 13)
-                            .padding(.horizontal, 14)
-                            .contentShape(Rectangle())
+                        if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
+                            Text("\(offlineManager.downloadedTrackIds.count)")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color.white.opacity(0.45))
                         }
-                        .buttonStyle(PlainButtonStyle())
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color.white.opacity(0.32))
                     }
-
-                    if index < visibleCats.count - 1 {
-                        Divider()
-                            .background(Color.white.opacity(0.08))
-                            .padding(.leading, isEditingCategories ? 50 : 52)
-                    }
+                    .padding(.vertical, 13)
+                    .padding(.horizontal, 14)
+                    .contentShape(Rectangle())
                 }
-            }
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-        }
-    }
-
-    private func editableCategoryRow(cat: LibraryCategoryConfig, index: Int, total: Int) -> some View {
-        HStack(spacing: 12) {
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                if let idx = categoriesConfig.firstIndex(where: { $0.id == cat.id }) {
-                    categoriesConfig[idx].visible.toggle()
-                    persistCategories(categoriesConfig)
-                }
-            }) {
-                Image(systemName: cat.visible ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundColor(cat.visible ? Color(hex: "#fc3c44") : Color.white.opacity(0.30))
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            Image(systemName: cat.iconName)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundColor(cat.visible ? Color(hex: "#fc3c44") : Color.white.opacity(0.35))
-                .frame(width: 24, alignment: .center)
-
-            Text(cat.label)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundColor(cat.visible ? .white : Color.white.opacity(0.40))
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                Button(action: {
-                    moveCategory(at: index, direction: -1)
-                }) {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(index > 0 ? .white : Color.white.opacity(0.20))
-                        .frame(width: 30, height: 30)
-                        .background(Color.white.opacity(0.07))
-                        .clipShape(Circle())
-                }
-                .disabled(index == 0)
                 .buttonStyle(PlainButtonStyle())
 
-                Button(action: {
-                    moveCategory(at: index, direction: 1)
-                }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(index < total - 1 ? .white : Color.white.opacity(0.20))
-                        .frame(width: 30, height: 30)
-                        .background(Color.white.opacity(0.07))
-                        .clipShape(Circle())
+                if index < visibleCats.count - 1 {
+                    Divider()
+                        .background(Color.white.opacity(0.08))
+                        .padding(.leading, 52)
                 }
-                .disabled(index >= total - 1)
-                .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.vertical, 11)
-        .padding(.horizontal, 14)
-    }
-
-    private func moveCategory(at index: Int, direction: Int) {
-        let target = index + direction
-        guard index >= 0, index < categoriesConfig.count,
-              target >= 0, target < categoriesConfig.count else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-            categoriesConfig.swapAt(index, target)
-            persistCategories(categoriesConfig)
-        }
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     // MARK: - Segmented Tab Bar
@@ -843,5 +755,192 @@ public struct LibraryView: View {
         await MainActor.run {
             self.favorites = favs
         }
+    }
+}
+
+// MARK: - Native Apple Drag & Drop Edit Sheet (Mirrors NavbarSettingsSheet)
+private struct LibraryCategoriesEditSheet: View {
+    @Binding var categories: [LibraryCategoryConfig]
+    let defaultProvider: () -> [LibraryCategoryConfig]
+    let onPersist: ([LibraryCategoryConfig]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var localVisible: [LibraryCategoryConfig] = []
+    @State private var localHidden: [LibraryCategoryConfig] = []
+    @State private var editMode: EditMode = .active
+
+    private func commitChanges() {
+        let updatedVisible = localVisible.map {
+            LibraryCategoryConfig(id: $0.id, label: $0.label, iconName: $0.iconName, visible: true)
+        }
+        let updatedHidden = localHidden.map {
+            LibraryCategoryConfig(id: $0.id, label: $0.label, iconName: $0.iconName, visible: false)
+        }
+        let combined = updatedVisible + updatedHidden
+        if !combined.isEmpty {
+            categories = combined
+            onPersist(combined)
+        }
+    }
+
+    private func toggleCategory(_ item: LibraryCategoryConfig) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            if let idx = localVisible.firstIndex(where: { $0.id == item.id }) {
+                guard localVisible.count > 1 else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    return
+                }
+                var moved = localVisible.remove(at: idx)
+                moved.visible = false
+                localHidden.append(moved)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } else if let idx = localHidden.firstIndex(where: { $0.id == item.id }) {
+                var moved = localHidden.remove(at: idx)
+                moved.visible = true
+                localVisible.append(moved)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+        }
+    }
+
+    private func resetToDefault() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            localVisible = defaultProvider()
+            localHidden = []
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section(
+                    header:
+                        HStack {
+                            Text("Angezeigte Bereiche")
+                                .foregroundColor(.white.opacity(0.60))
+                            Spacer()
+                            Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                    editMode = (editMode == .active ? .inactive : .active)
+                                }
+                            }) {
+                                Text(editMode == .active ? "Fertig" : "Bearbeiten")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .textCase(nil)
+                            }
+                        },
+                    footer:
+                        Group {
+                            if editMode == .active {
+                                Text("Am Griff rechts anfassen, um die Position per Drag & Drop zu verschieben. Den Haken tippen, um Bereiche ein- oder auszublenden.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+                        }
+                ) {
+                    ForEach(localVisible) { item in
+                        HStack(spacing: 12) {
+                            Image(systemName: item.iconName)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .frame(width: 26)
+
+                            Text(item.label)
+                                .foregroundColor(.white)
+                                .font(.system(size: 15, weight: .medium))
+
+                            Spacer()
+
+                            if editMode == .active {
+                                Button(action: { toggleCategory(item) }) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(Color(hex: "#fc3c44"))
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                        .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .onMove { indices, newOffset in
+                        localVisible.move(fromOffsets: indices, toOffset: newOffset)
+                    }
+                }
+
+                if !localHidden.isEmpty {
+                    Section(
+                        header: Text("Weitere Optionen").foregroundColor(.white.opacity(0.60)),
+                        footer: Text("Tippe auf einen Eintrag, um ihn wieder in deiner Bibliothek anzuzeigen.").font(.system(size: 12)).foregroundColor(.white.opacity(0.45))
+                    ) {
+                        ForEach(localHidden) { item in
+                            HStack(spacing: 12) {
+                                Image(systemName: item.iconName)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.55))
+                                    .frame(width: 26)
+
+                                Text(item.label)
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .font(.system(size: 15))
+
+                                Spacer()
+
+                                Button(action: { toggleCategory(item) }) {
+                                    Image(systemName: "circle")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(Color.white.opacity(0.35))
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                toggleCategory(item)
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    Button(action: resetToDefault) {
+                        HStack {
+                            Spacer()
+                            Text("Standard-Reihenfolge wiederherstellen")
+                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                        }
+                    }
+                }
+            }
+            .environment(\.editMode, $editMode)
+            .navigationTitle("Bibliothek bearbeiten")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fertig") {
+                        commitChanges()
+                        dismiss()
+                    }
+                    .foregroundColor(Color(hex: "#fc3c44"))
+                }
+            }
+            .onAppear {
+                localVisible = categories.filter { $0.visible }
+                localHidden = categories.filter { !$0.visible }
+            }
+            .onDisappear {
+                commitChanges()
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }

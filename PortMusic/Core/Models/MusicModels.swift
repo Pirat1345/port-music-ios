@@ -475,19 +475,22 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
     public let cover: String
     public let nbTracks: Int?
     public let user: String?
+    public let folderId: String?
 
     public init(
         id: String,
         title: String,
         cover: String = "",
         nbTracks: Int? = nil,
-        user: String? = nil
+        user: String? = nil,
+        folderId: String? = nil
     ) {
         self.id = id
         self.title = title
         self.cover = cover
         self.nbTracks = nbTracks
         self.user = user
+        self.folderId = folderId
     }
 
     enum CodingKeys: String, CodingKey {
@@ -500,6 +503,8 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
         case trackCount
         case user
         case owner = "owner_id"
+        case folderId
+        case folderIdSnake = "folder_id"
     }
 
     public init(from decoder: Decoder) throws {
@@ -536,6 +541,9 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
         } else {
             self.user = nil
         }
+
+        self.folderId = (try? container.decodeIfPresent(String.self, forKey: .folderId))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .folderIdSnake))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -545,6 +553,7 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
         try container.encode(cover, forKey: .cover)
         try container.encodeIfPresent(nbTracks, forKey: .nbTracks)
         try container.encodeIfPresent(user, forKey: .user)
+        try container.encodeIfPresent(folderId, forKey: .folderId)
     }
 }
 
@@ -1188,6 +1197,7 @@ public struct LibraryCollectionsData {
     public var savedArtists: [String]
     public var savedAlbums: [String]
     public var pinnedPlaylists: [String]
+    public var pinnedFolders: [String]
     public var playlistTracksMap: [String: [Track]]
     public var favorites: [Track]
     public var globalTracks: [Track]
@@ -1198,6 +1208,7 @@ public struct LibraryCollectionsData {
         savedArtists: [String] = [],
         savedAlbums: [String] = [],
         pinnedPlaylists: [String] = [],
+        pinnedFolders: [String] = [],
         playlistTracksMap: [String: [Track]] = [:],
         favorites: [Track] = [],
         globalTracks: [Track] = []
@@ -1207,6 +1218,7 @@ public struct LibraryCollectionsData {
         self.savedArtists = savedArtists
         self.savedAlbums = savedAlbums
         self.pinnedPlaylists = pinnedPlaylists
+        self.pinnedFolders = pinnedFolders
         self.playlistTracksMap = playlistTracksMap
         self.favorites = favorites
         self.globalTracks = globalTracks

@@ -30,6 +30,8 @@ public struct LibraryCategoryDetailView: View {
     @State private var playlists: [DiscoveryPlaylist] = []
     @State private var folders: [LibraryFolder] = []
     @State private var pinnedIds: Set<String> = []
+    @State private var pinnedFolderIds: Set<String> = []
+    @State private var selectedFolderId: String? = nil
     @State private var artists: [DiscoveryArtist] = []
     @State private var tracks: [Track] = []
     @State private var favoriteIds: Set<String> = []
@@ -42,6 +44,8 @@ public struct LibraryCategoryDetailView: View {
 
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var showImportPlaylistSheet: Bool = false
+    @State private var showCreateFolderAlert: Bool = false
+    @State private var newFolderName: String = ""
 
     public init(category: String, serverURL: String) {
         self.category = category
@@ -181,10 +185,53 @@ public struct LibraryCategoryDetailView: View {
         }
     }
 
-    // MARK: - Playlists View
+    // MARK: - Playlists View (With Mac-Style FolderCover & Nested Navigation)
+    private var folderBreadcrumbs: [LibraryFolder] {
+        var trail: [LibraryFolder] = []
+        var currentId = selectedFolderId
+        var guardSet = Set<String>()
+        while let cid = currentId, !guardSet.contains(cid),
+              let folder = folders.first(where: { $0.id == cid }) {
+            guardSet.insert(cid)
+            trail.insert(folder, at: 0)
+            currentId = folder.parentId
+        }
+        return trail
+    }
+
+    private var displayFolders: [LibraryFolder] {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let filtered: [LibraryFolder]
+        if !q.isEmpty {
+            filtered = folders.filter { $0.name.lowercased().contains(q) }
+        } else if let currentId = selectedFolderId {
+            filtered = folders.filter { $0.parentId == currentId }
+        } else {
+            filtered = folders.filter { ($0.parentId ?? "").isEmpty }
+        }
+        return filtered.sorted { a, b in
+            let pA = pinnedFolderIds.contains(a.id)
+            let pB = pinnedFolderIds.contains(b.id)
+            if pA != pB { return pA }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        }
+    }
+
     private var sortedPlaylists: [DiscoveryPlaylist] {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let base = q.isEmpty ? playlists : playlists.filter { $0.title.lowercased().contains(q) }
+        let base: [DiscoveryPlaylist]
+        if !q.isEmpty {
+            base = playlists.filter { $0.title.lowercased().contains(q) }
+        } else if let currentId = selectedFolderId {
+            base = playlists.filter { $0.folderId == currentId }
+        } else {
+            let folderIds = Set(folders.map { $0.id })
+            base = playlists.filter {
+                guard let fid = $0.folderId, !fid.isEmpty else { return true }
+                return !folderIds.contains(fid)
+            }
+        }
+
         return base.sorted { a, b in
             let pinA = pinnedIds.contains(a.id)
             let pinB = pinnedIds.contains(b.id)
@@ -202,11 +249,72 @@ public struct LibraryCategoryDetailView: View {
         }
     }
 
+    private func playlistsInFolder(_ folderId: String) -> [DiscoveryPlaylist] {
+        playlists.filter { $0.folderId == folderId }
+    }
+
     private var playlistsView: some View {
         let items = sortedPlaylists
+        let visibleFolders = displayFolders
 
         return VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+            if selectedFolderId != nil {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        Button(action: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                selectedFolderId = nil
+                            }
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "music.note.list")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                Text("Playlists")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.75))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        ForEach(Array(folderBreadcrumbs.enumerated()), id: \.element.id) { idx, crumb in
+                            let isLast = idx == folderBreadcrumbs.count - 1
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.white.opacity(0.35))
+
+                            Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                    selectedFolderId = crumb.id
+                                }
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: isLast ? "folder.fill" : "folder")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(Color(hex: "#fc3c44"))
+                                    Text(crumb.name)
+                                        .font(.system(size: 13, weight: isLast ? .bold : .medium))
+                                        .foregroundColor(isLast ? .white : Color.white.opacity(0.75))
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(isLast ? Color.white.opacity(0.14) : Color.white.opacity(0.07))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
                 Menu {
                     ForEach(PlaylistSort.allCases, id: \.self) { mode in
                         Button(action: { playlistSort = mode }) {
@@ -214,14 +322,14 @@ public struct LibraryCategoryDetailView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 11, weight: .semibold))
                         Text(playlistSort.rawValue)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(Color.white.opacity(0.08))
                     .clipShape(Capsule())
@@ -230,15 +338,34 @@ public struct LibraryCategoryDetailView: View {
 
                 Spacer()
 
-                Button(action: { showImportPlaylistSheet = true }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.down")
+                Button(action: {
+                    newFolderName = ""
+                    showCreateFolderAlert = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder.badge.plus")
                             .font(.system(size: 12, weight: .semibold))
-                        Text("Importieren")
-                            .font(.system(size: 13, weight: .semibold))
+                        Text("Ordner")
+                            .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Button(action: { showImportPlaylistSheet = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Import")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(Color.white.opacity(0.08))
                     .clipShape(Capsule())
@@ -247,14 +374,14 @@ public struct LibraryCategoryDetailView: View {
                 .buttonStyle(PlainButtonStyle())
 
                 Button(action: { showCreatePlaylistSheet = true }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "plus")
                             .font(.system(size: 12, weight: .bold))
                         Text("Neu")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundColor(.black)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 11)
                     .padding(.vertical, 7)
                     .background(Color.white)
                     .clipShape(Capsule())
@@ -262,33 +389,13 @@ public struct LibraryCategoryDetailView: View {
                 .buttonStyle(PlainButtonStyle())
             }
 
-            if !folders.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(folders) { folder in
-                            HStack(spacing: 8) {
-                                Image(systemName: "folder.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(Color(hex: "#fc3c44"))
-                                Text(folder.name)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.07))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.10), lineWidth: 1))
-                        }
-                    }
-                }
-            }
-
-            if isLoading && playlists.isEmpty {
+            if isLoading && playlists.isEmpty && folders.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 50)
-            } else if items.isEmpty {
+            } else if visibleFolders.isEmpty && items.isEmpty && selectedFolderId != nil {
+                emptyPlaceholder(icon: "folder", message: "Dieser Ordner ist leer")
+            } else if visibleFolders.isEmpty && items.isEmpty && !searchQuery.isEmpty {
                 emptyPlaceholder(icon: "music.note.list", message: "Keine Playlists gefunden")
             } else {
                 LazyVGrid(
@@ -298,6 +405,103 @@ public struct LibraryCategoryDetailView: View {
                     ],
                     spacing: 16
                 ) {
+                    // Lieblingssongs Kachel auf Hauptebene (analog Web LibraryPlaylistsPage)
+                    if selectedFolderId == nil && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        NavigationLink(value: AppRoute.likedSongs) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Color(hex: "#450af5"), Color(hex: "#6a4df0"), Color(hex: "#8e8ee5")],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .aspectRatio(1, contentMode: .fit)
+
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 46))
+                                        .foregroundColor(.white)
+                                        .shadow(color: Color.black.opacity(0.30), radius: 6, y: 3)
+                                }
+                                .aspectRatio(1, contentMode: .fit)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                                )
+                                .shadow(color: Color(hex: "#450af5").opacity(0.35), radius: 8, y: 4)
+
+                                Text("Lieblingssongs")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+
+                                Text("Playlist")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(hex: "#a0a0a0"))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    // MacBook / macOS Folder Tiles
+                    ForEach(visibleFolders) { folder in
+                        let inFolder = playlistsInFolder(folder.id)
+                        let subCount = folders.filter { $0.parentId == folder.id }.count
+                        let isPinned = pinnedFolderIds.contains(folder.id)
+
+                        Button(action: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                selectedFolderId = folder.id
+                            }
+                        }) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ZStack(alignment: .topTrailing) {
+                                    FolderCoverView(
+                                        folder: folder,
+                                        playlists: inFolder,
+                                        serverURL: serverURL
+                                    )
+
+                                    if isPinned {
+                                        Image(systemName: "pin.fill")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(6)
+                                            .background(Color.black.opacity(0.65))
+                                            .clipShape(Circle())
+                                            .padding(8)
+                                    }
+                                }
+
+                                Text(folder.name)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+
+                                let subText: String = {
+                                    if subCount > 0 && !inFolder.isEmpty {
+                                        return "\(subCount) Ordner • \(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
+                                    } else if subCount > 0 {
+                                        return "\(subCount) Unterordner"
+                                    } else {
+                                        return "\(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
+                                    }
+                                }()
+                                Text(subText)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(hex: "#a0a0a0"))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    // Playlists Grid Cards
                     ForEach(items) { pl in
                         NavigationLink(value: AppRoute.playlist(
                             id: pl.id,
@@ -356,6 +560,30 @@ public struct LibraryCategoryDetailView: View {
                     }
                 }
             }
+        }
+        .alert("Neuer Ordner", isPresented: $showCreateFolderAlert) {
+            TextField("Ordnername", text: $newFolderName)
+            Button("Abbrechen", role: .cancel) {}
+            Button("Erstellen") {
+                let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                let parentId = selectedFolderId
+                Task {
+                    let token = SessionManager.shared.currentToken
+                    if let created = await MusicService.shared.createFolder(
+                        name: name,
+                        parentFolderId: parentId,
+                        serverURL: serverURL,
+                        token: token
+                    ) {
+                        await MainActor.run {
+                            folders.append(created)
+                        }
+                    }
+                }
+            }
+        } message: {
+            Text(selectedFolderId == nil ? "Name für den neuen Ordner eingeben." : "Name für den neuen Unterordner eingeben.")
         }
     }
 
@@ -600,11 +828,34 @@ public struct LibraryCategoryDetailView: View {
             async let plsTask = MusicService.shared.fetchPlaylists(serverURL: serverURL, token: token)
             async let colTask = MusicService.shared.fetchLibraryCollections(serverURL: serverURL, token: token)
             let (userPls, collections) = await (plsTask, colTask)
-            let mergedPls = userPls.isEmpty ? collections.playlists : userPls
+            let stateById = Dictionary(uniqueKeysWithValues: collections.playlists.map { ($0.id, $0) })
+            let mergedPls: [DiscoveryPlaylist]
+            if userPls.isEmpty {
+                mergedPls = collections.playlists
+            } else {
+                var enriched = userPls.map { pl -> DiscoveryPlaylist in
+                    if let st = stateById[pl.id] {
+                        return DiscoveryPlaylist(
+                            id: pl.id,
+                            title: pl.title,
+                            cover: pl.cover.isEmpty ? st.cover : pl.cover,
+                            nbTracks: pl.nbTracks ?? st.nbTracks,
+                            user: pl.user ?? st.user,
+                            folderId: pl.folderId ?? st.folderId
+                        )
+                    }
+                    return pl
+                }
+                for st in collections.playlists where !enriched.contains(where: { $0.id == st.id }) {
+                    enriched.append(st)
+                }
+                mergedPls = enriched
+            }
             await MainActor.run {
                 self.playlists = mergedPls
                 self.folders = collections.folders
                 self.pinnedIds = Set(collections.pinnedPlaylists)
+                self.pinnedFolderIds = Set(collections.pinnedFolders)
                 self.isLoading = false
             }
 

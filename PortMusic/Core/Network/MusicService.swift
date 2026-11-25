@@ -628,14 +628,15 @@ public final class MusicService {
                let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let pls = json["playlists"] as? [[String: Any]] {
-                var stateMap: [String: (title: String, cover: String, count: Int, owner: String?)] = [:]
+                var stateMap: [String: (title: String, cover: String, count: Int, owner: String?, folderId: String?)] = [:]
                 for pl in pls {
                     guard let id = pl["id"] as? String else { continue }
                     let title = pl["name"] as? String ?? pl["title"] as? String ?? "Playlist"
                     let cover = pl["cover"] as? String ?? pl["cover_url"] as? String ?? ""
                     let tracks = pl["tracks"] as? [Any]
                     let owner = pl["ownerId"] as? String ?? pl["owner_id"] as? String
-                    stateMap[id] = (title, cover, tracks?.count ?? 0, owner)
+                    let folderId = pl["folderId"] as? String ?? pl["folder_id"] as? String
+                    stateMap[id] = (title, cover, tracks?.count ?? 0, owner, folderId)
                 }
 
                 if resultPlaylists.isEmpty {
@@ -646,7 +647,8 @@ public final class MusicService {
                             title: info.title,
                             cover: info.cover,
                             nbTracks: info.count,
-                            user: info.owner
+                            user: info.owner,
+                            folderId: info.folderId
                         ))
                     }
                 } else {
@@ -657,7 +659,8 @@ public final class MusicService {
                                 title: existing.title,
                                 cover: existing.cover.isEmpty ? info.cover : existing.cover,
                                 nbTracks: existing.nbTracks ?? info.count,
-                                user: existing.user ?? info.owner
+                                user: existing.user ?? info.owner,
+                                folderId: existing.folderId ?? info.folderId
                             )
                         }
                         return existing
@@ -1193,6 +1196,7 @@ public final class MusicService {
                     let title = pl["name"] as? String ?? pl["title"] as? String ?? "Playlist"
                     let cover = pl["cover"] as? String ?? pl["cover_url"] as? String ?? ""
                     let owner = pl["ownerId"] as? String ?? pl["owner_id"] as? String
+                    let folderId = pl["folderId"] as? String ?? pl["folder_id"] as? String
                     let rawTracks = pl["tracks"] as? [[String: Any]] ?? []
                     let parsedTracks = rawTracks.compactMap { parseLibraryTrackDict($0) }
                     result.playlistTracksMap[id] = parsedTracks
@@ -1201,7 +1205,8 @@ public final class MusicService {
                         title: title,
                         cover: cover,
                         nbTracks: parsedTracks.count,
-                        user: owner
+                        user: owner,
+                        folderId: folderId
                     ))
                 }
             }
@@ -1227,11 +1232,54 @@ public final class MusicService {
                 result.savedArtists = libState["savedArtists"] as? [String] ?? []
                 result.savedAlbums = libState["savedAlbums"] as? [String] ?? []
                 result.pinnedPlaylists = libState["pinnedPlaylists"] as? [String] ?? []
+                result.pinnedFolders = libState["pinnedFolders"] as? [String] ?? []
             }
         } catch {
             print("MusicService.fetchLibraryCollections error: \(error)")
         }
         return result
+    }
+
+    public func createFolder(name: String, parentFolderId: String? = nil, serverURL: String, token: String?) async -> LibraryFolder? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/state") else { return nil }
+
+        let folderId = "folder_\(Int64(Date().timeIntervalSince1970 * 1000))_\(Int.random(in: 100...999))"
+        var folderObj: [String: Any] = [
+            "id": folderId,
+            "name": trimmed
+        ]
+        if let pid = parentFolderId, !pid.isEmpty {
+            folderObj["parentFolderId"] = pid
+        }
+
+        let payload: [String: Any] = [
+            "playlists": [],
+            "folders": [folderObj],
+            "favorites": []
+        ]
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                return LibraryFolder(id: folderId, name: trimmed, parentId: parentFolderId, color: nil)
+            }
+            return nil
+        } catch {
+            return nil
+        }
     }
 
     private func parseLibraryTrackDict(_ item: [String: Any]) -> Track? {
