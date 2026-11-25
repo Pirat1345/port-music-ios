@@ -292,8 +292,8 @@ public struct LibraryPodcastsView: View {
                 HStack(alignment: .top, spacing: 14) {
                     PortCoverImage(
                         coverUrl: feedDetail?.cover.isEmpty == false ? feedDetail?.cover : podcast.cover,
-                        placeholderIcon: "mic.fill",
-                        serverURL: serverURL
+                        serverURL: serverURL,
+                        placeholderIcon: "mic.fill"
                     )
                     .frame(width: 112, height: 112)
                     .clipShape(RoundedRectangle(cornerRadius: 14))

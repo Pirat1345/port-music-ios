@@ -1405,7 +1405,7 @@ public struct PodcastItem: Codable, Identifiable, Equatable, Hashable {
     }
 }
 
-public struct PodcastEpisodeItem: Codable, Identifiable, Equatable {
+public struct PodcastEpisodeItem: Decodable, Identifiable, Equatable {
     public let id: String
     public let title: String
     public let description: String
@@ -1440,7 +1440,7 @@ public struct PodcastEpisodeItem: Codable, Identifiable, Equatable {
     }
 }
 
-public struct PodcastFeedDetail: Codable {
+public struct PodcastFeedDetail: Decodable {
     public let id: String
     public let title: String
     public let author: String

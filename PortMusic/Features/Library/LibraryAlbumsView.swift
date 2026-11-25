@@ -199,7 +199,7 @@ public struct LibraryAlbumsView: View {
                             title: existing.title == existing.id && !detail.title.isEmpty ? detail.title : existing.title,
                             artist: existing.artist.isEmpty ? detail.artist : existing.artist,
                             cover: (detail.cover?.isEmpty == false) ? detail.cover : existing.cover,
-                            nbTracks: detail.nbTracks ?? existing.nbTracks
+                            nbTracks: detail.trackCount ?? (detail.tracks.isEmpty ? existing.nbTracks : detail.tracks.count)
                         )
                     }
                 }
