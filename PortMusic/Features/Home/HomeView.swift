@@ -5,7 +5,15 @@ public struct HomeView: View {
     public let user: UserProfile
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+
     @State private var discovery: DiscoveryHomeResponse? = nil
+    @State private var userFavorites: [Track] = []
+    @State private var userPlaylists: [DiscoveryPlaylist] = []
+    @State private var recommendedTracks: [Track] = []
+    @State private var topArtistSpotlight: (name: String, tracks: [Track])? = nil
+    @State private var radarTracks: [Track] = []
+
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
     @State private var showSettingsSheet: Bool = false
@@ -26,6 +34,16 @@ public struct HomeView: View {
         }
     }
 
+    private var timeContextSubtitle: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12: return "Dein Sound für den Morgen · Favoriten und Empfehlungen"
+        case 12..<18: return "Dein Mix für den Tag · Favoriten, Neuheiten und Trends"
+        case 18..<23: return "Dein Abend-Mix · Passend zu deinem Geschmack"
+        default: return "Spätabend-Vibes · Favoriten und Entdeckungen"
+        }
+    }
+
     public var body: some View {
         ZStack {
             // Reines Schwarz (#000000) wie auf der Webseite
@@ -34,78 +52,11 @@ public struct HomeView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 32) {
-                    // Header: Exakt wie im Web nur die Begruessung, kein Benutzername & kein Pill-Badge
+                    // Header: Begruessung + dezenter Avatar-Button rechts
                     topGreetingHeader
                         .padding(.top, 16)
 
-                    if isLoading && discovery == nil {
-                        VStack(spacing: 28) {
-                            PortShelfSkeletonView()
-                            PortShelfSkeletonView()
-                            PortShelfSkeletonView()
-                        }
-                        .padding(.top, 16)
-                    } else if let error = errorMessage, discovery == nil {
-                        errorStateView(error)
-                    } else if let data = discovery {
-                        let deduplicated = deduplicateShelves(data: data, recentHistory: player.recentTracks)
-
-                        // ── SHELF 1: TOP-PICKS FÜR DICH (3:4 Poster-Karten) ──
-                        if !deduplicated.topPicks.isEmpty {
-                            shelfTopPicks(picks: deduplicated.topPicks, allDiscovery: data)
-                        }
-
-                        // ── SHELF 2: ZULETZT GEHÖRT (Chronologischer Verlauf) ──
-                        let displayRecent = !deduplicated.recentTracks.isEmpty ? deduplicated.recentTracks : player.recentTracks
-                        if !displayRecent.isEmpty {
-                            shelfRecentlyPlayed(tracks: displayRecent, allDiscovery: data)
-                        }
-
-                        // ── SHELF 3: FRISCH ERSCHIENEN (Release Radar) ──
-                        if !deduplicated.releaseRadar.isEmpty {
-                            shelfReleaseRadar(tracks: deduplicated.releaseRadar, allDiscovery: data)
-                        }
-
-                        // ── SHELF 4: FÜR DICH EMPFOHLEN ──
-                        if !deduplicated.forYou.isEmpty {
-                            shelfForYou(tracks: deduplicated.forYou, allDiscovery: data)
-                        }
-
-                        // ── SHELF 5: TRENDING ÜBERALL ──
-                        if !deduplicated.trending.isEmpty {
-                            shelfTrending(tracks: deduplicated.trending, allDiscovery: data)
-                        }
-
-                        // ── SHELF 6: NEUE ALBEN & EPS ──
-                        if !deduplicated.topAlbums.isEmpty {
-                            shelfAlbums(albums: deduplicated.topAlbums, allDiscovery: data)
-                        }
-
-                        // ── SHELF 7: FRISCHE SONG-DROPS ──
-                        if !deduplicated.newMusicDrops.isEmpty {
-                            shelfSongDrops(drops: deduplicated.newMusicDrops, allDiscovery: data)
-                        }
-
-                        // ── SHELF 8: TOP HITS HEUTE (1:1 mit Rang-Badges, ohne Duplikate aus Trending) ──
-                        if !deduplicated.topHits.isEmpty {
-                            shelfTopHits(tracks: deduplicated.topHits, allDiscovery: data)
-                        }
-
-                        // ── SHELF 9: TOP 100: GLOBAL (mit Rang-Badges) ──
-                        if !deduplicated.top100.isEmpty {
-                            shelfTop100Global(tracks: deduplicated.top100, allDiscovery: data)
-                        }
-
-                        // ── SHELF 10: TOP-PLAYLISTS ──
-                        if !deduplicated.topPlaylists.isEmpty {
-                            shelfTopPlaylists(playlists: deduplicated.topPlaylists, allDiscovery: data)
-                        }
-
-                        // ── SHELF 11: ANGESAGTE KÜNSTLER (Runde Avatare) ──
-                        if !deduplicated.trendingArtists.isEmpty {
-                            shelfTrendingArtists(artists: deduplicated.trendingArtists, allDiscovery: data)
-                        }
-                    }
+                    mainContentBody
 
                     // Ausreichend Abstand am unteren Rand fuer MiniPlayer & TabBar
                     Spacer(minLength: 160)
@@ -143,6 +94,106 @@ public struct HomeView: View {
         }
     }
 
+    @ViewBuilder
+    private var mainContentBody: some View {
+        if isLoading && discovery == nil {
+            VStack(spacing: 28) {
+                PortShelfSkeletonView()
+                PortShelfSkeletonView()
+                PortShelfSkeletonView()
+            }
+            .padding(.top, 16)
+        } else if let error = errorMessage, discovery == nil {
+            let offlineTracks = offlineManager.allDownloadedTracks()
+            if !offlineTracks.isEmpty {
+                offlineHomeSection(tracks: offlineTracks)
+            } else {
+                errorStateView(error)
+            }
+        } else if let data = discovery {
+            let dedup = deduplicateShelves(data: data, recentHistory: player.recentTracks)
+            discoveryShelvesContent(dedup: dedup, rawData: data)
+        }
+    }
+
+    @ViewBuilder
+    private func discoveryShelvesContent(dedup: DeduplicatedResult, rawData: DiscoveryHomeResponse) -> some View {
+        // 0. Schnellzugriff (Lieblingssongs + Eigene Playlists)
+        if !userFavorites.isEmpty || !userPlaylists.isEmpty {
+            quickAccessGridSection
+        }
+
+        // 1. Top-Picks für dich (3:4 Poster-Karten, 204x282)
+        if !dedup.topPicks.isEmpty {
+            shelfTopPicks(picks: dedup.topPicks, allDiscovery: rawData)
+        }
+
+        // 2. Zuletzt gehört (Chronologischer Verlauf)
+        if !dedup.recentTracks.isEmpty {
+            shelfRecentlyPlayed(tracks: dedup.recentTracks, allDiscovery: rawData)
+        }
+
+        // 3. Mehr von <Top-Künstler> (Artist Deep Cuts Spotlight wie im Web)
+        if let spotlight = topArtistSpotlight, !dedup.deepCuts.isEmpty {
+            shelfDeepCuts(artistName: spotlight.name, tracks: dedup.deepCuts, allDiscovery: rawData)
+        }
+
+        // 4. Frisch erschienen (Release Radar aus Top-Künstlern & Neuheiten)
+        if !dedup.releaseRadar.isEmpty {
+            shelfReleaseRadar(tracks: dedup.releaseRadar, allDiscovery: rawData)
+        }
+
+        // 5. Für dich empfohlen (Personalisierte Empfehlungen)
+        if !dedup.forYou.isEmpty {
+            shelfForYou(tracks: dedup.forYou, allDiscovery: rawData)
+        }
+
+        // 6. Trending überall
+        if !dedup.trending.isEmpty {
+            shelfTrending(tracks: dedup.trending, allDiscovery: rawData)
+        }
+
+        // 7. Neue Alben & EPs
+        if !dedup.topAlbums.isEmpty {
+            shelfAlbums(albums: dedup.topAlbums, allDiscovery: rawData)
+        }
+
+        // 8. Frische Song-Drops
+        if !dedup.newMusicDrops.isEmpty {
+            shelfSongDrops(drops: dedup.newMusicDrops, allDiscovery: rawData)
+        }
+
+        // 9. Top Hits heute (mit Rang-Badges)
+        if !dedup.topHits.isEmpty {
+            shelfTopHits(tracks: dedup.topHits, allDiscovery: rawData)
+        }
+
+        // 10. Top 100: Global (mit Rang-Badges)
+        if !dedup.top100.isEmpty {
+            shelfTop100Global(tracks: dedup.top100, allDiscovery: rawData)
+        }
+
+        // 11. Top-Playlists
+        if !dedup.topPlaylists.isEmpty {
+            shelfTopPlaylists(playlists: dedup.topPlaylists, allDiscovery: rawData)
+        }
+
+        // 12. Stimmungen & Genres (aus Discovery moodsAndGenres)
+        if !dedup.moodsAndGenres.isEmpty {
+            shelfMoodsAndGenres(genres: dedup.moodsAndGenres)
+        }
+
+        // 13. Deine Playlists (Persönliche Playlists aus der Bibliothek)
+        if !userPlaylists.isEmpty {
+            shelfUserPlaylists(playlists: userPlaylists)
+        }
+
+        // 14. Angesagte Künstler (Runde Avatare)
+        if !dedup.trendingArtists.isEmpty {
+            shelfTrendingArtists(artists: dedup.trendingArtists)
+        }
+    }
+
     // MARK: - Header (Apple-Stil: Begrüßung + dezenter Avatar-Button rechts)
     private var topGreetingHeader: some View {
         HStack {
@@ -171,6 +222,159 @@ public struct HomeView: View {
         .padding(.horizontal, 20)
     }
 
+    // MARK: - Offline Fallback Section
+    private func offlineHomeSection(tracks: [Track]) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 12) {
+                Image(systemName: "wifi.slash")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(PortColors.accentOrange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Offline-Modus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("\(tracks.count) gespeicherte Titel auf diesem Gerät bereit")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.60))
+                }
+
+                Spacer()
+
+                Button("Neu laden") {
+                    Task { await loadHomeData() }
+                }
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.12))
+                .clipShape(Capsule())
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 20)
+
+            PortShelfHeader(
+                iconName: "arrow.down.circle.fill",
+                iconColor: Color(hex: "#00d26a"),
+                title: "Heruntergeladene Musik",
+                seeAllTitle: "Alle anzeigen",
+                seeAllRoute: .libraryCategory(category: "downloaded")
+            )
+            .padding(.horizontal, 20)
+
+            LazyVStack(spacing: 4) {
+                ForEach(Array(tracks.prefix(20).enumerated()), id: \.element.id) { index, track in
+                    TrackRowView(
+                        track: track,
+                        index: index,
+                        contextQueue: tracks,
+                        serverURL: serverURL,
+                        isLiked: false,
+                        isDownloaded: true,
+                        showCover: true,
+                        showTrackNumber: false
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    // MARK: - Shelf 0: Schnellzugriff (Kompaktes 2-Spalten-Grid wie Web)
+    private var quickAccessGridSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Schnellzugriff")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 20)
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                spacing: 10
+            ) {
+                if !userFavorites.isEmpty {
+                    NavigationLink(value: AppRoute.likedSongs) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                LinearGradient(
+                                    colors: [Color(hex: "#6366f1"), Color(hex: "#a855f7")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                Image(systemName: "heart.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(width: 50, height: 50)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Lieblingssongs")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Text("\(userFavorites.count) Titel")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.white.opacity(0.55))
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 4)
+                        }
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
+                let maxPlaylists = userFavorites.isEmpty ? 6 : 5
+                ForEach(userPlaylists.prefix(maxPlaylists)) { pl in
+                    NavigationLink(value: AppRoute.playlist(id: pl.id, title: pl.title, coverUrl: pl.cover)) {
+                        HStack(spacing: 10) {
+                            PortCoverImage(
+                                coverUrl: pl.cover,
+                                serverURL: serverURL,
+                                placeholderIcon: "music.note.list"
+                            )
+                            .frame(width: 50, height: 50)
+                            .clipped()
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pl.title)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                if let nb = pl.nbTracks {
+                                    Text("\(nb) Songs")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color.white.opacity(0.55))
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 4)
+                        }
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
     // MARK: - Shelf 1: Top-Picks für dich (3:4 Poster-Karten)
     private func shelfTopPicks(picks: [DiscoveryPosterPick], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -178,7 +382,7 @@ public struct HomeView: View {
                 iconName: "sparkles",
                 iconColor: .white,
                 title: "Top-Picks für dich",
-                subtitle: "Favoriten, Neuheiten und Empfehlungen"
+                subtitle: timeContextSubtitle
             )
             .padding(.horizontal, 20)
 
@@ -190,7 +394,8 @@ public struct HomeView: View {
                         subtitle: pick.subtitle,
                         coverUrl: pick.cover,
                         serverURL: serverURL,
-                        isPlaying: isCurrentPlaying
+                        isPlaying: isCurrentPlaying,
+                        trackId: pick.id
                     ) {
                         playTrackWithFullQueue(pick.toTrack(), discovery: allDiscovery)
                     }
@@ -207,7 +412,7 @@ public struct HomeView: View {
                 iconColor: .white,
                 title: "Zuletzt gehört",
                 seeAllTitle: "Alle anzeigen",
-                onSeeAll: {}
+                seeAllRoute: .libraryCategory(category: "history")
             )
             .padding(.horizontal, 20)
 
@@ -228,14 +433,44 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 3: Frisch erschienen (Release Radar)
+    // MARK: - Shelf 3: Mehr von Top-Künstler (Deep Cuts Spotlight)
+    private func shelfDeepCuts(artistName: String, tracks: [Track], allDiscovery: DiscoveryHomeResponse) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PortShelfHeader(
+                iconName: "opticaldisc",
+                iconColor: .white,
+                title: "Mehr von \(artistName)",
+                subtitle: "Weitere Titel und Favoriten von \(artistName)",
+                seeAllTitle: "Alle anzeigen",
+                seeAllRoute: .artist(name: artistName, coverUrl: nil)
+            )
+            .padding(.horizontal, 20)
+
+            PortShelfContainer {
+                ForEach(tracks.prefix(14)) { track in
+                    let isCurrentPlaying = player.isPlaying && player.currentTrack?.id == track.id
+                    PortTrackCard(
+                        title: track.title,
+                        subtitle: track.artist,
+                        coverUrl: track.coverUrl,
+                        serverURL: serverURL,
+                        isPlaying: isCurrentPlaying
+                    ) {
+                        playTrackWithFullQueue(track, discovery: allDiscovery)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Shelf 4: Frisch erschienen (Release Radar)
     private func shelfReleaseRadar(tracks: [Track], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "bolt.fill",
                 iconColor: .white,
                 title: "Frisch erschienen",
-                subtitle: "Neue Veröffentlichungen & frische Entdeckungen"
+                subtitle: "Neue Veröffentlichungen deiner Favoriten & Entdeckungen"
             )
             .padding(.horizontal, 20)
 
@@ -256,13 +491,14 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 4: Für dich empfohlen
+    // MARK: - Shelf 5: Für dich empfohlen
     private func shelfForYou(tracks: [Track], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "flame.fill",
                 iconColor: .white,
-                title: "Für dich empfohlen"
+                title: "Für dich empfohlen",
+                subtitle: "Basierend auf deinem Hörverlauf"
             )
             .padding(.horizontal, 20)
 
@@ -283,15 +519,14 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 5: Trending überall
+    // MARK: - Shelf 6: Trending überall
     private func shelfTrending(tracks: [Track], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "chart.line.uptrend.xyaxis",
                 iconColor: .white,
                 title: "Trending überall",
-                seeAllTitle: "Alle anzeigen",
-                onSeeAll: {}
+                subtitle: "Aktuell weltweit angesagte Titel"
             )
             .padding(.horizontal, 20)
 
@@ -312,14 +547,14 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 6: Neue Alben & EPs
+    // MARK: - Shelf 7: Neue Alben & EPs
     private func shelfAlbums(albums: [DiscoveryAlbum], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "square.stack.fill",
                 iconColor: .white,
                 title: "Neue Alben & EPs",
-                subtitle: "Brandneue Veröffentlichungen der Woche"
+                subtitle: "Brandneue Alben & Veröffentlichungen der Woche"
             )
             .padding(.horizontal, 20)
 
@@ -357,7 +592,7 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 7: Frische Song-Drops
+    // MARK: - Shelf 8: Frische Song-Drops
     private func shelfSongDrops(drops: [DiscoveryAlbum], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
@@ -369,7 +604,7 @@ public struct HomeView: View {
             .padding(.horizontal, 20)
 
             PortShelfContainer {
-                ForEach(drops.prefix(20)) { drop in
+                ForEach(drops.prefix(24)) { drop in
                     NavigationLink(value: AppRoute.album(
                         id: drop.id,
                         title: drop.title,
@@ -383,16 +618,14 @@ public struct HomeView: View {
                             serverURL: serverURL,
                             onTap: nil,
                             onPlay: {
-                                Task {
-                                    if let detail = await MusicService.shared.fetchAlbum(id: drop.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
-                                        let trks = detail.tracks.map { $0.toTrack() }
-                                        if let first = trks.first {
-                                            await MainActor.run {
-                                                player.play(track: first, from: trks, serverURL: serverURL)
-                                            }
-                                        }
-                                    }
-                                }
+                                let fallbackTrack = Track(
+                                    id: drop.id,
+                                    title: drop.title,
+                                    artist: drop.artist,
+                                    album: drop.title,
+                                    coverUrl: drop.cover
+                                )
+                                playTrackWithFullQueue(fallbackTrack, discovery: allDiscovery)
                             }
                         )
                     }
@@ -402,7 +635,7 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 8: Top Hits heute (mit Rang-Badge)
+    // MARK: - Shelf 9: Top Hits heute (mit Rang-Badge)
     private func shelfTopHits(tracks: [DiscoveryChartTrack], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
@@ -433,7 +666,7 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 9: Top 100: Global
+    // MARK: - Shelf 10: Top 100: Global
     private func shelfTop100Global(tracks: [DiscoveryChartTrack], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
@@ -445,7 +678,7 @@ public struct HomeView: View {
             .padding(.horizontal, 20)
 
             PortShelfContainer {
-                ForEach(Array(tracks.prefix(20).enumerated()), id: \.element.id) { index, item in
+                ForEach(Array(tracks.prefix(25).enumerated()), id: \.element.id) { index, item in
                     let track = item.toTrack()
                     let isCurrentPlaying = player.isPlaying && player.currentTrack?.id == track.id
                     let rankNum = item.rank ?? (index + 1)
@@ -464,7 +697,7 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 10: Top-Playlists
+    // MARK: - Shelf 11: Top-Playlists
     private func shelfTopPlaylists(playlists: [DiscoveryPlaylist], allDiscovery: DiscoveryHomeResponse) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
@@ -476,7 +709,7 @@ public struct HomeView: View {
             .padding(.horizontal, 20)
 
             PortShelfContainer {
-                ForEach(playlists) { playlist in
+                ForEach(playlists.prefix(20)) { playlist in
                     let sub = playlist.user ?? (playlist.nbTracks.map { "\($0) Songs" } ?? "Playlist")
                     NavigationLink(value: AppRoute.playlist(
                         id: playlist.id,
@@ -509,8 +742,111 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Shelf 11: Angesagte Künstler
-    private func shelfTrendingArtists(artists: [DiscoveryArtist], allDiscovery: DiscoveryHomeResponse) -> some View {
+    // MARK: - Shelf 12: Stimmungen & Genres
+    private func shelfMoodsAndGenres(genres: [DiscoveryMoodGenre]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PortShelfHeader(
+                iconName: "square.grid.2x2.fill",
+                iconColor: .white,
+                title: "Stimmungen & Genres",
+                subtitle: "Entdecke passende Playlists und Sounds nach Genre"
+            )
+            .padding(.horizontal, 20)
+
+            PortShelfContainer {
+                ForEach(genres) { genre in
+                    NavigationLink(value: AppRoute.appleCategory(
+                        id: genre.id,
+                        title: genre.title,
+                        artworkUrl: genre.cover,
+                        bgColor: nil
+                    )) {
+                        ZStack(alignment: .bottomLeading) {
+                            PortCoverImage(
+                                coverUrl: genre.cover,
+                                serverURL: serverURL,
+                                placeholderIcon: "music.quarternote.3"
+                            )
+                            .frame(width: 150, height: 110)
+                            .clipped()
+
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0.25),
+                                    .init(color: Color.black.opacity(0.84), location: 1.0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+
+                            Text(genre.title)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .lineLimit(2)
+                                .padding(.horizontal, 12)
+                                .padding(.bottom, 10)
+                        }
+                        .frame(width: 150, height: 110)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Shelf 13: Deine Playlists (aus Bibliothek)
+    private func shelfUserPlaylists(playlists: [DiscoveryPlaylist]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PortShelfHeader(
+                iconName: "music.note.list",
+                iconColor: .white,
+                title: "Deine Playlists",
+                seeAllTitle: "Alle anzeigen",
+                seeAllRoute: .libraryCategory(category: "playlists")
+            )
+            .padding(.horizontal, 20)
+
+            PortShelfContainer {
+                ForEach(playlists.prefix(12)) { pl in
+                    let sub = pl.nbTracks.map { "\($0) Songs" } ?? "Eigene Playlist"
+                    NavigationLink(value: AppRoute.playlist(
+                        id: pl.id,
+                        title: pl.title,
+                        coverUrl: pl.cover
+                    )) {
+                        PortTrackCard(
+                            title: pl.title,
+                            subtitle: sub,
+                            coverUrl: pl.cover,
+                            serverURL: serverURL,
+                            onTap: nil,
+                            onPlay: {
+                                Task {
+                                    if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: pl.id, serverURL: serverURL, token: SessionManager.shared.currentToken) {
+                                        let trks = detail.tracks.map { $0.toTrack() }
+                                        if let first = trks.first {
+                                            await MainActor.run {
+                                                player.play(track: first, from: trks, serverURL: serverURL)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Shelf 14: Angesagte Künstler
+    private func shelfTrendingArtists(artists: [DiscoveryArtist]) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             PortShelfHeader(
                 iconName: "dot.radiowaves.left.and.right",
@@ -533,10 +869,11 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Master Cross-Shelf Deduplication Pipeline (Exakt nach Vorbild aus Index.tsx)
+    // MARK: - Master Cross-Shelf Deduplication Pipeline (Ohne Leerlaufen von Drops & Top Hits)
     private struct DeduplicatedResult {
         let topPicks: [DiscoveryPosterPick]
         let recentTracks: [Track]
+        let deepCuts: [Track]
         let releaseRadar: [Track]
         let forYou: [Track]
         let trending: [Track]
@@ -545,6 +882,7 @@ public struct HomeView: View {
         let topHits: [DiscoveryChartTrack]
         let top100: [DiscoveryChartTrack]
         let topPlaylists: [DiscoveryPlaylist]
+        let moodsAndGenres: [DiscoveryMoodGenre]
         let trendingArtists: [DiscoveryArtist]
     }
 
@@ -569,6 +907,15 @@ public struct HomeView: View {
             return cleanArtist.isEmpty ? cleanTitle : "\(cleanTitle):::\(cleanArtist)"
         }
 
+        func primaryArtistKey(_ artist: String) -> String {
+            let base = artist
+                .components(separatedBy: CharacterSet(charactersIn: ",;/&"))
+                .first ?? artist
+            return base.lowercased()
+                .replacingOccurrences(of: "\\s*feat\\..*$", with: "", options: .regularExpression)
+                .filter { $0.isLetter || $0.isNumber }
+        }
+
         func isDuplicate(id: String, title: String, artist: String) -> Bool {
             if !id.isEmpty && seenIds.contains(id) { return true }
             let sig = getSignature(title: title, artist: artist)
@@ -582,16 +929,66 @@ public struct HomeView: View {
             if !sig.isEmpty { seenSignatures.insert(sig) }
         }
 
-        // 1. Top-Picks
+        // 1. Top-Picks: Personalisierte Mischung aus Favoriten, Verlauf, Empfehlungen & Server-Picks (bis zu 8, ein Künstler pro Pick)
         var dedupTopPicks: [DiscoveryPosterPick] = []
-        for pick in data.topPicks ?? [] {
+        var topPickArtists = Set<String>()
+
+        func tryAddPick(_ pick: DiscoveryPosterPick) {
+            guard dedupTopPicks.count < 8 else { return }
+            let aKey = primaryArtistKey(pick.subtitle)
+            if !aKey.isEmpty && topPickArtists.contains(aKey) { return }
+            guard !pick.cover.isEmpty else { return }
             if !isDuplicate(id: pick.id, title: pick.title, artist: pick.subtitle) {
                 register(id: pick.id, title: pick.title, artist: pick.subtitle)
+                if !aKey.isEmpty { topPickArtists.insert(aKey) }
                 dedupTopPicks.append(pick)
             }
         }
 
-        // 2. Zuletzt gehört (Exakt wie Web PWA Index.tsx L1350: darf NIEMALS durch Top-Picks geleert werden!)
+        for pick in data.topPicks ?? [] {
+            tryAddPick(pick)
+        }
+        for fav in userFavorites {
+            if let cov = fav.coverUrl, !cov.isEmpty {
+                tryAddPick(DiscoveryPosterPick(
+                    id: fav.id,
+                    tag: "Favorit",
+                    title: fav.title,
+                    subtitle: fav.artist,
+                    cover: cov,
+                    kind: "track",
+                    targetUrl: ""
+                ))
+            }
+        }
+        for rec in recommendedTracks {
+            if let cov = rec.coverUrl, !cov.isEmpty {
+                tryAddPick(DiscoveryPosterPick(
+                    id: rec.id,
+                    tag: "Empfehlung",
+                    title: rec.title,
+                    subtitle: rec.artist,
+                    cover: cov,
+                    kind: "track",
+                    targetUrl: ""
+                ))
+            }
+        }
+        for tr in data.trendingEverywhere ?? [] {
+            if let cov = tr.cover, !cov.isEmpty {
+                tryAddPick(DiscoveryPosterPick(
+                    id: tr.id,
+                    tag: "Trending",
+                    title: tr.title,
+                    subtitle: tr.artist,
+                    cover: cov,
+                    kind: "track",
+                    targetUrl: ""
+                ))
+            }
+        }
+
+        // 2. Zuletzt gehört (darf NIEMALS durch Top-Picks geleert werden!)
         var dedupRecent: [Track] = []
         var recentSeen = Set<String>()
         var recentSigs = Set<String>()
@@ -606,27 +1003,60 @@ public struct HomeView: View {
             dedupRecent.append(t)
         }
 
-        // 3. Frisch erschienen (Release Radar aus newMusic)
-        var dedupRadar: [Track] = []
-        for album in data.newMusic ?? [] {
-            let t = Track(id: album.id, title: album.title, artist: album.artist, album: album.title, coverUrl: album.cover)
-            if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
-                register(id: t.id, title: t.title, artist: t.artist)
-                dedupRadar.append(t)
+        // 3. Mehr von Top-Künstler (Deep Cuts Spotlight)
+        var dedupDeepCuts: [Track] = []
+        if let spotlight = topArtistSpotlight {
+            for t in spotlight.tracks {
+                if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
+                    register(id: t.id, title: t.title, artist: t.artist)
+                    dedupDeepCuts.append(t)
+                }
             }
         }
 
-        // 4. Für dich empfohlen (kombiniert aus Top Hits & Trending, die nicht in Top-Picks waren)
-        var dedupForYou: [Track] = []
-        for item in data.todaysTopHits ?? [] {
-            let t = item.toTrack()
+        // 4. Frisch erschienen (Release Radar — nutzt zuerst Künstler-Releases, danach ggf. hintere Top100/Alben ohne newMusic zu plündern)
+        var dedupRadar: [Track] = []
+        var radarArtists = Set<String>()
+        for t in radarTracks {
+            let aKey = primaryArtistKey(t.artist)
+            if !aKey.isEmpty && radarArtists.contains(aKey) { continue }
             if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
                 register(id: t.id, title: t.title, artist: t.artist)
+                if !aKey.isEmpty { radarArtists.insert(aKey) }
+                dedupRadar.append(t)
+            }
+        }
+        // Falls Nutzer noch keine eigenen Künstler hat, ergänzen wir aus Top-Alben
+        if dedupRadar.count < 8 {
+            for alb in (data.topAlbums ?? []).prefix(12) {
+                guard dedupRadar.count < 14 else { break }
+                let aKey = primaryArtistKey(alb.artist)
+                if !aKey.isEmpty && radarArtists.contains(aKey) { continue }
+                let t = Track(id: alb.id, title: alb.title, artist: alb.artist, album: alb.title, coverUrl: alb.cover)
+                if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
+                    register(id: t.id, title: t.title, artist: t.artist)
+                    if !aKey.isEmpty { radarArtists.insert(aKey) }
+                    dedupRadar.append(t)
+                }
+            }
+        }
+
+        // 5. Für dich empfohlen (nutzt Recommendations + Favoriten + tieferen Top100-Pool, lässt todaysTopHits unberührt!)
+        var dedupForYou: [Track] = []
+        var forYouArtists = Set<String>()
+        let forYouCandidates: [Track] = recommendedTracks + userFavorites + (data.top100Global ?? []).dropFirst(16).map { $0.toTrack() }
+        for t in forYouCandidates {
+            guard dedupForYou.count < 16 else { break }
+            let aKey = primaryArtistKey(t.artist)
+            if !aKey.isEmpty && forYouArtists.contains(aKey) { continue }
+            if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
+                register(id: t.id, title: t.title, artist: t.artist)
+                if !aKey.isEmpty { forYouArtists.insert(aKey) }
                 dedupForYou.append(t)
             }
         }
 
-        // 5. Trending überall
+        // 6. Trending überall
         var dedupTrending: [Track] = []
         for item in data.trendingEverywhere ?? [] {
             let t = item.toTrack()
@@ -636,40 +1066,53 @@ public struct HomeView: View {
             }
         }
 
-        // 6. Neue Alben & EPs
+        // 7. Neue Alben & EPs (eigener Album-Pool, dedupliziert innerhalb Alben)
         var dedupAlbums: [DiscoveryAlbum] = []
-        for album in data.topAlbums ?? data.newMusic ?? [] {
-            if !isDuplicate(id: album.id, title: album.title, artist: album.artist) {
-                register(id: album.id, title: album.title, artist: album.artist)
-                dedupAlbums.append(album)
-            }
+        var seenAlbumArtists = Set<String>()
+        var seenAlbumIds = Set<String>()
+        for album in data.topAlbums ?? [] {
+            if seenAlbumIds.contains(album.id) { continue }
+            let aKey = primaryArtistKey(album.artist)
+            if !aKey.isEmpty && seenAlbumArtists.contains(aKey) { continue }
+            seenAlbumIds.insert(album.id)
+            if !aKey.isEmpty { seenAlbumArtists.insert(aKey) }
+            dedupAlbums.append(album)
         }
 
-        // 7. Frische Song-Drops
+        // 8. Frische Song-Drops (komplett aus data.newMusic — bleibt voll erhalten!)
         var dedupDrops: [DiscoveryAlbum] = []
+        var dropArtists = Set<String>()
         for drop in data.newMusic ?? [] {
+            let aKey = primaryArtistKey(drop.artist)
+            if !aKey.isEmpty && dropArtists.contains(aKey) { continue }
             if !isDuplicate(id: drop.id, title: drop.title, artist: drop.artist) {
                 register(id: drop.id, title: drop.title, artist: drop.artist)
+                if !aKey.isEmpty { dropArtists.insert(aKey) }
                 dedupDrops.append(drop)
             }
         }
 
-        // 8. Top Hits heute (Hier greift der Deduplizierungs-Filter, damit Titel aus Trending NICHT doppelt erscheinen)
+        // 9. Top Hits heute (aus data.todaysTopHits — bleibt voll erhalten mit Rang-Badges!)
         var dedupHits: [DiscoveryChartTrack] = []
+        var hitsArtists = Set<String>()
         for item in data.todaysTopHits ?? [] {
             let t = item.toTrack()
+            let aKey = primaryArtistKey(t.artist)
+            if !aKey.isEmpty && hitsArtists.contains(aKey) { continue }
             if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
                 register(id: t.id, title: t.title, artist: t.artist)
+                if !aKey.isEmpty { hitsArtists.insert(aKey) }
                 dedupHits.append(item)
             }
         }
 
-        // 9. Top 100: Global
+        // 10. Top 100: Global (eigenständiger Chart wie im Web — bewahrt Ränge 1..25)
         var dedup100: [DiscoveryChartTrack] = []
+        var seenTop100Keys = Set<String>()
         for item in data.top100Global ?? [] {
-            let t = item.toTrack()
-            if !isDuplicate(id: t.id, title: t.title, artist: t.artist) {
-                register(id: t.id, title: t.title, artist: t.artist)
+            let key = "\(item.id)_\(item.title)_\(item.artist)".lowercased()
+            if !seenTop100Keys.contains(key) {
+                seenTop100Keys.insert(key)
                 dedup100.append(item)
             }
         }
@@ -677,6 +1120,7 @@ public struct HomeView: View {
         return DeduplicatedResult(
             topPicks: dedupTopPicks,
             recentTracks: dedupRecent,
+            deepCuts: dedupDeepCuts,
             releaseRadar: dedupRadar,
             forYou: dedupForYou,
             trending: dedupTrending,
@@ -685,6 +1129,7 @@ public struct HomeView: View {
             topHits: dedupHits,
             top100: dedup100,
             topPlaylists: data.topPlaylists ?? [],
+            moodsAndGenres: data.moodsAndGenres ?? [],
             trendingArtists: data.trendingArtists ?? []
         )
     }
@@ -697,50 +1142,17 @@ public struct HomeView: View {
         seenIds.insert(targetTrack.id)
         queue.append(targetTrack)
 
-        // 1. Top-Picks
-        if let picks = discovery.topPicks {
-            for p in picks {
-                let t = p.toTrack()
-                if !seenIds.contains(t.id) {
-                    seenIds.insert(t.id)
-                    queue.append(t)
-                }
-            }
-        }
-        // 2. Trending Überall
-        if let trending = discovery.trendingEverywhere {
-            for tr in trending {
-                let t = tr.toTrack()
-                if !seenIds.contains(t.id) {
-                    seenIds.insert(t.id)
-                    queue.append(t)
-                }
-            }
-        }
-        // 3. Top Hits Heute
-        if let topHits = discovery.todaysTopHits {
-            for ch in topHits {
-                let t = ch.toTrack()
-                if !seenIds.contains(t.id) {
-                    seenIds.insert(t.id)
-                    queue.append(t)
-                }
-            }
-        }
-        // 4. Release Radar / New Music
-        if let newMusic = discovery.newMusic {
-            for nm in newMusic {
-                let t = Track(id: nm.id, title: nm.title, artist: nm.artist, album: nm.title, coverUrl: nm.cover)
-                if !seenIds.contains(t.id) {
-                    seenIds.insert(t.id)
-                    queue.append(t)
-                }
-            }
-        }
-        // 5. Top 100 Global
-        if let top100 = discovery.top100Global {
-            for ch in top100 {
-                let t = ch.toTrack()
+        let pools: [[Track]] = [
+            discovery.topPicks?.map { $0.toTrack() } ?? [],
+            recommendedTracks,
+            discovery.trendingEverywhere?.map { $0.toTrack() } ?? [],
+            discovery.todaysTopHits?.map { $0.toTrack() } ?? [],
+            discovery.newMusic?.map { Track(id: $0.id, title: $0.title, artist: $0.artist, album: $0.title, coverUrl: $0.cover) } ?? [],
+            discovery.top100Global?.map { $0.toTrack() } ?? []
+        ]
+
+        for pool in pools {
+            for t in pool {
                 if !seenIds.contains(t.id) {
                     seenIds.insert(t.id)
                     queue.append(t)
@@ -803,30 +1215,109 @@ public struct HomeView: View {
         .padding(.vertical, 40)
     }
 
-    // MARK: - API Abruf
+    // MARK: - API Abruf & Personalisierte Anreicherung
     private func loadHomeData() async {
         isLoading = true
         errorMessage = nil
 
         let token = SessionManager.shared.currentToken
 
-        // Discovery & Verlauf (Multi-Device Stats + DB History) parallel abrufen
         async let discoveryFetch = MusicService.shared.fetchHomeDiscovery(serverURL: serverURL, token: token)
         async let historyFetch = MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
+        async let favoritesFetch = MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
+        async let playlistsFetch = MusicService.shared.fetchPlaylists(serverURL: serverURL, token: token)
 
-        let (discoveryRes, historyRes) = await (discoveryFetch, historyFetch)
+        let (discoveryRes, historyRes, favsRes, plsRes) = await (discoveryFetch, historyFetch, favoritesFetch, playlistsFetch)
 
         if !historyRes.isEmpty {
             player.mergeServerHistory(historyRes)
         }
 
+        await MainActor.run {
+            self.userFavorites = favsRes
+            self.userPlaylists = plsRes
+        }
+
         if let response = discoveryRes {
-            self.discovery = response
-            self.isLoading = false
+            await MainActor.run {
+                self.discovery = response
+                self.isLoading = false
+            }
             prefetchHomeCovers(from: response)
+            await enrichPersonalizedShelves(discovery: response, favorites: favsRes, token: token)
         } else {
-            self.errorMessage = "Keine Verbindung zum Discovery-Dienst auf \(serverURL)."
-            self.isLoading = false
+            await MainActor.run {
+                self.errorMessage = "Keine Verbindung zum Discovery-Dienst auf \(serverURL)."
+                self.isLoading = false
+            }
+        }
+    }
+
+    private func enrichPersonalizedShelves(discovery: DiscoveryHomeResponse, favorites: [Track], token: String?) async {
+        let pool = player.recentTracks + favorites
+        var artistCounts: [String: (display: String, count: Int)] = [:]
+        for t in pool {
+            let raw = t.artist
+                .components(separatedBy: CharacterSet(charactersIn: ",;/&"))
+                .first?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let clean = raw.replacingOccurrences(of: "\\s*feat\\..*$", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty, clean.lowercased() != "unbekannt", clean.lowercased() != "unbekannter interpret" else { continue }
+            let key = clean.lowercased()
+            let existing = artistCounts[key]?.count ?? 0
+            artistCounts[key] = (display: artistCounts[key]?.display ?? clean, count: existing + 1)
+        }
+
+        let topArtists = artistCounts.values
+            .sorted { $0.count > $1.count }
+            .map { $0.display }
+
+        // 1. Personalisierte Empfehlungen (/api/discovery/recommendations)
+        let seedTrack = favorites.first ?? player.recentTracks.first ?? discovery.trendingEverywhere?.first?.toTrack()
+        var recResults: [Track] = []
+        if let seed = seedTrack {
+            recResults = await MusicService.shared.fetchRecommendations(
+                trackId: seed.id,
+                artist: topArtists.first ?? seed.artist,
+                title: seed.title,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+
+        // 2. Top-Künstler Deep Cuts & Release Radar
+        var spotlightResult: (name: String, tracks: [Track])? = nil
+        var radarResults: [Track] = []
+        let currentYear = Calendar.current.component(.year, from: Date())
+
+        for (idx, artistName) in topArtists.prefix(3).enumerated() {
+            if let detail = await MusicService.shared.fetchArtist(name: artistName, serverURL: serverURL, token: token) {
+                if idx == 0 && !detail.topTracks.isEmpty {
+                    let mapped = detail.topTracks.map { $0.toTrack(fallbackCover: detail.picture, fallbackAlbum: detail.name) }
+                    spotlightResult = (name: detail.name, tracks: mapped)
+                }
+
+                let recentItems = detail.singles + detail.albums
+                for item in recentItems {
+                    if let y = item.year, y >= currentYear - 1 {
+                        let t = Track(
+                            id: item.id,
+                            title: item.title,
+                            artist: detail.name,
+                            album: item.title,
+                            coverUrl: item.cover ?? detail.picture
+                        )
+                        radarResults.append(t)
+                    }
+                }
+            }
+        }
+
+        await MainActor.run {
+            self.recommendedTracks = recResults
+            self.topArtistSpotlight = spotlightResult
+            self.radarTracks = radarResults
         }
     }
 
@@ -841,6 +1332,7 @@ public struct HomeView: View {
         res.topPlaylists?.forEach { rawUrls.append($0.cover) }
         res.trendingArtists?.forEach { rawUrls.append($0.picture) }
         res.trendingAlbums?.forEach { rawUrls.append($0.cover) }
+        res.moodsAndGenres?.forEach { rawUrls.append($0.cover) }
 
         let resolved = rawUrls.compactMap { resolveCoverURL($0, serverURL: serverURL) }
         PortImageCache.shared.prefetch(urls: resolved)

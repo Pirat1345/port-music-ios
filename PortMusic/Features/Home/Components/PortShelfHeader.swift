@@ -6,6 +6,7 @@ public struct PortShelfHeader: View {
     public let title: String
     public let subtitle: String?
     public let seeAllTitle: String?
+    public let seeAllRoute: AppRoute?
     public let onSeeAll: (() -> Void)?
 
     public init(
@@ -14,6 +15,7 @@ public struct PortShelfHeader: View {
         title: String,
         subtitle: String? = nil,
         seeAllTitle: String? = nil,
+        seeAllRoute: AppRoute? = nil,
         onSeeAll: (() -> Void)? = nil
     ) {
         self.iconName = iconName
@@ -21,6 +23,7 @@ public struct PortShelfHeader: View {
         self.title = title
         self.subtitle = subtitle
         self.seeAllTitle = seeAllTitle
+        self.seeAllRoute = seeAllRoute
         self.onSeeAll = onSeeAll
     }
 
@@ -35,6 +38,7 @@ public struct PortShelfHeader: View {
                     Text(title)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(PortColors.textPrimary)
+                        .lineLimit(1)
                 }
 
                 if let sub = subtitle, !sub.isEmpty {
@@ -47,18 +51,30 @@ public struct PortShelfHeader: View {
 
             Spacer()
 
-            if let seeAll = seeAllTitle, let action = onSeeAll {
-                Button(action: action) {
-                    HStack(spacing: 4) {
-                        Text(seeAll)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Color(hex: "#a0a0a0"))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "#666666"))
+            if let seeAll = seeAllTitle {
+                if let route = seeAllRoute {
+                    NavigationLink(value: route) {
+                        seeAllLabel(seeAll)
                     }
+                    .buttonStyle(PlainButtonStyle())
+                } else if let action = onSeeAll {
+                    Button(action: action) {
+                        seeAllLabel(seeAll)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
+        }
+    }
+
+    private func seeAllLabel(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Text(text)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color(hex: "#a0a0a0"))
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(hex: "#666666"))
         }
     }
 }
