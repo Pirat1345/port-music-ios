@@ -1,410 +1,596 @@
 import SwiftUI
 
-// MARK: - Library Hub & Category Rows (Feature #12)
+// MARK: - Library Category Configuration (Mirrors Web LibraryPage DEFAULT_CATEGORY_ORDER)
+private struct LibraryCategoryConfig: Identifiable, Codable, Equatable {
+    let id: String
+    let label: String
+    let iconName: String
+    var visible: Bool
+}
+
 public struct LibraryView: View {
     public let serverURL: String
-    public let user: UserProfile
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var favoritesManager = FavoritesManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
 
     @State private var favorites: [Track] = []
     @State private var playlists: [DiscoveryPlaylist] = []
     @State private var historyTracks: [Track] = []
     @State private var isLoading: Bool = false
-
-    // Quick Tabs for Library Hub
     @State private var selectedTab: String = "Playlists"
-    private let tabOptions = ["Playlists", "Songs", "Alben", "Verlauf"]
 
-    public init(serverURL: String, user: UserProfile) {
+    // Web Library Parity: Action Modals & Customizable Category Order
+    @State private var showCreatePlaylistSheet: Bool = false
+    @State private var showImportPlaylistSheet: Bool = false
+    @State private var isEditingCategories: Bool = false
+    @State private var categoriesConfig: [LibraryCategoryConfig] = LibraryView.defaultCategories()
+
+    private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
+    private static let categoriesStorageKey = "port_music_library_categories_config_v2"
+
+    public init(serverURL: String) {
         self.serverURL = serverURL
-        self.user = user
+        self._categoriesConfig = State(initialValue: Self.loadSavedCategories())
     }
 
-    private var isPlayingFavorites: Bool {
-        guard let current = player.currentTrack else { return false }
-        return player.isPlaying && favorites.contains(where: { $0.id == current.id })
+    private static func defaultCategories() -> [LibraryCategoryConfig] {
+        [
+            LibraryCategoryConfig(id: "playlists", label: "Playlists", iconName: "music.note.list", visible: true),
+            LibraryCategoryConfig(id: "artists", label: "Künstler", iconName: "mic.fill", visible: true),
+            LibraryCategoryConfig(id: "albums", label: "Alben", iconName: "square.stack.fill", visible: true),
+            LibraryCategoryConfig(id: "radio", label: "Radio", iconName: "dot.radiowaves.left.and.right", visible: true),
+            LibraryCategoryConfig(id: "songs", label: "Songs", iconName: "music.note", visible: true),
+            LibraryCategoryConfig(id: "downloaded", label: "Heruntergeladen", iconName: "arrow.down.circle.fill", visible: true),
+            LibraryCategoryConfig(id: "local-files", label: "Lokale Dateien", iconName: "doc.badge.gearshape.fill", visible: true),
+            LibraryCategoryConfig(id: "history", label: "Zuletzt gehört", iconName: "clock.arrow.circlepath", visible: true)
+        ]
+    }
+
+    private static func loadSavedCategories() -> [LibraryCategoryConfig] {
+        let defaults = defaultCategories()
+        guard let data = UserDefaults.standard.data(forKey: categoriesStorageKey),
+              let saved = try? JSONDecoder().decode([LibraryCategoryConfig].self, from: data),
+              !saved.isEmpty else {
+            return defaults
+        }
+        var result: [LibraryCategoryConfig] = []
+        let defaultsById = Dictionary(uniqueKeysWithValues: defaults.map { ($0.id, $0) })
+        for item in saved {
+            if let def = defaultsById[item.id] {
+                result.append(LibraryCategoryConfig(id: def.id, label: def.label, iconName: def.iconName, visible: item.visible))
+            }
+        }
+        for def in defaults where !result.contains(where: { $0.id == def.id }) {
+            result.append(def)
+        }
+        return result
+    }
+
+    private func persistCategories(_ list: [LibraryCategoryConfig]) {
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: Self.categoriesStorageKey)
+        }
     }
 
     public var body: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
+                // Header + Web Action Pills (Bearbeiten, Importieren, Neu)
+                headerSection
+                    .padding(.top, 12)
+                    .padding(.horizontal, 20)
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 22) {
-                    // ── HEADER ──
-                    libraryHeaderSection
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
+                // Hero Section: Liked Songs Card & Playlists Carousel
+                heroCarouselSection
 
-                    // ── HERO SHELF: LIEBLINGSSONGS & PLAYLISTS CAROUSEL ──
-                    heroShelfSection
+                // Categorized Library Rows (Customizable like Web LibraryPage)
+                categoryLinksSection
+                    .padding(.horizontal, 20)
 
-                    // ── CATEGORY NAVIGATION ROWS ──
-                    categoryNavigationRows
-                        .padding(.horizontal, 20)
+                // Segmented Sub-Tab Navigation Bar (Quick Switcher)
+                segmentedTabBar
+                    .padding(.horizontal, 20)
 
-                    // ── QUICK PREVIEW TABS SECTION ──
-                    VStack(alignment: .leading, spacing: 14) {
-                        segmentedTabBar
-                            .padding(.horizontal, 20)
+                // Dynamic Content Based on Selected Tab
+                tabContentSection
+                    .padding(.horizontal, 20)
 
-                        tabContentSection
-                            .padding(.horizontal, 20)
-                    }
-                    .padding(.top, 8)
-
-                    // Ausreichend Abstand am unteren Rand fuer MiniPlayer & TabBar
-                    Spacer(minLength: 160)
-                }
-                .padding(.top, 6)
+                Spacer(minLength: 140)
             }
-            .refreshable {
-                await loadLibraryData()
-            }
-            .ignoresSafeArea(edges: .bottom)
         }
-        .navigationTitle("Bibliothek")
-        .navigationBarTitleDisplayMode(.inline)
-        .preferredColorScheme(.dark)
-        .tint(.white)
+        .background(Color.black.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .refreshable {
+            await loadLibraryData()
+        }
         .task {
             await loadLibraryData()
         }
-        .onAppear {
+        .onChange(of: favoritesManager.favoriteIds) { _ in
             Task {
-                await loadLibraryData()
+                await refreshFavoritesOnly()
+            }
+        }
+        .sheet(isPresented: $showCreatePlaylistSheet) {
+            CreatePlaylistSheet(serverURL: serverURL) { created in
+                playlists.insert(created, at: 0)
+            }
+        }
+        .sheet(isPresented: $showImportPlaylistSheet) {
+            ImportPlaylistSheet(serverURL: serverURL) { imported in
+                playlists.insert(imported, at: 0)
+                Task { await loadLibraryData() }
             }
         }
     }
 
-    // MARK: - Header
-    private var libraryHeaderSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Bibliothek")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundColor(.white)
+    // MARK: - Header Section
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bibliothek")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("Deine Musiksammlung")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.white.opacity(0.45))
+                }
 
-            Text("Deine Musiksammlung, Favoriten und Playlists")
-                .font(.system(size: 13))
-                .foregroundColor(Color.white.opacity(0.65))
-        }
-    }
+                Spacer()
 
-    // MARK: - Hero Shelf Section (Horizontal Carousel)
-    private var heroShelfSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                // Lieblingssongs Gradient Hero Card -> navigates to LikedSongsView
-                NavigationLink(value: AppRoute.likedSongs) {
-                    likedSongsHeroCard
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.85)
+                }
+            }
+
+            // Action Buttons row matching Web LibraryPage (Bearbeiten, Importieren, Neu)
+            HStack(spacing: 8) {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        isEditingCategories.toggle()
+                    }
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: isEditingCategories ? "checkmark" : "slider.horizontal.3")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(isEditingCategories ? "Fertig" : "Bearbeiten")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(isEditingCategories ? .black : .white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(isEditingCategories ? Color.white : Color.white.opacity(0.08))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule().stroke(Color.white.opacity(isEditingCategories ? 0 : 0.14), lineWidth: 1)
+                    )
                 }
                 .buttonStyle(PlainButtonStyle())
 
-                // Playlists Carousel Items -> navigate to PlaylistDetailView
-                ForEach(playlists) { pl in
-                    NavigationLink(value: AppRoute.playlist(id: pl.id, title: pl.title, coverUrl: pl.cover)) {
-                        playlistHeroCard(playlist: pl)
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showImportPlaylistSheet = true
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Importieren")
+                            .font(.system(size: 13, weight: .medium))
                     }
-                    .buttonStyle(PlainButtonStyle())
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showCreatePlaylistSheet = true
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Neu")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 7)
+                    .background(Color.white)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - Hero Carousel (Lieblingssongs + Playlists)
+    private var heroCarouselSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 14) {
+                likedSongsHeroCard
+
+                ForEach(playlists) { pl in
+                    playlistHeroCard(pl)
                 }
             }
             .padding(.horizontal, 20)
         }
     }
 
-    // MARK: - Liked Songs Hero Card (1:1 Web PWA Parity)
     private var likedSongsHeroCard: some View {
-        ZStack(alignment: .bottomLeading) {
-            LinearGradient(
-                gradient: Gradient(colors: [Color(hex: "#450af5"), Color(hex: "#8e8ee5")]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        let isPlayingFav = player.isPlaying && favorites.contains(where: { $0.id == player.currentTrack?.id })
 
-            // Subtiler Schattenverlauf unten
-            LinearGradient(
-                gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.60)]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
+        return NavigationLink(value: AppRoute.likedSongs) {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack(alignment: .bottomTrailing) {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "#450af5"), Color(hex: "#6a4df0"), Color(hex: "#8e8ee5")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 156, height: 156)
 
-            // Grosses Herz-Symbol im Hintergrund
-            VStack {
-                HStack {
-                    Spacer()
                     Image(systemName: "heart.fill")
                         .font(.system(size: 52))
-                        .foregroundColor(Color.white.opacity(0.22))
-                        .padding(14)
-                }
-                Spacer()
-            }
-
-            // Text & Play-Button
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Lieblingssongs")
-                        .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.white)
+                        .shadow(color: Color.black.opacity(0.28), radius: 8, y: 4)
+                        .frame(width: 156, height: 156)
 
-                    Text("\(favorites.count) Songs")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.80))
-                }
-
-                Spacer()
-
-                // Play / Pause Circle Button
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
-                    if isPlayingFavorites {
-                        player.togglePlayPause()
-                    } else if !favorites.isEmpty {
-                        player.play(track: favorites[0], from: favorites)
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        if isPlayingFav {
+                            player.togglePlayPause()
+                        } else if !favorites.isEmpty {
+                            player.play(track: favorites[0], from: favorites, serverURL: serverURL)
+                        }
+                    }) {
+                        Image(systemName: isPlayingFav ? "pause.fill" : "play.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.black)
+                            .frame(width: 34, height: 34)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .shadow(color: Color.black.opacity(0.35), radius: 6, y: 3)
                     }
-                }) {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 38, height: 38)
-                        .overlay(
-                            Image(systemName: isPlayingFavorites ? "pause.fill" : "play.fill")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.black)
-                                .offset(x: isPlayingFavorites ? 0 : 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.4), radius: 6, y: 2)
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(10)
                 }
-                .buttonStyle(PlainButtonStyle())
-            }
-            .padding(14)
-        }
-        .frame(width: 175, height: 175)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.18), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.45), radius: 8, y: 3)
-    }
+                .frame(width: 156, height: 156)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                )
+                .shadow(color: Color(hex: "#450af5").opacity(0.35), radius: 10, y: 5)
 
-    // MARK: - Playlist Hero Card
-    private func playlistHeroCard(playlist: DiscoveryPlaylist) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(hex: "#18181b"))
-                    .frame(width: 145, height: 145)
-
-                let resolved = resolveCoverURL(playlist.cover, serverURL: serverURL)
-                PortCachedAsyncImage(url: resolved) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 145, height: 145)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                } placeholder: {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 32))
-                        .foregroundColor(Color.white.opacity(0.35))
-                }
-
-                // Subtiler Play Button
-                Circle()
-                    .fill(Color.black.opacity(0.65))
-                    .frame(width: 32, height: 32)
-                    .overlay(
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .offset(x: 1)
-                    )
-                    .padding(8)
-            }
-            .frame(width: 145, height: 145)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            )
-
-            Text(playlist.title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .frame(maxWidth: 145, alignment: .leading)
-
-            let creator = playlist.user ?? "Port Music"
-            Text(creator)
-                .font(.system(size: 11))
-                .foregroundColor(Color(hex: "#a0a0a0"))
-                .lineLimit(1)
-
-            let countText = playlist.nbTracks.map { "\($0) Titel" } ?? "Playlist"
-            Text(countText)
-                .font(.system(size: 11))
-                .foregroundColor(Color(hex: "#a0a0a0"))
-                .lineLimit(1)
-        }
-    }
-
-    // MARK: - Category Navigation Rows (Feature #12)
-    private var categoryNavigationRows: some View {
-        VStack(spacing: 0) {
-            categoryRowItem(title: "Wiedergabelisten", icon: "music.note.list", route: .libraryCategory(category: "playlists"))
-            Divider().background(Color.white.opacity(0.08))
-
-            categoryRowItem(title: "Künstler", icon: "person.2.fill", route: .libraryCategory(category: "artists"))
-            Divider().background(Color.white.opacity(0.08))
-
-            categoryRowItem(title: "Alben", icon: "square.stack.fill", route: .libraryCategory(category: "albums"))
-            Divider().background(Color.white.opacity(0.08))
-
-            categoryRowItem(title: "Titel", icon: "music.note", route: .libraryCategory(category: "songs"))
-            Divider().background(Color.white.opacity(0.08))
-
-            categoryRowItem(title: "Heruntergeladen", icon: "arrow.down.circle.fill", route: .libraryCategory(category: "downloaded"))
-            Divider().background(Color.white.opacity(0.08))
-
-            categoryRowItem(title: "Zuletzt gehört", icon: "clock.arrow.circlepath", route: .libraryCategory(category: "history"))
-        }
-        .background(Color.white.opacity(0.03))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
-    }
-
-    private func categoryRowItem(title: String, icon: String, route: AppRoute) -> some View {
-        NavigationLink(value: route) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(Color(hex: "#fc3c44"))
-                    .frame(width: 28, alignment: .center)
-
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
+                Text("Lieblingssongs")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.35))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Text("\(favorites.count) \(favorites.count == 1 ? "Song" : "Songs")")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(hex: "#a0a0a0"))
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            .frame(width: 156, alignment: .leading)
         }
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Segmented Tab Bar
-    private var segmentedTabBar: some View {
-        HStack(spacing: 8) {
-            ForEach(tabOptions, id: \.self) { tab in
-                let isSelected = selectedTab == tab
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    selectedTab = tab
-                }) {
-                    Text(tab)
-                        .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                        .foregroundColor(isSelected ? .black : Color.white.opacity(0.80))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(isSelected ? Color.white : Color.white.opacity(0.10))
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(isSelected ? Color.white : Color.white.opacity(0.12), lineWidth: 1)
-                        )
+    private func playlistHeroCard(_ pl: DiscoveryPlaylist) -> some View {
+        NavigationLink(value: AppRoute.playlist(
+            id: pl.id,
+            title: pl.title,
+            coverUrl: pl.cover
+        )) {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(hex: "#18181b"))
+                        .frame(width: 156, height: 156)
+
+                    let resolved = resolveCoverURL(pl.cover, serverURL: serverURL)
+                    PortCachedAsyncImage(url: resolved) { img in
+                        img
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 156, height: 156)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } placeholder: {
+                        Image(systemName: "music.note.list")
+                            .font(.system(size: 36))
+                            .foregroundColor(Color.white.opacity(0.28))
+                    }
                 }
-                .buttonStyle(PlainButtonStyle())
+                .frame(width: 156, height: 156)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.45), radius: 8, y: 4)
+
+                Text(pl.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                let countLabel = pl.nbTracks.map { "\($0) Titel" } ?? (pl.user ?? "Port Music")
+                Text(countLabel)
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(hex: "#a0a0a0"))
+                    .lineLimit(1)
             }
-            Spacer()
+            .frame(width: 156, alignment: .leading)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Category Links Section (Editable Order & Visibility matching Web)
+    private var categoryLinksSection: some View {
+        let visibleCats = categoriesConfig.filter { isEditingCategories || $0.visible }
+
+        return VStack(spacing: 8) {
+            if isEditingCategories {
+                HStack {
+                    Text("Bereiche ein-/ausblenden & sortieren")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.50))
+                    Spacer()
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        let defaults = Self.defaultCategories()
+                        categoriesConfig = defaults
+                        persistCategories(defaults)
+                    }) {
+                        Text("Zurücksetzen")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(hex: "#fc3c44"))
+                    }
+                }
+                .padding(.bottom, 2)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
+                    if isEditingCategories {
+                        editableCategoryRow(cat: cat, index: index, total: visibleCats.count)
+                    } else {
+                        NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
+                            HStack(spacing: 14) {
+                                Image(systemName: cat.iconName)
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .frame(width: 24, alignment: .center)
+
+                                Text(cat.label)
+                                    .font(.system(size: 17, weight: .regular))
+                                    .foregroundColor(.white)
+
+                                Spacer()
+
+                                if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
+                                    Text("\(offlineManager.downloadedTrackIds.count)")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color.white.opacity(0.45))
+                                }
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.32))
+                            }
+                            .padding(.vertical, 13)
+                            .padding(.horizontal, 14)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    if index < visibleCats.count - 1 {
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                            .padding(.leading, isEditingCategories ? 50 : 52)
+                    }
+                }
+            }
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
         }
     }
 
-    // MARK: - Tab Content Section
+    private func editableCategoryRow(cat: LibraryCategoryConfig, index: Int, total: Int) -> some View {
+        HStack(spacing: 12) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let idx = categoriesConfig.firstIndex(where: { $0.id == cat.id }) {
+                    categoriesConfig[idx].visible.toggle()
+                    persistCategories(categoriesConfig)
+                }
+            }) {
+                Image(systemName: cat.visible ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(cat.visible ? Color(hex: "#fc3c44") : Color.white.opacity(0.30))
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Image(systemName: cat.iconName)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(cat.visible ? Color(hex: "#fc3c44") : Color.white.opacity(0.35))
+                .frame(width: 24, alignment: .center)
+
+            Text(cat.label)
+                .font(.system(size: 16, weight: .regular))
+                .foregroundColor(cat.visible ? .white : Color.white.opacity(0.40))
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Button(action: {
+                    moveCategory(at: index, direction: -1)
+                }) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(index > 0 ? .white : Color.white.opacity(0.20))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.07))
+                        .clipShape(Circle())
+                }
+                .disabled(index == 0)
+                .buttonStyle(PlainButtonStyle())
+
+                Button(action: {
+                    moveCategory(at: index, direction: 1)
+                }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(index < total - 1 ? .white : Color.white.opacity(0.20))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.07))
+                        .clipShape(Circle())
+                }
+                .disabled(index >= total - 1)
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 14)
+    }
+
+    private func moveCategory(at index: Int, direction: Int) {
+        let target = index + direction
+        guard index >= 0, index < categoriesConfig.count,
+              target >= 0, target < categoriesConfig.count else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            categoriesConfig.swapAt(index, target)
+            persistCategories(categoriesConfig)
+        }
+    }
+
+    // MARK: - Segmented Tab Bar
+    private var segmentedTabBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(tabs, id: \.self) { tab in
+                    let isSelected = selectedTab == tab
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            selectedTab = tab
+                        }
+                    }) {
+                        Text(tab)
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                            .foregroundColor(isSelected ? .black : Color.white.opacity(0.75))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(isSelected ? Color.white : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(isSelected ? 0 : 0.12), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Tab Content Switcher
     @ViewBuilder
     private var tabContentSection: some View {
         switch selectedTab {
         case "Playlists":
             playlistsTabContent
         case "Songs":
-            songsTabContent
+            favoritesTabContent
         case "Alben":
             albumsTabContent
         case "Verlauf":
-            historyTabContent
+            recentTabContent
         default:
             EmptyView()
         }
     }
 
-    // MARK: - Playlists Tab
+    // MARK: - Tab: Playlists
     private var playlistsTabContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if playlists.isEmpty && !isLoading {
-                emptyPlaceholder(icon: "music.note.list", message: "Noch keine Playlists vorhanden")
+        VStack(alignment: .leading, spacing: 12) {
+            if playlists.isEmpty {
+                emptyPlaceholder(icon: "music.note.list", message: "Noch keine Playlists angelegt")
             } else {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: 14),
-                        GridItem(.flexible(), spacing: 14)
-                    ],
-                    spacing: 16
-                ) {
+                LazyVStack(spacing: 8) {
                     ForEach(playlists) { pl in
-                        NavigationLink(value: AppRoute.playlist(id: pl.id, title: pl.title, coverUrl: pl.cover)) {
-                            VStack(alignment: .leading, spacing: 6) {
+                        NavigationLink(value: AppRoute.playlist(
+                            id: pl.id,
+                            title: pl.title,
+                            coverUrl: pl.cover
+                        )) {
+                            HStack(spacing: 12) {
                                 ZStack {
-                                    RoundedRectangle(cornerRadius: 12)
+                                    RoundedRectangle(cornerRadius: 8)
                                         .fill(Color(hex: "#18181b"))
-                                        .aspectRatio(1, contentMode: .fit)
-
-                                    let resolved = resolveCoverURL(pl.cover, serverURL: serverURL)
-                                    PortCachedAsyncImage(url: resolved) { img in
+                                        .frame(width: 52, height: 52)
+                                    PortCachedAsyncImage(url: resolveCoverURL(pl.cover, serverURL: serverURL)) { img in
                                         img
                                             .resizable()
                                             .aspectRatio(contentMode: .fill)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                            .frame(width: 52, height: 52)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
                                     } placeholder: {
                                         Image(systemName: "music.note.list")
-                                            .font(.system(size: 32))
-                                            .foregroundColor(Color.white.opacity(0.25))
+                                            .font(.system(size: 18))
+                                            .foregroundColor(Color.white.opacity(0.30))
                                     }
                                 }
-                                .aspectRatio(1, contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
                                 )
 
-                                Text(pl.title)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(pl.title)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    let countStr = pl.nbTracks.map { "\($0) Titel" } ?? (pl.user ?? "Port Music")
+                                    Text(countStr)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color(hex: "#a0a0a0"))
+                                        .lineLimit(1)
+                                }
 
-                                let creator = pl.user ?? "Port Music"
-                                Text(creator)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "#a0a0a0"))
-                                    .lineLimit(1)
+                                Spacer()
 
-                                let count = pl.nbTracks.map { "\($0) Titel" } ?? "Playlist"
-                                Text(count)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "#a0a0a0"))
-                                    .lineLimit(1)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.30))
                             }
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
@@ -413,90 +599,73 @@ public struct LibraryView: View {
         }
     }
 
-    // MARK: - Songs Tab (Lieblingssongs rendered via TrackRow)
-    private var songsTabContent: some View {
+    // MARK: - Tab: Songs (Lieblingssongs)
+    private var favoritesTabContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if !favorites.isEmpty {
+            if favorites.isEmpty {
+                emptyPlaceholder(icon: "heart.slash", message: "Noch keine Lieblingssongs markiert")
+            } else {
                 HStack(spacing: 12) {
                     Button(action: {
-                        player.play(track: favorites[0], from: favorites)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        if !favorites.isEmpty {
+                            player.play(track: favorites[0], from: favorites, serverURL: serverURL)
+                        }
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "play.fill")
-                                .font(.system(size: 13, weight: .bold))
-                            Text("Alle abspielen")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 13))
+                            Text("Abspielen")
+                                .font(.system(size: 14, weight: .semibold))
                         }
                         .foregroundColor(.black)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
                         .background(Color.white)
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .buttonStyle(PlainButtonStyle())
 
                     Button(action: {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         if !favorites.isEmpty {
                             player.isShuffle = true
-                            let randomIdx = Int.random(in: 0..<favorites.count)
-                            player.play(track: favorites[randomIdx], from: favorites)
+                            let idx = Int.random(in: 0..<favorites.count)
+                            player.play(track: favorites[idx], from: favorites, serverURL: serverURL)
                         }
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "shuffle")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 13))
                             Text("Mischen")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
                         }
                         .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
                         .background(Color.white.opacity(0.10))
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
-                            Capsule()
-                                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
                         )
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
-            }
+                .padding(.bottom, 4)
 
-            if favorites.isEmpty && !isLoading {
-                emptyPlaceholder(icon: "heart.slash", message: "Noch keine Lieblingssongs markiert")
-            } else {
                 LazyVStack(spacing: 4) {
-                    ForEach(Array(favorites.prefix(50).enumerated()), id: \.element.id) { index, track in
-                        trackRowItem(track: track, index: index, contextQueue: favorites)
+                    ForEach(favorites) { track in
+                        trackRowItem(track: track, queue: favorites, isFav: true)
                     }
                 }
             }
         }
     }
 
-    // MARK: - Album Extraction (Feature #13)
-    private func extractUniqueAlbums() -> [Track] {
-        let allTracks = favorites + historyTracks + player.recentTracks
-        var seenTitles = Set<String>()
-        var uniqueAlbums: [Track] = []
-
-        for t in allTracks {
-            if let alb = t.album, !alb.isEmpty {
-                let key = "\(alb.lowercased())_\(t.artist.lowercased())"
-                if !seenTitles.contains(key) {
-                    seenTitles.insert(key)
-                    uniqueAlbums.append(t)
-                }
-            }
-        }
-        return uniqueAlbums
-    }
-
-    // MARK: - Albums Tab (Feature #13 Real Content)
+    // MARK: - Tab: Alben
     private var albumsTabContent: some View {
         let uniqueAlbums = extractUniqueAlbums()
-        return VStack(alignment: .leading, spacing: 14) {
-            if uniqueAlbums.isEmpty && !isLoading {
+        return VStack(alignment: .leading, spacing: 12) {
+            if uniqueAlbums.isEmpty {
                 emptyPlaceholder(icon: "square.stack", message: "Noch keine Alben in der Bibliothek")
             } else {
                 LazyVGrid(
@@ -509,12 +678,11 @@ public struct LibraryView: View {
                     ForEach(uniqueAlbums) { album in
                         PortAlbumCard(
                             title: album.album ?? album.title,
-                            subtitle: album.artist,
-                            coverUrl: album.cover,
-                            serverURL: serverURL,
-                            isPlaying: player.currentTrack?.album == album.album && player.isPlaying
+                            artist: album.artist,
+                            coverUrl: album.coverUrl,
+                            serverURL: serverURL
                         ) {
-                            player.play(track: album, from: uniqueAlbums)
+                            player.play(track: album, from: uniqueAlbums, serverURL: serverURL)
                         }
                     }
                 }
@@ -522,55 +690,62 @@ public struct LibraryView: View {
         }
     }
 
-    // MARK: - History Tab
-    private var historyTabContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            let tracks = !historyTracks.isEmpty ? historyTracks : player.recentTracks
-
-            if tracks.isEmpty && !isLoading {
-                emptyPlaceholder(icon: "clock.arrow.circlepath", message: "Bisher kein Wiedergabeverlauf vorhanden")
+    // MARK: - Tab: Verlauf (Zuletzt gehoert)
+    private var recentTabContent: some View {
+        let displayTracks = historyTracks.isEmpty ? player.recentTracks : historyTracks
+        return VStack(alignment: .leading, spacing: 10) {
+            if displayTracks.isEmpty {
+                emptyPlaceholder(icon: "clock", message: "Noch keine zuletzt gehörten Titel")
             } else {
                 LazyVStack(spacing: 4) {
-                    ForEach(Array(tracks.prefix(25).enumerated()), id: \.element.id) { index, track in
-                        trackRowItem(track: track, index: index, contextQueue: tracks)
+                    ForEach(displayTracks) { track in
+                        let isFav = favoritesManager.isFavorite(track.id)
+                        trackRowItem(track: track, queue: displayTracks, isFav: isFav)
                     }
                 }
             }
         }
     }
 
-    // MARK: - Mobile Track Row Component (Feature #16)
-    @ViewBuilder
-    private func trackRowItem(track: Track, index: Int, contextQueue: [Track]) -> some View {
-        HStack(spacing: 12) {
-            // Standardized 48x48 artwork with cache fallback & music.note icon
+    // MARK: - Track Row Item Helper
+    private func trackRowItem(track: Track, queue: [Track], isFav: Bool) -> some View {
+        let isPlayingThis = player.currentTrack?.id == track.id
+        return HStack(spacing: 12) {
             ZStack {
-                let resolved = resolveCoverURL(track.cover, serverURL: serverURL)
-                PortCachedAsyncImage(url: resolved) { img in
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(hex: "#18181b"))
+                    .frame(width: 48, height: 48)
+
+                PortCachedAsyncImage(url: resolveCoverURL(track.coverUrl, serverURL: serverURL)) { img in
                     img
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 } placeholder: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(hex: "#1f1f23"))
-                        Image(systemName: "music.note")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color.white.opacity(0.40))
-                    }
-                    .frame(width: 48, height: 48)
+                    Image(systemName: "music.note")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.white.opacity(0.25))
+                }
+
+                if isPlayingThis && player.isPlaying {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.black.opacity(0.45))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: "waveform")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(hex: "#fc3c44"))
                 }
             }
-            .frame(width: 48, height: 48)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
 
-            // Title & Artist truncated with lineLimit(1)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
                     .lineLimit(1)
 
                 Text(track.artist)
@@ -579,66 +754,62 @@ public struct LibraryView: View {
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 6)
+            Spacer()
 
-            // Duration string
             Text(track.duration)
                 .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(Color.white.opacity(0.45))
+                .foregroundColor(Color.white.opacity(0.40))
 
-            // Heart favorite toggle with 44x44 touch frame
             Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-                let wasFav = favorites.contains(where: { $0.id == track.id })
-                if wasFav {
-                    favorites.removeAll(where: { $0.id == track.id })
-                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: false)
-                } else {
-                    favorites.append(track)
-                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: true)
-                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Task {
-                    await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: SessionManager.shared.currentToken)
-                    if let token = SessionManager.shared.currentToken {
-                        let refreshed = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
-                        await MainActor.run {
-                            self.favorites = refreshed
-                        }
-                    }
+                    let token = SessionManager.shared.currentToken
+                    _ = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
                 }
             }) {
-                Image(systemName: favorites.contains(where: { $0.id == track.id }) ? "heart.fill" : "heart")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(favorites.contains(where: { $0.id == track.id }) ? Color(hex: "#fc3c44") : Color.white.opacity(0.40))
+                Image(systemName: isFav ? "heart.fill" : "heart")
+                    .font(.system(size: 16))
+                    .foregroundColor(isFav ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
                     .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(height: 56)
-        .background(Color.white.opacity(player.currentTrack?.id == track.id ? 0.08 : 0.02))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture {
-            player.play(track: track, from: contextQueue)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            player.play(track: track, from: queue, serverURL: serverURL)
         }
     }
 
-    // MARK: - Empty State Placeholder
     private func emptyPlaceholder(icon: String, message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 36))
-                .foregroundColor(Color.white.opacity(0.30))
+                .foregroundColor(Color.white.opacity(0.28))
             Text(message)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Color.white.opacity(0.60))
+                .foregroundColor(Color.white.opacity(0.55))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 50)
+        .padding(.vertical, 44)
+    }
+
+    // MARK: - Album Extraction Helper
+    private func extractUniqueAlbums() -> [Track] {
+        let all = favorites + historyTracks + player.recentTracks
+        var seenTitles = Set<String>()
+        var result: [Track] = []
+        for t in all {
+            if let alb = t.album, !alb.isEmpty {
+                let key = "\(alb.lowercased())|\(t.artist.lowercased())"
+                if !seenTitles.contains(key) {
+                    seenTitles.insert(key)
+                    result.append(t)
+                }
+            }
+        }
+        return result
     }
 
     // MARK: - Data Loading
@@ -646,20 +817,28 @@ public struct LibraryView: View {
         isLoading = true
         let token = SessionManager.shared.currentToken
 
-        async let favFetch = MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
-        async let playFetch = MusicService.shared.fetchPlaylists(serverURL: serverURL, token: token)
-        async let histFetch = MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
+        async let favTask = MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
+        async let plTask = MusicService.shared.fetchPlaylists(serverURL: serverURL, token: token)
+        async let histTask = MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
 
-        let (favs, pls, hists) = await (favFetch, playFetch, histFetch)
+        let (favs, pls, hist) = await (favTask, plTask, histTask)
 
         await MainActor.run {
             self.favorites = favs
             self.playlists = pls
-            self.historyTracks = hists
-            if !hists.isEmpty {
-                player.mergeServerHistory(hists)
+            self.historyTracks = hist
+            for f in favs {
+                FavoritesManager.shared.setFavorite(trackId: f.id, isFavorite: true)
             }
             self.isLoading = false
+        }
+    }
+
+    private func refreshFavoritesOnly() async {
+        let token = SessionManager.shared.currentToken
+        let favs = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
+        await MainActor.run {
+            self.favorites = favs
         }
     }
 }

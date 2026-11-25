@@ -11,6 +11,7 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
     public let coverUrl: String?
     public let isLive: Bool // Invariante: Immer false fuer Musik-Tracks
     public let isExplicit: Bool
+    public let sourceUrl: String?
 
     public init(
         id: String,
@@ -21,7 +22,8 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
         durationSeconds: Double = 0,
         coverUrl: String? = nil,
         isLive: Bool = false,
-        isExplicit: Bool = false
+        isExplicit: Bool = false,
+        sourceUrl: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -32,6 +34,7 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
         self.coverUrl = coverUrl
         self.isLive = isLive
         self.isExplicit = isExplicit
+        self.sourceUrl = sourceUrl
     }
 
     public var cover: String? { coverUrl }
@@ -46,6 +49,8 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
         case isExplicit = "is_explicit"
         case isExplicitAlt = "isExplicit"
         case explicitContent = "explicit_content"
+        case sourceUrl
+        case sourceUrlSnake = "source_url"
     }
 
     public init(from decoder: Decoder) throws {
@@ -131,6 +136,8 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
             exp = try? container.decodeIfPresent(Bool.self, forKey: .explicitContent)
         }
         self.isExplicit = exp ?? false
+        self.sourceUrl = (try? container.decodeIfPresent(String.self, forKey: .sourceUrl))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .sourceUrlSnake))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -144,6 +151,7 @@ public struct Track: Identifiable, Codable, Equatable, Hashable {
         try container.encodeIfPresent(coverUrl, forKey: .coverUrl)
         try container.encode(isLive, forKey: .isLive)
         try container.encode(isExplicit, forKey: .isExplicit)
+        try container.encodeIfPresent(sourceUrl, forKey: .sourceUrl)
     }
 }
 
@@ -1127,5 +1135,93 @@ public func parseLRC(_ lrc: String) -> [LyricLine] {
 
     return lines.sorted { $0.time < $1.time }
 }
+
+// MARK: - Library & Radio Models (Web Library Parity)
+public struct LibraryRadioStation: Identifiable, Codable, Equatable, Hashable {
+    public let id: String
+    public let name: String
+    public let url: String
+    public let favicon: String?
+    public let tags: [String]?
+    public let country: String?
+    public let codec: String?
+    public let bitrate: Int?
+
+    public init(
+        id: String,
+        name: String,
+        url: String,
+        favicon: String? = nil,
+        tags: [String]? = nil,
+        country: String? = nil,
+        codec: String? = nil,
+        bitrate: Int? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.url = url
+        self.favicon = favicon
+        self.tags = tags
+        self.country = country
+        self.codec = codec
+        self.bitrate = bitrate
+    }
+}
+
+public struct LibraryFolder: Identifiable, Codable, Equatable, Hashable {
+    public let id: String
+    public let name: String
+    public let parentId: String?
+    public let color: String?
+
+    public init(id: String, name: String, parentId: String? = nil, color: String? = nil) {
+        self.id = id
+        self.name = name
+        self.parentId = parentId
+        self.color = color
+    }
+}
+
+public struct LibraryCollectionsData {
+    public var playlists: [DiscoveryPlaylist]
+    public var folders: [LibraryFolder]
+    public var savedArtists: [String]
+    public var savedAlbums: [String]
+    public var pinnedPlaylists: [String]
+    public var playlistTracksMap: [String: [Track]]
+    public var favorites: [Track]
+    public var globalTracks: [Track]
+
+    public init(
+        playlists: [DiscoveryPlaylist] = [],
+        folders: [LibraryFolder] = [],
+        savedArtists: [String] = [],
+        savedAlbums: [String] = [],
+        pinnedPlaylists: [String] = [],
+        playlistTracksMap: [String: [Track]] = [:],
+        favorites: [Track] = [],
+        globalTracks: [Track] = []
+    ) {
+        self.playlists = playlists
+        self.folders = folders
+        self.savedArtists = savedArtists
+        self.savedAlbums = savedAlbums
+        self.pinnedPlaylists = pinnedPlaylists
+        self.playlistTracksMap = playlistTracksMap
+        self.favorites = favorites
+        self.globalTracks = globalTracks
+    }
+}
+
+public struct PlaylistImportPreview: Codable {
+    public let success: Bool
+    public let type: String?
+    public let playlistName: String
+    public let playlistCover: String?
+    public let playlistOwner: String?
+    public let trackCount: Int
+    public let tracks: [DiscoveryTrack]
+}
+
 
 

@@ -23,6 +23,24 @@ public final class MusicService {
     // MARK: - Stream URL Builder
     public func streamURL(for track: Track, serverURL: String) -> URL? {
         let base = cleanURL(serverURL)
+
+        // Live-Radio-Sender explizit ueber /api/radio/stream routen (niemals fuer normale Songs!)
+        if track.isLive, let src = track.sourceUrl, !src.isEmpty {
+            if src.hasPrefix("http://") || src.hasPrefix("https://") {
+                var comps = URLComponents(string: "\(base)/api/radio/stream")
+                comps?.queryItems = [URLQueryItem(name: "url", value: src)]
+                return comps?.url
+            }
+            if src.hasPrefix("/api/radio/stream") {
+                return URL(string: "\(base)\(src)")
+            }
+        }
+
+        // Hochgeladene lokale Server-Audiodateien direkt ueber /api/files/audio/:id abspielen
+        if !track.isLive, let src = track.sourceUrl, src.hasPrefix("/api/files/audio/") {
+            return URL(string: "\(base)\(src)")
+        }
+
         let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
         let encodedId = track.id.addingPercentEncoding(withAllowedCharacters: allowed) ?? track.id
         guard var components = URLComponents(string: "\(base)/api/stream/\(encodedId)") else {
@@ -598,8 +616,8 @@ public final class MusicService {
             }
         }
 
-        // 2. Also check /api/state if empty or to get full user playlists with track counts
-        if resultPlaylists.isEmpty, let stateUrl = URL(string: "\(base)/api/state") {
+        // 2. Also fetch /api/state to enrich track counts & covers (or populate if /api/playlists returned empty)
+        if let stateUrl = URL(string: "\(base)/api/state") {
             var request = URLRequest(url: stateUrl)
             request.httpMethod = "GET"
             if let tok = token, !tok.isEmpty {
@@ -610,13 +628,40 @@ public final class MusicService {
                let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let pls = json["playlists"] as? [[String: Any]] {
+                var stateMap: [String: (title: String, cover: String, count: Int, owner: String?)] = [:]
                 for pl in pls {
                     guard let id = pl["id"] as? String else { continue }
                     let title = pl["name"] as? String ?? pl["title"] as? String ?? "Playlist"
                     let cover = pl["cover"] as? String ?? pl["cover_url"] as? String ?? ""
                     let tracks = pl["tracks"] as? [Any]
-                    let nbTracks = tracks?.count
-                    resultPlaylists.append(DiscoveryPlaylist(id: id, title: title, cover: cover, nbTracks: nbTracks, user: nil))
+                    let owner = pl["ownerId"] as? String ?? pl["owner_id"] as? String
+                    stateMap[id] = (title, cover, tracks?.count ?? 0, owner)
+                }
+
+                if resultPlaylists.isEmpty {
+                    for pl in pls {
+                        guard let id = pl["id"] as? String, let info = stateMap[id] else { continue }
+                        resultPlaylists.append(DiscoveryPlaylist(
+                            id: id,
+                            title: info.title,
+                            cover: info.cover,
+                            nbTracks: info.count,
+                            user: info.owner
+                        ))
+                    }
+                } else {
+                    resultPlaylists = resultPlaylists.map { existing in
+                        if let info = stateMap[existing.id] {
+                            return DiscoveryPlaylist(
+                                id: existing.id,
+                                title: existing.title,
+                                cover: existing.cover.isEmpty ? info.cover : existing.cover,
+                                nbTracks: existing.nbTracks ?? info.count,
+                                user: existing.user ?? info.owner
+                            )
+                        }
+                        return existing
+                    }
                 }
             }
         }
@@ -1118,6 +1163,340 @@ public final class MusicService {
             return parseTracksFromAnyJSON(data: data)
         } catch {
             return []
+        }
+    }
+
+    // MARK: - Library Collections (/api/state)
+    public func fetchLibraryCollections(serverURL: String, token: String?) async -> LibraryCollectionsData {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/state") else { return LibraryCollectionsData() }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        var result = LibraryCollectionsData()
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return result
+            }
+
+            if let pls = json["playlists"] as? [[String: Any]] {
+                for pl in pls {
+                    guard let id = pl["id"] as? String else { continue }
+                    let title = pl["name"] as? String ?? pl["title"] as? String ?? "Playlist"
+                    let cover = pl["cover"] as? String ?? pl["cover_url"] as? String ?? ""
+                    let owner = pl["ownerId"] as? String ?? pl["owner_id"] as? String
+                    let rawTracks = pl["tracks"] as? [[String: Any]] ?? []
+                    let parsedTracks = rawTracks.compactMap { parseLibraryTrackDict($0) }
+                    result.playlistTracksMap[id] = parsedTracks
+                    result.playlists.append(DiscoveryPlaylist(
+                        id: id,
+                        title: title,
+                        cover: cover,
+                        nbTracks: parsedTracks.count,
+                        user: owner
+                    ))
+                }
+            }
+
+            if let foldersArr = json["folders"] as? [[String: Any]] {
+                for f in foldersArr {
+                    guard let id = f["id"] as? String else { continue }
+                    let name = f["name"] as? String ?? "Ordner"
+                    let parentId = f["parentId"] as? String ?? f["parentFolderId"] as? String
+                    let color = f["color"] as? String
+                    result.folders.append(LibraryFolder(id: id, name: name, parentId: parentId, color: color))
+                }
+            }
+
+            if let favs = json["favorites"] as? [[String: Any]] {
+                result.favorites = favs.compactMap { parseLibraryTrackDict($0) }
+            }
+            if let globals = json["globalTracks"] as? [[String: Any]] {
+                result.globalTracks = globals.compactMap { parseLibraryTrackDict($0) }
+            }
+
+            if let libState = json["libraryState"] as? [String: Any] {
+                result.savedArtists = libState["savedArtists"] as? [String] ?? []
+                result.savedAlbums = libState["savedAlbums"] as? [String] ?? []
+                result.pinnedPlaylists = libState["pinnedPlaylists"] as? [String] ?? []
+            }
+        } catch {
+            print("MusicService.fetchLibraryCollections error: \(error)")
+        }
+        return result
+    }
+
+    private func parseLibraryTrackDict(_ item: [String: Any]) -> Track? {
+        guard let id = item["id"] as? String, !id.isEmpty else { return nil }
+        let title = item["title"] as? String ?? item["name"] as? String ?? "Kein Titel"
+        let artist = item["artist"] as? String ?? "Unbekannter Interpret"
+        let album = item["album"] as? String
+        let cover = item["cover_url"] as? String ?? item["cover"] as? String ?? item["coverUrl"] as? String
+        let sourceUrl = item["sourceUrl"] as? String ?? item["source_url"] as? String ?? item["url"] as? String
+
+        var durSec: Double = 0
+        if let d = item["durationSeconds"] as? Double {
+            durSec = d
+        } else if let d = item["durationSeconds"] as? Int {
+            durSec = Double(d)
+        } else if let d = item["duration"] as? Double {
+            durSec = d
+        } else if let s = item["duration"] as? String {
+            let parts = s.split(separator: ":").compactMap { Double($0) }
+            if parts.count == 2 { durSec = parts[0] * 60 + parts[1] }
+            else if parts.count == 3 { durSec = parts[0] * 3600 + parts[1] * 60 + parts[2] }
+        }
+
+        let formattedDur: String
+        if let s = item["duration"] as? String, !s.isEmpty, s != "LIVE" {
+            formattedDur = s
+        } else {
+            let m = Int(durSec) / 60
+            let sec = Int(durSec) % 60
+            formattedDur = String(format: "%d:%02d", m, sec)
+        }
+
+        return Track(
+            id: id,
+            title: title,
+            artist: artist,
+            album: album,
+            duration: formattedDur,
+            durationSeconds: durSec,
+            coverUrl: cover,
+            isLive: false,
+            isExplicit: (item["explicitContent"] as? Bool) ?? (item["is_explicit"] as? Bool) ?? false,
+            sourceUrl: sourceUrl
+        )
+    }
+
+    // MARK: - Create & Import Playlists
+    public func createPlaylist(title: String, description: String? = nil, serverURL: String, token: String?) async -> DiscoveryPlaylist? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/playlists") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        var body: [String: Any] = ["title": trimmed]
+        if let desc = description?.trimmingCharacters(in: .whitespacesAndNewlines), !desc.isEmpty {
+            body["description"] = desc
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = json["id"] as? String else {
+                return nil
+            }
+            let plTitle = json["title"] as? String ?? trimmed
+            let cover = json["cover_url"] as? String ?? json["cover"] as? String ?? ""
+            let owner = json["owner_id"] as? String
+            return DiscoveryPlaylist(id: id, title: plTitle, cover: cover, nbTracks: 0, user: owner)
+        } catch {
+            return nil
+        }
+    }
+
+    public func addTrackToPlaylist(playlistId: String, track: Track, serverURL: String, token: String?) async -> Bool {
+        let base = cleanURL(serverURL)
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let encodedId = playlistId.addingPercentEncoding(withAllowedCharacters: allowed) ?? playlistId
+        guard let url = URL(string: "\(base)/api/playlists/\(encodedId)/tracks") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        var durSec = track.durationSeconds
+        if durSec <= 0 {
+            let parts = track.duration.split(separator: ":")
+            if parts.count == 2, let m = Double(parts[0]), let s = Double(parts[1]) {
+                durSec = m * 60 + s
+            }
+        }
+        let body: [String: Any] = [
+            "id": track.id,
+            "title": track.title,
+            "artist": track.artist,
+            "album": track.album ?? "",
+            "duration": durSec,
+            "cover_url": track.coverUrl ?? "",
+            "cached_at": Int64(Date().timeIntervalSince1970 * 1000)
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            return (response as? HTTPURLResponse).map { (200...299).contains($0.statusCode) } ?? false
+        } catch {
+            return false
+        }
+    }
+
+    public func previewImportPlaylist(url inputUrl: String, serverURL: String, token: String?) async -> (preview: PlaylistImportPreview?, error: String?) {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/discovery/playlist-preview") else {
+            return (nil, "Ungültige Server-URL")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["url": inputUrl])
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return (nil, "Keine Antwort vom Server")
+            }
+            if !(200...299).contains(http.statusCode) {
+                if let errJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let msg = errJson["error"] as? String ?? errJson["message"] as? String {
+                    return (nil, msg)
+                }
+                return (nil, "Playlist konnte nicht geladen werden (HTTP \(http.statusCode))")
+            }
+            let decoded = try JSONDecoder().decode(PlaylistImportPreview.self, from: data)
+            if !decoded.success {
+                return (nil, "Playlist-Vorschau fehlgeschlagen")
+            }
+            return (decoded, nil)
+        } catch {
+            return (nil, error.localizedDescription)
+        }
+    }
+
+    // MARK: - Local Uploaded Audio Files (/api/files/audio)
+    public func fetchLocalAudioFiles(serverURL: String, token: String?) async -> [Track] {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/files/audio") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                return []
+            }
+            return items.compactMap { item -> Track? in
+                guard let id = item["id"] as? String, !id.isEmpty else { return nil }
+                let title = item["title"] as? String ?? "Audiodatei"
+                let artist = item["artist"] as? String ?? "Lokale Datei"
+                let album = item["album"] as? String
+                let durSec = (item["duration"] as? Double) ?? 0
+                let durFmt = item["duration_formatted"] as? String ?? {
+                    let m = Int(durSec) / 60
+                    let s = Int(durSec) % 60
+                    return String(format: "%d:%02d", m, s)
+                }()
+                let cover = item["cover_url"] as? String
+                let streamPath = item["url"] as? String ?? "/api/files/audio/\(id)"
+                return Track(
+                    id: id,
+                    title: title,
+                    artist: artist,
+                    album: album,
+                    duration: durFmt,
+                    durationSeconds: durSec,
+                    coverUrl: cover,
+                    isLive: false,
+                    isExplicit: false,
+                    sourceUrl: streamPath
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+
+    // MARK: - Radio Favorites (/api/radio/favorites)
+    public func fetchRadioFavorites(serverURL: String, token: String?) async -> [LibraryRadioStation] {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/radio/favorites") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let stationsData = json["stations"],
+                  let rawData = try? JSONSerialization.data(withJSONObject: stationsData) else {
+                return []
+            }
+            return (try? JSONDecoder().decode([LibraryRadioStation].self, from: rawData)) ?? []
+        } catch {
+            return []
+        }
+    }
+
+    public func toggleRadioFavorite(station: LibraryRadioStation, isFavorite: Bool, serverURL: String, token: String?) async -> Bool {
+        let base = cleanURL(serverURL)
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let encodedId = station.id.addingPercentEncoding(withAllowedCharacters: allowed) ?? station.id
+
+        let urlString = isFavorite ? "\(base)/api/radio/favorites/\(encodedId)" : "\(base)/api/radio/favorites"
+        guard let url = URL(string: urlString) else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = isFavorite ? "DELETE" : "POST"
+        request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+        if !isFavorite {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? JSONEncoder().encode(station)
+        }
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            return (response as? HTTPURLResponse).map { (200...299).contains($0.statusCode) } ?? false
+        } catch {
+            return false
         }
     }
 }
