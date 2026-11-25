@@ -10,7 +10,7 @@ private struct LibraryCategoryConfig: Identifiable, Codable, Equatable {
 
 public struct LibraryView: View {
     public let serverURL: String
-    public let user: User?
+    public let user: UserProfile?
 
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var favoritesManager = FavoritesManager.shared
@@ -31,7 +31,7 @@ public struct LibraryView: View {
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
     private static let categoriesStorageKey = "port_music_library_categories_config_v2"
 
-    public init(serverURL: String, user: User? = nil) {
+    public init(serverURL: String, user: UserProfile? = nil) {
         self.serverURL = serverURL
         self.user = user
         self._categoriesConfig = State(initialValue: Self.loadSavedCategories())
