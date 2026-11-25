@@ -1,13 +1,6 @@
 import SwiftUI
 
-// MARK: - Library Category Configuration (Mirrors Web LibraryPage DEFAULT_CATEGORY_ORDER)
-private struct LibraryCategoryConfig: Identifiable, Codable, Equatable {
-    let id: String
-    let label: String
-    let iconName: String
-    var visible: Bool
-}
-
+// MARK: - Library View (Feature #12 - Full Web Library Parity)
 public struct LibraryView: View {
     public let serverURL: String
     public let user: UserProfile?
@@ -23,12 +16,10 @@ public struct LibraryView: View {
     @State private var isLoading: Bool = false
     @State private var selectedTab: String = "Playlists"
 
-    // Web Library Parity: Action Modals & Inline Customizable Category Order
+    // Web Library Parity: Action Modals & Native Category Reorder Sheet
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var showImportPlaylistSheet: Bool = false
-    @State private var isEditingCategories: Bool = false
-    @State private var categoryEditMode: EditMode = .inactive
-    @State private var editListGeneration: Int = 0
+    @State private var showCategoryEditorSheet: Bool = false
     @State private var categoriesConfig: [LibraryCategoryConfig] = LibraryView.defaultCategories()
 
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
@@ -168,6 +159,15 @@ public struct LibraryView: View {
             ImportPlaylistSheet(serverURL: serverURL) { imported in
                 playlists.insert(imported, at: 0)
                 Task { await loadLibraryData() }
+            }
+        }
+        .sheet(isPresented: $showCategoryEditorSheet) {
+            LibraryCategoryReorderSheet(
+                initialCategories: categoriesConfig,
+                defaultCategories: Self.defaultCategories()
+            ) { updated in
+                categoriesConfig = updated
+                persistCategories(updated)
             }
         }
     }
@@ -356,50 +356,20 @@ public struct LibraryView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Category Links Section (Native Apple List .onMove Drag & Drop + Separate Unclipped Hidden Card)
+    // MARK: - Category Links Section (Opens native Apple List Sheet like NavbarSettingsSheet)
     private var categoryLinksSection: some View {
         let visibleCats = categoriesConfig.filter { $0.visible }
-        let hiddenCats = categoriesConfig.filter { !$0.visible }
-        let rowHeight: CGFloat = 52
-        let visibleListHeight = CGFloat(visibleCats.count) * rowHeight + 4
 
         return VStack(alignment: .leading, spacing: 10) {
-            // Rechts über der obersten Option ("Playlists"): Bearbeiten <-> Fertig
+            // Rechts über der obersten Option ("Playlists"): Bearbeiten -> öffnet Reihenfolgen-Menü
             HStack {
-                if isEditingCategories {
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        let defaults = Self.defaultCategories()
-                        categoriesConfig = defaults
-                        persistCategories(defaults)
-                        categoryEditMode = .inactive
-                        editListGeneration += 1
-                    }) {
-                        Text("Zurücksetzen")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.60))
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-
                 Spacer()
 
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    if isEditingCategories {
-                        categoryEditMode = .inactive
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
-                            isEditingCategories = false
-                        }
-                    } else {
-                        categoryEditMode = .inactive
-                        editListGeneration += 1
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
-                            isEditingCategories = true
-                        }
-                    }
+                    showCategoryEditorSheet = true
                 }) {
-                    Text(isEditingCategories ? "Fertig" : "Bearbeiten")
+                    Text("Bearbeiten")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
                 }
@@ -407,197 +377,51 @@ public struct LibraryView: View {
             }
             .padding(.horizontal, 4)
 
-            if isEditingCategories {
-                VStack(alignment: .leading, spacing: 14) {
-                    // 1. Natives Apple List (.onMove) für sichtbare Kategorien (flüssiges Drag & Drop wie Leisten-Menü)
-                    List {
-                        ForEach(visibleCats) { cat in
-                            HStack(spacing: 12) {
-                                Button(action: {
-                                    toggleCategoryInline(cat)
-                                }) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color.white)
-                                            .frame(width: 22, height: 22)
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(.black)
-                                    }
-                                    .frame(width: 28, height: 28)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
+            VStack(spacing: 0) {
+                ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
+                    NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
+                        HStack(spacing: 14) {
+                            Image(systemName: cat.iconName)
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(width: 24, alignment: .center)
 
-                                Image(systemName: cat.iconName)
-                                    .font(.system(size: 17, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .frame(width: 24, alignment: .center)
+                            Text(cat.label)
+                                .font(.system(size: 17, weight: .regular))
+                                .foregroundColor(.white)
 
-                                Text(cat.label)
-                                    .font(.system(size: 16, weight: .regular))
-                                    .foregroundColor(.white)
+                            Spacer()
 
-                                Spacer()
+                            if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
+                                Text(String(offlineManager.downloadedTrackIds.count))
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color.white.opacity(0.45))
                             }
-                            .frame(height: rowHeight)
-                            .moveDisabled(false)
-                            .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14))
-                            .listRowBackground(Color.white.opacity(0.04))
-                            .listRowSeparatorTint(Color.white.opacity(0.08))
-                            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Color.white.opacity(0.32))
                         }
-                        .onMove { indices, newOffset in
-                            var updatedVisible = visibleCats
-                            updatedVisible.move(fromOffsets: indices, toOffset: newOffset)
-                            categoriesConfig = updatedVisible + hiddenCats
-                            persistCategories(categoriesConfig)
-                        }
+                        .padding(.vertical, 13)
+                        .padding(.horizontal, 14)
+                        .contentShape(Rectangle())
                     }
-                    .id(editListGeneration)
-                    .onAppear {
-                        DispatchQueue.main.async {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                categoryEditMode = .active
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .scrollDisabled(true)
-                    .environment(\.editMode, $categoryEditMode)
-                    .environment(\.defaultMinListRowHeight, rowHeight)
-                    .frame(height: visibleListHeight)
-                    .background(Color.white.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
+                    .buttonStyle(PlainButtonStyle())
 
-                    // 2. Separater, dynamisch wachsender Kasten für "WEITERE OPTIONEN" (wird nie abgeschnitten)
-                    if !hiddenCats.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("WEITERE OPTIONEN")
-                                .font(.system(size: 11, weight: .semibold))
-                                .tracking(0.6)
-                                .foregroundColor(Color.white.opacity(0.45))
-                                .padding(.horizontal, 6)
-
-                            VStack(spacing: 0) {
-                                ForEach(Array(hiddenCats.enumerated()), id: \.element.id) { index, cat in
-                                    HStack(spacing: 12) {
-                                        Button(action: {
-                                            toggleCategoryInline(cat)
-                                        }) {
-                                            Image(systemName: "circle")
-                                                .font(.system(size: 21))
-                                                .foregroundColor(Color.white.opacity(0.35))
-                                                .frame(width: 28, height: 28)
-                                        }
-                                        .buttonStyle(.plain)
-
-                                        Image(systemName: cat.iconName)
-                                            .font(.system(size: 17))
-                                            .foregroundColor(Color.white.opacity(0.45))
-                                            .frame(width: 24, alignment: .center)
-
-                                        Text(cat.label)
-                                            .font(.system(size: 16))
-                                            .foregroundColor(Color.white.opacity(0.65))
-
-                                        Spacer()
-                                    }
-                                    .frame(height: rowHeight)
-                                    .padding(.horizontal, 14)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        toggleCategoryInline(cat)
-                                    }
-                                    .overlay(alignment: .bottom) {
-                                        if index < hiddenCats.count - 1 {
-                                            Rectangle()
-                                                .fill(Color.white.opacity(0.08))
-                                                .frame(height: 0.5)
-                                                .padding(.leading, 52)
-                                        }
-                                    }
-                                }
-                            }
-                            .background(Color.white.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                            )
-                        }
+                    if index < visibleCats.count - 1 {
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                            .padding(.leading, 52)
                     }
                 }
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
-                        NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
-                            HStack(spacing: 14) {
-                                Image(systemName: cat.iconName)
-                                    .font(.system(size: 18, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .frame(width: 24, alignment: .center)
-
-                                Text(cat.label)
-                                    .font(.system(size: 17, weight: .regular))
-                                    .foregroundColor(.white)
-
-                                Spacer()
-
-                                if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
-                                    Text(String(offlineManager.downloadedTrackIds.count))
-                                        .font(.system(size: 13))
-                                        .foregroundColor(Color.white.opacity(0.45))
-                                }
-
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(Color.white.opacity(0.32))
-                            }
-                            .padding(.vertical, 13)
-                            .padding(.horizontal, 14)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        if index < visibleCats.count - 1 {
-                            Divider()
-                                .background(Color.white.opacity(0.08))
-                                .padding(.leading, 52)
-                        }
-                    }
-                }
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
             }
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
         }
-    }
-
-    private func toggleCategoryInline(_ cat: LibraryCategoryConfig) {
-        let visibleCount = categoriesConfig.filter { $0.visible }.count
-        guard let idx = categoriesConfig.firstIndex(where: { $0.id == cat.id }) else { return }
-        if categoriesConfig[idx].visible && visibleCount <= 1 {
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            return
-        }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        categoriesConfig[idx].visible.toggle()
-        let visible = categoriesConfig.filter { $0.visible }
-        let hidden = categoriesConfig.filter { !$0.visible }
-        categoriesConfig = visible + hidden
-        persistCategories(categoriesConfig)
-        // List gezielt neu einhängen & EditMode frisch aktivieren, damit das 3-Striche-Handle immer sicher erscheint
-        categoryEditMode = .inactive
-        editListGeneration += 1
     }
 
     // MARK: - Segmented Tab Bar
