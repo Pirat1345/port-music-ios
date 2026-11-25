@@ -162,7 +162,7 @@ public struct AlbumDetailView: View {
                 NavigationLink(value: AppRoute.artist(name: displayArtist, coverUrl: nil)) {
                     Text(displayArtist)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .foregroundColor(.white.opacity(0.85))
                 }
                 .buttonStyle(PlainButtonStyle())
 
@@ -284,9 +284,9 @@ public struct AlbumDetailView: View {
                 }) {
                     HStack(spacing: 14) {
                         // Track Number
-                        Text("\(trackNum)")
+                        Text(String(trackNum))
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : Color.white.opacity(0.40))
+                            .foregroundColor(isPlayingThis ? .white : Color.white.opacity(0.40))
                             .frame(width: 26, alignment: .center)
 
                         // Title & Artist
@@ -294,7 +294,7 @@ public struct AlbumDetailView: View {
                             HStack(spacing: 6) {
                                 Text(item.title)
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
+                                    .foregroundColor(.white)
                                     .lineLimit(1)
 
                                 if isDownloaded {
@@ -328,7 +328,7 @@ public struct AlbumDetailView: View {
                         if isPlayingThis {
                             Image(systemName: "speaker.wave.2.fill")
                                 .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .foregroundColor(.white)
                         } else {
                             Text(item.duration ?? "0:00")
                                 .font(.system(size: 12, design: .monospaced))
@@ -402,7 +402,7 @@ public struct AlbumDetailView: View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 34))
-                .foregroundColor(Color(hex: "#fc3c44"))
+                .foregroundColor(.white.opacity(0.65))
 
             Text("Album konnte nicht geladen werden")
                 .font(.system(size: 15, weight: .bold))
@@ -446,21 +446,67 @@ public struct AlbumDetailView: View {
     }
 
     private func loadFavoriteStatus() {
+        let compositeKey = "\(displayTitle)::\(displayArtist)"
         if let saved = UserDefaults.standard.stringArray(forKey: savedAlbumsKey) {
-            isFavorite = saved.contains(where: { $0.lowercased() == albumId.lowercased() })
+            isFavorite = saved.contains(where: {
+                $0.lowercased() == albumId.lowercased() || $0.lowercased() == compositeKey.lowercased()
+            })
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            let collections = await MusicService.shared.fetchLibraryCollections(serverURL: serverURL, token: token)
+            let serverHasAlbum = collections.savedAlbums.contains { entry in
+                let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.lowercased() == albumId.lowercased() || trimmed.lowercased() == compositeKey.lowercased() {
+                    return true
+                }
+                if trimmed.contains("::") {
+                    let parts = trimmed.components(separatedBy: "::")
+                    let t = (parts.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    return !t.isEmpty && t == displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                }
+                return trimmed.lowercased() == displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            }
+            if serverHasAlbum {
+                await MainActor.run {
+                    self.isFavorite = true
+                }
+            }
         }
     }
 
     private func toggleFavorite() {
+        let titleClean = displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artistClean = displayArtist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let compositeKey = titleClean.isEmpty ? albumId : "\(titleClean)::\(artistClean)"
         var current = UserDefaults.standard.stringArray(forKey: savedAlbumsKey) ?? []
         if isFavorite {
-            current.removeAll { $0.lowercased() == albumId.lowercased() }
+            current.removeAll {
+                $0.lowercased() == albumId.lowercased()
+                || $0.lowercased() == compositeKey.lowercased()
+                || $0.lowercased() == titleClean.lowercased()
+            }
             isFavorite = false
         } else {
-            current.append(albumId)
+            if !current.contains(where: { $0.lowercased() == compositeKey.lowercased() }) {
+                current.append(compositeKey)
+            }
             isFavorite = true
         }
         UserDefaults.standard.set(current, forKey: savedAlbumsKey)
+        NotificationCenter.default.post(name: Notification.Name("portMusicSavedAlbumsChanged"), object: nil)
+        let newState = isFavorite
+        let cov = displayCover
+        Task {
+            await MusicService.shared.syncSavedAlbumState(
+                albumTitle: titleClean,
+                artistName: artistClean,
+                coverUrl: cov,
+                isSaved: newState,
+                serverURL: serverURL,
+                token: SessionManager.shared.currentToken
+            )
+        }
     }
 
     private func loadAlbumData() async {
@@ -471,6 +517,7 @@ public struct AlbumDetailView: View {
         if let data = await MusicService.shared.fetchAlbum(id: albumId, serverURL: serverURL, token: token) {
             self.albumData = data
             self.isLoading = false
+            loadFavoriteStatus()
         } else {
             self.errorMessage = "Keine Verbindung zum Discovery-Dienst für dieses Album."
             self.isLoading = false

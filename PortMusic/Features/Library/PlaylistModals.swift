@@ -60,7 +60,7 @@ public struct CreatePlaylistSheet: View {
                     if let err = errorText {
                         Text(err)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color(hex: "#fc3c44"))
+                            .foregroundColor(.white.opacity(0.85))
                     }
 
                     Button(action: {
@@ -204,7 +204,7 @@ public struct ImportPlaylistSheet: View {
                         if let err = errorText {
                             Text(err)
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .foregroundColor(.white.opacity(0.85))
                         }
 
                         if let prev = preview {
@@ -280,7 +280,7 @@ public struct ImportPlaylistSheet: View {
             if isImporting {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: importProgress)
-                        .tint(Color(hex: "#fc3c44"))
+                        .tint(.white)
                     Text("Songs werden gespeichert (\(Int(importProgress * 100))%)...")
                         .font(.system(size: 12))
                         .foregroundColor(Color.white.opacity(0.55))
@@ -292,10 +292,10 @@ public struct ImportPlaylistSheet: View {
             }) {
                 Text(isImporting ? "Importiere..." : "\(prev.trackCount) Songs importieren")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(Color(hex: "#fc3c44"))
+                    .background(Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .disabled(isImporting || prev.tracks.isEmpty)

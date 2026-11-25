@@ -150,14 +150,14 @@ public struct LibraryRadioView: View {
                 } placeholder: {
                     Image(systemName: "dot.radiowaves.left.and.right")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .foregroundColor(.white.opacity(0.65))
                 }
 
                 if isPlayingThis {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Color.black.opacity(0.45))
                         .frame(width: 54, height: 54)
-                    EqualizerBarsView(color: Color(hex: "#fc3c44"))
+                    EqualizerBarsView(color: .white)
                 }
             }
             .overlay(
@@ -169,16 +169,16 @@ public struct LibraryRadioView: View {
                 HStack(spacing: 6) {
                     Text(station.name)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
+                        .foregroundColor(.white)
                         .lineLimit(1)
 
                     if isPlayingThis {
                         Text("ON AIR")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color(hex: "#fc3c44"))
+                            .background(Color.white)
                             .clipShape(Capsule())
                     }
                 }

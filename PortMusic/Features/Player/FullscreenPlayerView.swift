@@ -334,7 +334,7 @@ public struct FullscreenPlayerView: View {
                 }) {
                     Image(systemName: "quote.bubble.fill")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .foregroundColor(.white)
                         .frame(width: 44, height: 44)
                 }
             }
@@ -794,7 +794,7 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: isLyricsActive ? "quote.bubble.fill" : "quote.bubble")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(isLyricsActive ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
+                    .foregroundColor(isLyricsActive ? .white : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
@@ -819,7 +819,7 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: "shuffle")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(player.isShuffle ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
+                    .foregroundColor(player.isShuffle ? .white : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
@@ -832,7 +832,7 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: player.isRepeat ? "repeat.1" : "repeat")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(player.isRepeat ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
+                    .foregroundColor(player.isRepeat ? .white : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
@@ -851,7 +851,7 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: "list.bullet")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(isQueueActive ? Color(hex: "#fc3c44") : Color.white.opacity(0.65))
+                    .foregroundColor(isQueueActive ? .white : Color.white.opacity(0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
@@ -1017,7 +1017,7 @@ public struct FullscreenPlayerView: View {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(item.title)
                                             .font(.system(size: 14, weight: isCurrent ? .bold : .medium))
-                                            .foregroundColor(isCurrent ? Color(hex: "#fc3c44") : Color.white)
+                                            .foregroundColor(Color.white)
                                             .lineLimit(1)
                                         Text(item.artist)
                                             .font(.system(size: 12))
@@ -1030,7 +1030,7 @@ public struct FullscreenPlayerView: View {
                                     if isCurrent {
                                         Image(systemName: "waveform")
                                             .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(Color(hex: "#fc3c44"))
+                                            .foregroundColor(Color.white)
                                     }
                                 }
                                 .padding(10)

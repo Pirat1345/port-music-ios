@@ -143,7 +143,7 @@ public struct NewReleasesView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(player.currentTrack?.id == track.id ? Color(hex: "#fc3c44") : .white)
+                        .foregroundColor(.white)
                         .lineLimit(1)
                     Text(track.artist)
                         .font(.system(size: 13))
@@ -155,7 +155,7 @@ public struct NewReleasesView: View {
 
                 Image(systemName: player.currentTrack?.id == track.id && player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 24))
-                    .foregroundColor(player.currentTrack?.id == track.id ? Color(hex: "#fc3c44") : Color.white.opacity(0.70))
+                    .foregroundColor(player.currentTrack?.id == track.id ? .white : Color.white.opacity(0.70))
             }
             .padding(.vertical, 4)
         }

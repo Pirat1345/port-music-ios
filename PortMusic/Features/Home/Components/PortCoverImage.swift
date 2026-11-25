@@ -286,7 +286,7 @@ public struct PortUserAvatarView: View {
         .frame(width: size, height: size)
         .overlay(
             Circle()
-                .stroke(isSelected ? Color(hex: "#fc3c44") : Color.white.opacity(0.35), lineWidth: 1.5)
+                .stroke(isSelected ? Color.white : Color.white.opacity(0.35), lineWidth: 1.5)
         )
         .task(id: rawAvatar) {
             await resolveAvatar()
@@ -508,5 +508,136 @@ public struct PortCoverImage: View {
                     .foregroundColor(Color.white.opacity(0.25))
             }
         }
+    }
+}
+
+/// Renders a playlist cover matching Web `PlaylistCover.tsx`:
+/// 1. Explicit custom cover image
+/// 2. 2x2 collage when at least 4 unique track covers exist
+/// 3. Single cover when 1..3 track covers exist
+/// 4. Centered placeholder icon when empty
+public struct PlaylistArtworkView: View {
+    public let coverUrl: String?
+    public let trackCovers: [String]?
+    public var cornerRadius: CGFloat = 12
+    public var iconSize: CGFloat = 32
+    public var placeholderIcon: String = "music.note.list"
+    public let serverURL: String
+
+    public init(
+        coverUrl: String?,
+        trackCovers: [String]? = nil,
+        cornerRadius: CGFloat = 12,
+        iconSize: CGFloat = 32,
+        placeholderIcon: String = "music.note.list",
+        serverURL: String
+    ) {
+        self.coverUrl = coverUrl
+        self.trackCovers = trackCovers
+        self.cornerRadius = cornerRadius
+        self.iconSize = iconSize
+        self.placeholderIcon = placeholderIcon
+        self.serverURL = serverURL
+    }
+
+    private func isDefaultCover(_ raw: String?) -> Bool {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return true
+        }
+        return trimmed.contains("cover-1.")
+            || trimmed == "/default-cover.svg"
+            || trimmed.hasSuffix("/default-cover.svg")
+            || trimmed == "/default-playlist.svg"
+    }
+
+    private var customCoverURL: URL? {
+        guard !isDefaultCover(coverUrl), let coverUrl else { return nil }
+        return resolveCoverURL(coverUrl, serverURL: serverURL)
+    }
+
+    private var uniqueTrackCoverURLs: [URL] {
+        guard let trackCovers, !trackCovers.isEmpty else { return [] }
+        var seen = Set<String>()
+        var urls: [URL] = []
+        for raw in trackCovers {
+            guard !isDefaultCover(raw) else { continue }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if seen.insert(trimmed).inserted, let resolved = resolveCoverURL(trimmed, serverURL: serverURL) {
+                urls.append(resolved)
+                if urls.count >= 4 { break }
+            }
+        }
+        return urls
+    }
+
+    public var body: some View {
+        ZStack(alignment: .center) {
+            Color(hex: "#18181b")
+
+            if let custom = customCoverURL {
+                PortCachedAsyncImage(url: custom) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    emptyPlaceholder
+                }
+            } else {
+                let covers = uniqueTrackCoverURLs
+                if covers.count >= 4 {
+                    GeometryReader { geo in
+                        let tileW = max(1, geo.size.width / 2)
+                        let tileH = max(1, geo.size.height / 2)
+                        VStack(spacing: 0) {
+                            HStack(spacing: 0) {
+                                mosaicTile(url: covers[0], width: tileW, height: tileH)
+                                mosaicTile(url: covers[1], width: tileW, height: tileH)
+                            }
+                            HStack(spacing: 0) {
+                                mosaicTile(url: covers[2], width: tileW, height: tileH)
+                                mosaicTile(url: covers[3], width: tileW, height: tileH)
+                            }
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    }
+                } else if let first = covers.first {
+                    PortCachedAsyncImage(url: first) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        emptyPlaceholder
+                    }
+                } else {
+                    emptyPlaceholder
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func mosaicTile(url: URL, width: CGFloat, height: CGFloat) -> some View {
+        PortCachedAsyncImage(url: url) { image in
+            image
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: width, height: height)
+                .clipped()
+        } placeholder: {
+            Color(hex: "#202024")
+                .frame(width: width, height: height)
+        }
+    }
+
+    private var emptyPlaceholder: some View {
+        ZStack(alignment: .center) {
+            Color(hex: "#18181b")
+            Image(systemName: placeholderIcon)
+                .font(.system(size: iconSize, weight: .regular))
+                .foregroundColor(Color.white.opacity(0.32))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

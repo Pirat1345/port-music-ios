@@ -182,8 +182,8 @@ public struct SearchView: View {
                     )
                     .font(.system(size: 15))
                     .foregroundColor(PortColors.textPrimary)
-                    .tint(Color(hex: "#fc3c44"))
-                    .accentColor(Color(hex: "#fc3c44"))
+                    .tint(.white)
+                    .accentColor(.white)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
                     .submitLabel(.search)
@@ -247,7 +247,7 @@ public struct SearchView: View {
                     }) {
                         Text("Abbrechen")
                             .font(.system(size: 15, weight: .regular))
-                            .foregroundColor(Color(hex: "#fc3c44"))
+                            .foregroundColor(.white)
                     }
                     .buttonStyle(PlainButtonStyle())
                     .transition(.move(edge: .trailing).combined(with: .opacity))

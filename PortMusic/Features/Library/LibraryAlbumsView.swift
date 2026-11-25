@@ -101,85 +101,109 @@ public struct LibraryAlbumsView: View {
         .task {
             await loadSavedAlbums()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("portMusicSavedAlbumsChanged"))) { _ in
+            Task {
+                await loadSavedAlbums()
+            }
+        }
     }
 
     private func loadSavedAlbums() async {
         isLoading = true
         let token = SessionManager.shared.currentToken
 
-        async let collectionsTask = MusicService.shared.fetchLibraryCollections(serverURL: serverURL, token: token)
-        async let historyTask = MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
-        let (collections, history) = await (collectionsTask, historyTask)
+        let collections = await MusicService.shared.fetchLibraryCollections(serverURL: serverURL, token: token)
+        let localSaved = UserDefaults.standard.stringArray(forKey: "port_music_saved_albums") ?? []
 
-        var albumMap: [String: DiscoveryAlbum] = [:]
-        var orderedKeys: [String] = []
-
-        func registerTrackAlbum(_ t: Track) {
-            guard let alb = t.album?.trimmingCharacters(in: .whitespacesAndNewlines), !alb.isEmpty else { return }
-            let key = alb.lowercased()
-            if albumMap[key] == nil {
-                albumMap[key] = DiscoveryAlbum(
-                    id: "search:\(alb) \(t.artist)",
-                    title: alb,
-                    artist: t.artist,
-                    cover: t.coverUrl,
-                    nbTracks: nil
-                )
-                orderedKeys.append(key)
-            } else if let existing = albumMap[key], (existing.cover?.isEmpty ?? true), let cov = t.coverUrl, !cov.isEmpty {
-                albumMap[key] = DiscoveryAlbum(
-                    id: existing.id,
-                    title: existing.title,
-                    artist: existing.artist,
-                    cover: cov,
-                    nbTracks: existing.nbTracks
-                )
+        // Merge server savedAlbums + local saved albums without duplicates (case-insensitive)
+        var rawEntries: [String] = []
+        var rawSeen = Set<String>()
+        for entry in (collections.savedAlbums + localSaved) {
+            let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let lower = trimmed.lowercased()
+            if rawSeen.insert(lower).inserted {
+                rawEntries.append(trimmed)
             }
         }
 
-        // 1. Gespeicherte Alben aus /api/state (savedAlbums)
-        let allKnownTracks = OfflineDownloadManager.shared.allDownloadedTracks()
+        // Known tracks ONLY used as cover lookup fallback for saved albums (NOT to dump extra albums)
+        let knownTracks = OfflineDownloadManager.shared.allDownloadedTracks()
             + collections.favorites
             + collections.globalTracks
             + collections.playlistTracksMap.values.flatMap { $0 }
-            + history
 
-        for rawEntry in collections.savedAlbums {
-            let trimmed = rawEntry.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            // Unterstuetzt sowohl "Album Name" als auch "Artist — Album" / IDs
+        let lowerCoverMap: [String: String] = Dictionary(
+            collections.albumCovers.map { ($0.key.lowercased(), $0.value) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var parsedAlbums: [DiscoveryAlbum] = []
+        var dedupKeys = Set<String>()
+
+        for rawEntry in rawEntries {
             let titlePart: String
             let artistPart: String
-            if let range = trimmed.range(of: " - ") {
-                artistPart = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-                titlePart = String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-            } else {
+            let targetAlbumId: String
+
+            if rawEntry.contains("::") {
+                let parts = rawEntry.components(separatedBy: "::")
+                titlePart = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? rawEntry
+                artistPart = parts.dropFirst().joined(separator: "::").trimmingCharacters(in: .whitespacesAndNewlines)
+                targetAlbumId = "search:\(titlePart) \(artistPart)".trimmingCharacters(in: .whitespaces)
+            } else if let range = rawEntry.range(of: " - ") {
+                artistPart = String(rawEntry[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                titlePart = String(rawEntry[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+                targetAlbumId = "search:\(titlePart) \(artistPart)".trimmingCharacters(in: .whitespaces)
+            } else if rawEntry.hasPrefix("apple_") || rawEntry.hasPrefix("dz_") || rawEntry.allSatisfy(\.isNumber) {
+                titlePart = rawEntry
                 artistPart = ""
-                titlePart = trimmed
+                targetAlbumId = rawEntry
+            } else {
+                titlePart = rawEntry
+                artistPart = ""
+                targetAlbumId = "search:\(titlePart)"
             }
-            let key = titlePart.lowercased()
-            if albumMap[key] == nil {
-                let matchingTrack = allKnownTracks.first { ($0.album?.lowercased() ?? "") == key }
-                albumMap[key] = DiscoveryAlbum(
-                    id: trimmed.hasPrefix("apple_") || trimmed.hasPrefix("dz_") ? trimmed : "search:\(titlePart) \(artistPart)",
-                    title: titlePart,
-                    artist: matchingTrack?.artist ?? artistPart,
-                    cover: matchingTrack?.coverUrl,
-                    nbTracks: nil
-                )
-                orderedKeys.append(key)
+
+            let dedupKey = "\(titlePart.lowercased())|\(artistPart.lowercased())"
+            guard dedupKeys.insert(dedupKey).inserted else { continue }
+
+            let mappedCover = collections.albumCovers[rawEntry] ?? lowerCoverMap[rawEntry.lowercased()]
+            let fallbackTrack = knownTracks.first {
+                ($0.album?.lowercased() ?? "") == titlePart.lowercased()
+                && (artistPart.isEmpty || $0.artist.lowercased().contains(artistPart.lowercased()))
             }
+
+            parsedAlbums.append(DiscoveryAlbum(
+                id: targetAlbumId,
+                title: titlePart,
+                artist: artistPart.isEmpty ? (fallbackTrack?.artist ?? "") : artistPart,
+                cover: (mappedCover?.isEmpty == false) ? mappedCover : fallbackTrack?.coverUrl,
+                nbTracks: nil
+            ))
         }
 
-        // 2. Alben aus Favoriten, Downloads, Playlists und Verlauf
-        for t in allKnownTracks {
-            registerTrackAlbum(t)
-        }
-
-        let initialList = orderedKeys.compactMap { albumMap[$0] }
         await MainActor.run {
-            self.albums = initialList
+            self.albums = parsedAlbums
             self.isLoading = false
+        }
+
+        // Enrich any saved album whose cover or title is missing via discovery album lookup
+        for item in parsedAlbums where (item.cover?.isEmpty ?? true) || item.id == item.title {
+            if let detail = await MusicService.shared.fetchAlbum(id: item.id, serverURL: serverURL, token: token) {
+                await MainActor.run {
+                    if let idx = self.albums.firstIndex(where: { $0.id == item.id }) {
+                        let existing = self.albums[idx]
+                        self.albums[idx] = DiscoveryAlbum(
+                            id: detail.id.isEmpty ? existing.id : detail.id,
+                            title: existing.title == existing.id && !detail.title.isEmpty ? detail.title : existing.title,
+                            artist: existing.artist.isEmpty ? detail.artist : existing.artist,
+                            cover: (detail.cover?.isEmpty == false) ? detail.cover : existing.cover,
+                            nbTracks: detail.nbTracks ?? existing.nbTracks
+                        )
+                    }
+                }
+            }
         }
     }
 }

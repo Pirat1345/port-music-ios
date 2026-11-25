@@ -144,29 +144,33 @@ public struct PlaylistDetailView: View {
     }
 
     // MARK: - Playlist Header Hero
+    private var derivedTrackCovers: [String] {
+        var seen = Set<String>()
+        var covers: [String] = []
+        for t in tracks {
+            guard let raw = t.coverUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !raw.isEmpty,
+                  !raw.contains("cover-1."),
+                  raw != "/default-cover.svg" else { continue }
+            if seen.insert(raw).inserted {
+                covers.append(raw)
+                if covers.count >= 4 { break }
+            }
+        }
+        return covers
+    }
+
     private var playlistHeaderHero: some View {
         VStack(spacing: 16) {
-            // Zentriertes Cover Artwork
-            ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(hex: "#1c1c1f"))
-                    .frame(width: 190, height: 190)
-
-                let resolved = resolveCoverURL(displayCover, serverURL: serverURL)
-                PortCachedAsyncImage(url: resolved) { img in
-                    img
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 190, height: 190)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                } placeholder: {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 48))
-                        .foregroundColor(Color.white.opacity(0.30))
-                }
-            }
+            // Zentriertes Cover Artwork (Custom, 2x2 Collage, Single Track oder zentriertes Icon)
+            PlaylistArtworkView(
+                coverUrl: displayCover,
+                trackCovers: derivedTrackCovers,
+                cornerRadius: 16,
+                iconSize: 52,
+                serverURL: serverURL
+            )
             .frame(width: 190, height: 190)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(Color.white.opacity(0.14), lineWidth: 1)
@@ -378,7 +382,7 @@ public struct PlaylistDetailView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 36))
-                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .foregroundColor(.white.opacity(0.65))
                     Text(error)
                         .font(.system(size: 14))
                         .foregroundColor(Color.white.opacity(0.70))

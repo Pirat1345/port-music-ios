@@ -156,7 +156,8 @@ public struct FolderCoverView: View {
                                     .fill(Color(hex: "#1f1f25"))
                                     .frame(width: cardSize, height: cardSize)
 
-                                PortCachedAsyncImage(url: resolveCoverURL(pl.cover, serverURL: serverURL)) { img in
+                                let fallbackCov = !pl.cover.isEmpty ? pl.cover : (pl.trackCovers?.first ?? "")
+                                PortCachedAsyncImage(url: resolveCoverURL(fallbackCov, serverURL: serverURL)) { img in
                                     img
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)

@@ -414,7 +414,7 @@ public struct MainTabView: View {
             selectedTab = targetItem
         }
         .preferredColorScheme(.dark)
-        .tint(Color(hex: "#fc3c44"))
+        .tint(.white)
         .task {
             await player.syncLastPlayedFromServerIfNeeded(serverURL: serverURL, token: SessionManager.shared.currentToken)
             await SessionManager.shared.refreshUserProfile()
@@ -835,12 +835,12 @@ struct NavbarSettingsSheet: View {
             List {
                 Section(header: Text("Anzeigevariante").foregroundColor(.white.opacity(0.60))) {
                     Toggle("Nur Icons anzeigen (ohne Text)", isOn: $localIconsOnly)
-                        .tint(Color(hex: "#fc3c44"))
+                        .tint(.white)
                 }
 
                 Section(header: Text("Scroll-Verhalten").foregroundColor(.white.opacity(0.60))) {
                     Toggle("Beim Scrollen minimieren", isOn: $localScrollMinimize)
-                        .tint(Color(hex: "#fc3c44"))
+                        .tint(.white)
                     Text("Schrumpft die Leiste beim Scrollen nach unten wie in Octave in zwei Kreise und dockt die Minibar direkt dazwischen ein.")
                         .font(.system(size: 12))
                         .foregroundColor(Color.white.opacity(0.50))
@@ -861,7 +861,7 @@ struct NavbarSettingsSheet: View {
                             }) {
                                 Text(editMode == .active ? "Fertig" : "Bearbeiten")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .foregroundColor(.white)
                                     .textCase(nil)
                             }
                         },
@@ -879,7 +879,7 @@ struct NavbarSettingsSheet: View {
                             // 1. Tab Icon
                             Image(systemName: tab.iconName(isSelected: true))
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .foregroundColor(.white)
                                 .frame(width: 26)
 
                             // 2. Tab Titel
@@ -894,7 +894,7 @@ struct NavbarSettingsSheet: View {
                                 Button(action: { toggleTab(tab) }) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 22))
-                                        .foregroundColor(Color(hex: "#fc3c44"))
+                                        .foregroundColor(.white)
                                         .frame(width: 32, height: 32)
                                         .contentShape(Rectangle())
                                 }
@@ -953,7 +953,7 @@ struct NavbarSettingsSheet: View {
                             HStack {
                                 Spacer()
                                 Text("Standard-Reihenfolge wiederherstellen")
-                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .foregroundColor(.white)
                                     .font(.system(size: 14, weight: .semibold))
                                 Spacer()
                             }
@@ -970,7 +970,7 @@ struct NavbarSettingsSheet: View {
                         commitChanges()
                         dismiss()
                     }
-                    .foregroundColor(Color(hex: "#fc3c44"))
+                    .foregroundColor(.white)
                 }
             }
             .onAppear {

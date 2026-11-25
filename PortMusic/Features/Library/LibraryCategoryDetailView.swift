@@ -57,6 +57,7 @@ public struct LibraryCategoryDetailView: View {
         case "playlists", "Playlists", "Wiedergabelisten": return "playlists"
         case "artists", "Artists", "Künstler": return "artists"
         case "albums", "Albums", "Alben": return "albums"
+        case "podcasts", "Podcasts": return "podcasts"
         case "radio", "Radio": return "radio"
         case "songs", "Songs", "Titel": return "songs"
         case "downloaded", "Downloads", "Heruntergeladen": return "downloaded"
@@ -71,6 +72,7 @@ public struct LibraryCategoryDetailView: View {
         case "playlists": return "Playlists"
         case "artists": return "Künstler"
         case "albums": return "Alben"
+        case "podcasts": return "Podcasts"
         case "radio": return "Radio"
         case "songs": return "Songs"
         case "downloaded": return "Heruntergeladen"
@@ -86,6 +88,10 @@ public struct LibraryCategoryDetailView: View {
 
             if normalizedCategory == "radio" {
                 LibraryRadioView(serverURL: serverURL)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+            } else if normalizedCategory == "podcasts" {
+                LibraryPodcastsView(serverURL: serverURL)
                     .padding(.horizontal, 20)
                     .padding(.top, 14)
             } else if normalizedCategory == "local-files" {
@@ -270,7 +276,7 @@ public struct LibraryCategoryDetailView: View {
                             HStack(spacing: 5) {
                                 Image(systemName: "music.note.list")
                                     .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .foregroundColor(.white)
                                 Text("Playlists")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(Color.white.opacity(0.75))
@@ -297,7 +303,7 @@ public struct LibraryCategoryDetailView: View {
                                 HStack(spacing: 5) {
                                     Image(systemName: isLast ? "folder.fill" : "folder")
                                         .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(Color(hex: "#fc3c44"))
+                                        .foregroundColor(.white)
                                     Text(crumb.name)
                                         .font(.system(size: 13, weight: isLast ? .bold : .medium))
                                         .foregroundColor(isLast ? .white : Color.white.opacity(0.75))
@@ -509,23 +515,15 @@ public struct LibraryCategoryDetailView: View {
                             coverUrl: pl.cover
                         )) {
                             VStack(alignment: .leading, spacing: 6) {
-                                ZStack(alignment: .topTrailing) {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color(hex: "#18181b"))
-                                        .aspectRatio(1, contentMode: .fit)
-
-                                    let resolved = resolveCoverURL(pl.cover, serverURL: serverURL)
-                                    PortCachedAsyncImage(url: resolved) { img in
-                                        img
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    } placeholder: {
-                                        Image(systemName: "music.note.list")
-                                            .font(.system(size: 32))
-                                            .foregroundColor(Color.white.opacity(0.25))
-                                    }
-
+                                PlaylistArtworkView(
+                                    coverUrl: pl.cover,
+                                    trackCovers: pl.trackCovers,
+                                    cornerRadius: 12,
+                                    iconSize: 34,
+                                    serverURL: serverURL
+                                )
+                                .aspectRatio(1, contentMode: .fit)
+                                .overlay(alignment: .topTrailing) {
                                     if pinnedIds.contains(pl.id) {
                                         Image(systemName: "pin.fill")
                                             .font(.system(size: 11, weight: .bold))
@@ -536,8 +534,6 @@ public struct LibraryCategoryDetailView: View {
                                             .padding(8)
                                     }
                                 }
-                                .aspectRatio(1, contentMode: .fit)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(Color.white.opacity(0.12), lineWidth: 1)
@@ -549,7 +545,7 @@ public struct LibraryCategoryDetailView: View {
                                     .foregroundColor(.white)
                                     .lineLimit(1)
 
-                                let count = pl.nbTracks.map { "\($0) Songs" } ?? "Playlist"
+                                let count = pl.nbTracks.map { "\(String($0)) Songs" } ?? "Playlist"
                                 Text(count)
                                     .font(.system(size: 12))
                                     .foregroundColor(Color(hex: "#a0a0a0"))
@@ -835,13 +831,20 @@ public struct LibraryCategoryDetailView: View {
             } else {
                 var enriched = userPls.map { pl -> DiscoveryPlaylist in
                     if let st = stateById[pl.id] {
+                        let mergedTrackCovers: [String]?
+                        if let existingTc = pl.trackCovers, !existingTc.isEmpty {
+                            mergedTrackCovers = existingTc
+                        } else {
+                            mergedTrackCovers = st.trackCovers
+                        }
                         return DiscoveryPlaylist(
                             id: pl.id,
                             title: pl.title,
                             cover: pl.cover.isEmpty ? st.cover : pl.cover,
                             nbTracks: pl.nbTracks ?? st.nbTracks,
                             user: pl.user ?? st.user,
-                            folderId: pl.folderId ?? st.folderId
+                            folderId: pl.folderId ?? st.folderId,
+                            trackCovers: mergedTrackCovers
                         )
                     }
                     return pl
@@ -860,29 +863,19 @@ public struct LibraryCategoryDetailView: View {
             }
 
         case "artists":
-            async let colTask = MusicService.shared.fetchLibraryCollections(serverURL: serverURL, token: token)
-            async let favTask = MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
-            let (collections, favs) = await (colTask, favTask)
+            // Wie Web LibraryArtistsPage: NUR explizit gefolgte Künstler anzeigen (keine Song/Verlauf-Verschmutzung)
+            let collections = await MusicService.shared.fetchLibraryCollections(serverURL: serverURL, token: token)
+            let localSaved = UserDefaults.standard.stringArray(forKey: "port_music_saved_artists") ?? []
 
             var artistList: [DiscoveryArtist] = []
             var seen = Set<String>()
-            let allLibraryTracks = collections.favorites + favs + collections.globalTracks + collections.playlistTracksMap.values.flatMap { $0 }
 
-            func addArtistName(_ rawName: String, preferredCover: String? = nil) {
+            for rawName in (collections.savedArtists + localSaved) {
                 let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !name.isEmpty, name.lowercased() != "unbekannter interpret" else { return }
+                guard !name.isEmpty, name.lowercased() != "unbekannter interpret" else { continue }
                 let key = name.lowercased()
-                guard !seen.contains(key) else { return }
-                seen.insert(key)
-                let fallbackCover = preferredCover ?? allLibraryTracks.first(where: { $0.artist.lowercased() == key })?.coverUrl
-                artistList.append(DiscoveryArtist(id: "art_\(key.hashValue)", name: name, picture: fallbackCover, nbFan: nil))
-            }
-
-            for savedName in collections.savedArtists {
-                addArtistName(savedName)
-            }
-            for tr in allLibraryTracks {
-                addArtistName(tr.artist, preferredCover: tr.coverUrl)
+                guard seen.insert(key).inserted else { continue }
+                artistList.append(DiscoveryArtist(id: "art_\(key)", name: name, picture: nil, nbFan: nil))
             }
 
             await MainActor.run {
@@ -890,15 +883,36 @@ public struct LibraryCategoryDetailView: View {
                 self.isLoading = false
             }
 
-            // Enrich missing artist portraits via discovery artist endpoint
-            let needCover = artistList.prefix(12).filter { ($0.picture?.isEmpty ?? true) }
-            for art in needCover {
-                if let detail = await MusicService.shared.fetchArtist(name: art.name, serverURL: serverURL, token: token),
-                   let pic = detail.picture, !pic.isEmpty {
+            if !artistList.isEmpty {
+                // Batch lookup über /api/artists/lookup-batch (sofortige Profilbilder wie im Web)
+                let batchMap = await MusicService.shared.lookupArtistImagesBatch(
+                    names: artistList.map(\.name),
+                    serverURL: serverURL,
+                    token: token
+                )
+                if !batchMap.isEmpty {
                     await MainActor.run {
-                        if let idx = self.artists.firstIndex(where: { $0.name.lowercased() == art.name.lowercased() }) {
-                            let existing = self.artists[idx]
-                            self.artists[idx] = DiscoveryArtist(id: existing.id, name: existing.name, picture: pic, nbFan: detail.nbFan)
+                        self.artists = self.artists.map { existing in
+                            if let pic = batchMap[existing.name.lowercased()], !pic.isEmpty {
+                                return DiscoveryArtist(id: existing.id, name: existing.name, picture: pic, nbFan: existing.nbFan)
+                            }
+                            return existing
+                        }
+                    }
+                }
+
+                // Fallback für noch fehlende Künstlerbilder über /api/discovery/artist/:name
+                let stillMissing = await MainActor.run {
+                    self.artists.filter { ($0.picture?.isEmpty ?? true) }.prefix(24)
+                }
+                for art in stillMissing {
+                    if let detail = await MusicService.shared.fetchArtist(name: art.name, serverURL: serverURL, token: token),
+                       let pic = detail.picture, !pic.isEmpty {
+                        await MainActor.run {
+                            if let idx = self.artists.firstIndex(where: { $0.name.lowercased() == art.name.lowercased() }) {
+                                let existing = self.artists[idx]
+                                self.artists[idx] = DiscoveryArtist(id: existing.id, name: existing.name, picture: pic, nbFan: detail.nbFan)
+                            }
                         }
                     }
                 }

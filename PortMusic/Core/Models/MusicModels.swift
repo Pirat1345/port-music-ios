@@ -476,6 +476,7 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
     public let nbTracks: Int?
     public let user: String?
     public let folderId: String?
+    public let trackCovers: [String]?
 
     public init(
         id: String,
@@ -483,7 +484,8 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
         cover: String = "",
         nbTracks: Int? = nil,
         user: String? = nil,
-        folderId: String? = nil
+        folderId: String? = nil,
+        trackCovers: [String]? = nil
     ) {
         self.id = id
         self.title = title
@@ -491,6 +493,7 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
         self.nbTracks = nbTracks
         self.user = user
         self.folderId = folderId
+        self.trackCovers = trackCovers
     }
 
     enum CodingKeys: String, CodingKey {
@@ -505,6 +508,7 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
         case owner = "owner_id"
         case folderId
         case folderIdSnake = "folder_id"
+        case trackCovers
     }
 
     public init(from decoder: Decoder) throws {
@@ -544,6 +548,7 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
 
         self.folderId = (try? container.decodeIfPresent(String.self, forKey: .folderId))
             ?? (try? container.decodeIfPresent(String.self, forKey: .folderIdSnake))
+        self.trackCovers = try? container.decodeIfPresent([String].self, forKey: .trackCovers)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -554,6 +559,7 @@ public struct DiscoveryPlaylist: Codable, Identifiable {
         try container.encodeIfPresent(nbTracks, forKey: .nbTracks)
         try container.encodeIfPresent(user, forKey: .user)
         try container.encodeIfPresent(folderId, forKey: .folderId)
+        try container.encodeIfPresent(trackCovers, forKey: .trackCovers)
     }
 }
 
@@ -1309,6 +1315,7 @@ public struct LibraryCollectionsData {
     public var folders: [LibraryFolder]
     public var savedArtists: [String]
     public var savedAlbums: [String]
+    public var albumCovers: [String: String]
     public var pinnedPlaylists: [String]
     public var pinnedFolders: [String]
     public var playlistTracksMap: [String: [Track]]
@@ -1320,6 +1327,7 @@ public struct LibraryCollectionsData {
         folders: [LibraryFolder] = [],
         savedArtists: [String] = [],
         savedAlbums: [String] = [],
+        albumCovers: [String: String] = [:],
         pinnedPlaylists: [String] = [],
         pinnedFolders: [String] = [],
         playlistTracksMap: [String: [Track]] = [:],
@@ -1330,11 +1338,133 @@ public struct LibraryCollectionsData {
         self.folders = folders
         self.savedArtists = savedArtists
         self.savedAlbums = savedAlbums
+        self.albumCovers = albumCovers
         self.pinnedPlaylists = pinnedPlaylists
         self.pinnedFolders = pinnedFolders
         self.playlistTracksMap = playlistTracksMap
         self.favorites = favorites
         self.globalTracks = globalTracks
+    }
+}
+
+// MARK: - Podcast Models (/api/podcasts/*)
+public struct PodcastItem: Codable, Identifiable, Equatable, Hashable {
+    public let id: String
+    public let title: String
+    public let artist: String
+    public let feedUrl: String
+    public let cover: String
+    public let genres: [String]
+    public let trackCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, artist, feedUrl, feed_url, cover, genres, trackCount, track_count
+    }
+
+    public init(
+        id: String,
+        title: String,
+        artist: String = "",
+        feedUrl: String = "",
+        cover: String = "",
+        genres: [String] = [],
+        trackCount: Int? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.feedUrl = feedUrl
+        self.cover = cover
+        self.genres = genres
+        self.trackCount = trackCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.title = (try? c.decode(String.self, forKey: .title)) ?? "Podcast"
+        self.artist = (try? c.decode(String.self, forKey: .artist)) ?? ""
+        self.feedUrl = (try? c.decodeIfPresent(String.self, forKey: .feedUrl))
+            ?? (try? c.decodeIfPresent(String.self, forKey: .feed_url))
+            ?? ""
+        self.cover = (try? c.decode(String.self, forKey: .cover)) ?? ""
+        self.genres = (try? c.decodeIfPresent([String].self, forKey: .genres)) ?? []
+        self.trackCount = (try? c.decodeIfPresent(Int.self, forKey: .trackCount))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: .track_count))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(title, forKey: .title)
+        try c.encode(artist, forKey: .artist)
+        try c.encode(feedUrl, forKey: .feedUrl)
+        try c.encode(cover, forKey: .cover)
+        try c.encode(genres, forKey: .genres)
+        try c.encodeIfPresent(trackCount, forKey: .trackCount)
+    }
+}
+
+public struct PodcastEpisodeItem: Codable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let description: String
+    public let publishedAt: String
+    public let durationSeconds: Int
+    public let audioUrl: String
+    public let cover: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, description
+        case publishedAt, published_at
+        case durationSeconds, duration_seconds
+        case audioUrl, audio_url
+        case cover
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.title = (try? c.decode(String.self, forKey: .title)) ?? "Folge"
+        self.description = (try? c.decode(String.self, forKey: .description)) ?? ""
+        self.publishedAt = (try? c.decodeIfPresent(String.self, forKey: .publishedAt))
+            ?? (try? c.decodeIfPresent(String.self, forKey: .published_at))
+            ?? ""
+        self.durationSeconds = (try? c.decodeIfPresent(Int.self, forKey: .durationSeconds))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: .duration_seconds))
+            ?? 0
+        self.audioUrl = (try? c.decodeIfPresent(String.self, forKey: .audioUrl))
+            ?? (try? c.decodeIfPresent(String.self, forKey: .audio_url))
+            ?? ""
+        self.cover = try? c.decodeIfPresent(String.self, forKey: .cover)
+    }
+}
+
+public struct PodcastFeedDetail: Codable {
+    public let id: String
+    public let title: String
+    public let author: String
+    public let description: String
+    public let cover: String
+    public let feedUrl: String
+    public let episodes: [PodcastEpisodeItem]
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, author, description, cover
+        case feedUrl, feed_url, episodes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? c.decode(String.self, forKey: .id)) ?? ""
+        self.title = (try? c.decode(String.self, forKey: .title)) ?? "Podcast"
+        self.author = (try? c.decode(String.self, forKey: .author)) ?? ""
+        self.description = (try? c.decode(String.self, forKey: .description)) ?? ""
+        self.cover = (try? c.decode(String.self, forKey: .cover)) ?? ""
+        self.feedUrl = (try? c.decodeIfPresent(String.self, forKey: .feedUrl))
+            ?? (try? c.decodeIfPresent(String.self, forKey: .feed_url))
+            ?? ""
+        self.episodes = (try? c.decodeIfPresent([PodcastEpisodeItem].self, forKey: .episodes)) ?? []
     }
 }
 

@@ -50,7 +50,7 @@ public struct RadioBrowserView: View {
                         Button("Erneut versuchen") {
                             Task { await loadStations() }
                         }
-                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .foregroundColor(.white)
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else {

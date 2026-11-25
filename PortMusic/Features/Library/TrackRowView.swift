@@ -3,9 +3,9 @@ import SwiftUI
 // MARK: - Animated Equalizer Bars Live Indicator
 public struct EqualizerBarsView: View {
     @State private var isAnimating: Bool = false
-    public var color: Color = Color(hex: "#fc3c44")
+    public var color: Color = .white
 
-    public init(color: Color = Color(hex: "#fc3c44")) {
+    public init(color: Color = .white) {
         self.color = color
     }
 
@@ -99,9 +99,9 @@ public struct TrackRowView: View {
         HStack(spacing: 12) {
             // Optional: Track Index Number (fuer Alben / Playlists)
             if showTrackNumber, let idx = index {
-                Text("\(idx + 1)")
+                Text(String(idx + 1))
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : Color.white.opacity(0.40))
+                    .foregroundColor(isPlayingThis ? .white : Color.white.opacity(0.40))
                     .frame(width: 24, alignment: .center)
             }
 
@@ -207,11 +207,11 @@ public struct TrackRowView: View {
                         .frame(width: 44, height: 44)
 
                     if player.isPlaying {
-                        EqualizerBarsView(color: Color(hex: "#fc3c44"))
+                        EqualizerBarsView(color: .white)
                     } else {
                         Image(systemName: "pause.fill")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Color(hex: "#fc3c44"))
+                            .foregroundColor(.white)
                     }
                 }
             }
@@ -231,7 +231,7 @@ public struct TrackRowView: View {
             HStack(spacing: 5) {
                 Text(track.title)
                     .font(.system(size: 14, weight: isPlayingThis ? .bold : .medium))
-                    .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
+                    .foregroundColor(.white)
                     .lineLimit(1)
 
                 if track.isExplicit {

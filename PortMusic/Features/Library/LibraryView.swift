@@ -27,6 +27,9 @@ public struct LibraryView: View {
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var showImportPlaylistSheet: Bool = false
     @State private var isEditingCategories: Bool = false
+    @State private var draggingCategoryId: String? = nil
+    @State private var dragRawTranslationY: CGFloat = 0
+    @State private var accumulatedSwapOffsetY: CGFloat = 0
     @State private var categoriesConfig: [LibraryCategoryConfig] = LibraryView.defaultCategories()
 
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
@@ -41,8 +44,9 @@ public struct LibraryView: View {
     private static func defaultCategories() -> [LibraryCategoryConfig] {
         [
             LibraryCategoryConfig(id: "playlists", label: "Playlists", iconName: "music.note.list", visible: true),
-            LibraryCategoryConfig(id: "artists", label: "Künstler", iconName: "mic.fill", visible: true),
+            LibraryCategoryConfig(id: "artists", label: "Künstler", iconName: "music.mic", visible: true),
             LibraryCategoryConfig(id: "albums", label: "Alben", iconName: "square.stack.fill", visible: true),
+            LibraryCategoryConfig(id: "podcasts", label: "Podcasts", iconName: "mic.fill", visible: true),
             LibraryCategoryConfig(id: "radio", label: "Radio", iconName: "dot.radiowaves.left.and.right", visible: true),
             LibraryCategoryConfig(id: "songs", label: "Songs", iconName: "music.note", visible: true),
             LibraryCategoryConfig(id: "downloaded", label: "Heruntergeladen", iconName: "arrow.down.circle.fill", visible: true),
@@ -66,7 +70,11 @@ public struct LibraryView: View {
             }
         }
         for def in defaults where !result.contains(where: { $0.id == def.id }) {
-            result.append(def)
+            if def.id == "podcasts", let albumsIdx = result.firstIndex(where: { $0.id == "albums" }) {
+                result.insert(def, at: albumsIdx + 1)
+            } else {
+                result.append(def)
+            }
         }
         return result
     }
@@ -319,26 +327,14 @@ public struct LibraryView: View {
             coverUrl: pl.cover
         )) {
             VStack(alignment: .leading, spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(hex: "#18181b"))
-                        .frame(width: 156, height: 156)
-
-                    let resolved = resolveCoverURL(pl.cover, serverURL: serverURL)
-                    PortCachedAsyncImage(url: resolved) { img in
-                        img
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 156, height: 156)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    } placeholder: {
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 36))
-                            .foregroundColor(Color.white.opacity(0.28))
-                    }
-                }
+                PlaylistArtworkView(
+                    coverUrl: pl.cover,
+                    trackCovers: pl.trackCovers,
+                    cornerRadius: 12,
+                    iconSize: 38,
+                    serverURL: serverURL
+                )
                 .frame(width: 156, height: 156)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.white.opacity(0.10), lineWidth: 1)
@@ -350,7 +346,7 @@ public struct LibraryView: View {
                     .foregroundColor(.white)
                     .lineLimit(1)
 
-                let countLabel = pl.nbTracks.map { "\($0) Titel" } ?? (pl.user ?? "Port Music")
+                let countLabel = pl.nbTracks.map { "\(String($0)) Titel" } ?? (pl.user ?? "Port Music")
                 Text(countLabel)
                     .font(.system(size: 12))
                     .foregroundColor(Color(hex: "#a0a0a0"))
@@ -365,9 +361,7 @@ public struct LibraryView: View {
     private var categoryLinksSection: some View {
         let visibleCats = categoriesConfig.filter { $0.visible }
         let hiddenCats = categoriesConfig.filter { !$0.visible }
-        let rowHeight: CGFloat = 50
-        let listHeight = CGFloat(visibleCats.count) * rowHeight
-            + (hiddenCats.isEmpty ? 0 : (CGFloat(hiddenCats.count) * rowHeight + 40))
+        let rowHeight: CGFloat = 52
 
         return VStack(alignment: .leading, spacing: 8) {
             // Rechts über der obersten Option ("Playlists"): Bearbeiten <-> Fertig
@@ -376,6 +370,9 @@ public struct LibraryView: View {
                     Button(action: {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                            draggingCategoryId = nil
+                            dragRawTranslationY = 0
+                            accumulatedSwapOffsetY = 0
                             let defaults = Self.defaultCategories()
                             categoriesConfig = defaults
                             persistCategories(defaults)
@@ -383,7 +380,7 @@ public struct LibraryView: View {
                     }) {
                         Text("Zurücksetzen")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.55))
+                            .foregroundColor(Color.white.opacity(0.60))
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -393,35 +390,44 @@ public struct LibraryView: View {
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                        draggingCategoryId = nil
+                        dragRawTranslationY = 0
+                        accumulatedSwapOffsetY = 0
                         isEditingCategories.toggle()
                     }
                 }) {
                     Text(isEditingCategories ? "Fertig" : "Bearbeiten")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .foregroundColor(.white)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, 4)
 
             if isEditingCategories {
-                List {
-                    Section {
-                        ForEach(visibleCats) { cat in
+                VStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
+                            let isDragging = draggingCategoryId == cat.id
                             HStack(spacing: 12) {
                                 Button(action: {
                                     toggleCategoryInline(cat)
                                 }) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 21))
-                                        .foregroundColor(Color(hex: "#fc3c44"))
-                                        .frame(width: 28, height: 28)
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.white)
+                                            .frame(width: 22, height: 22)
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.black)
+                                    }
+                                    .frame(width: 28, height: 28)
                                 }
                                 .buttonStyle(.plain)
 
                                 Image(systemName: cat.iconName)
                                     .font(.system(size: 17, weight: .medium))
-                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .foregroundColor(.white)
                                     .frame(width: 24, alignment: .center)
 
                                 Text(cat.label)
@@ -429,28 +435,88 @@ public struct LibraryView: View {
                                     .foregroundColor(.white)
 
                                 Spacer()
+
+                                // Immer sichtbares 3-Striche Drag-Handle rechts
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(isDragging ? .white : Color.white.opacity(0.45))
+                                    .frame(width: 44, height: rowHeight)
+                                    .contentShape(Rectangle())
+                                    .gesture(
+                                        DragGesture(minimumDistance: 2)
+                                            .onChanged { value in
+                                                if draggingCategoryId == nil {
+                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                    draggingCategoryId = cat.id
+                                                    accumulatedSwapOffsetY = 0
+                                                }
+                                                dragRawTranslationY = value.translation.height
+                                                let currentDelta = dragRawTranslationY - accumulatedSwapOffsetY
+                                                let currentVisible = categoriesConfig.filter { $0.visible }
+                                                let currentHidden = categoriesConfig.filter { !$0.visible }
+                                                guard let curIdx = currentVisible.firstIndex(where: { $0.id == cat.id }) else { return }
+
+                                                if currentDelta > rowHeight * 0.55, curIdx < currentVisible.count - 1 {
+                                                    var reordered = currentVisible
+                                                    reordered.swapAt(curIdx, curIdx + 1)
+                                                    UISelectionFeedbackGenerator().selectionChanged()
+                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
+                                                        accumulatedSwapOffsetY += rowHeight
+                                                        categoriesConfig = reordered + currentHidden
+                                                    }
+                                                } else if currentDelta < -rowHeight * 0.55, curIdx > 0 {
+                                                    var reordered = currentVisible
+                                                    reordered.swapAt(curIdx, curIdx - 1)
+                                                    UISelectionFeedbackGenerator().selectionChanged()
+                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
+                                                        accumulatedSwapOffsetY -= rowHeight
+                                                        categoriesConfig = reordered + currentHidden
+                                                    }
+                                                }
+                                            }
+                                            .onEnded { _ in
+                                                withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                                                    draggingCategoryId = nil
+                                                    dragRawTranslationY = 0
+                                                    accumulatedSwapOffsetY = 0
+                                                }
+                                                persistCategories(categoriesConfig)
+                                            }
+                                    )
                             }
                             .frame(height: rowHeight)
-                            .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14))
-                            .listRowBackground(Color.white.opacity(0.04))
-                            .listRowSeparatorTint(Color.white.opacity(0.08))
-                            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                        .onMove { indices, newOffset in
-                            var updatedVisible = visibleCats
-                            updatedVisible.move(fromOffsets: indices, toOffset: newOffset)
-                            categoriesConfig = updatedVisible + hiddenCats
-                            persistCategories(categoriesConfig)
+                            .padding(.leading, 14)
+                            .padding(.trailing, 4)
+                            .background(isDragging ? Color.white.opacity(0.10) : Color.clear)
+                            .overlay(alignment: .bottom) {
+                                if index < visibleCats.count - 1 && !isDragging {
+                                    Rectangle()
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(height: 0.5)
+                                        .padding(.leading, 52)
+                                }
+                            }
+                            .scaleEffect(isDragging ? 1.02 : 1.0)
+                            .offset(y: isDragging ? (dragRawTranslationY - accumulatedSwapOffsetY) : 0)
+                            .zIndex(isDragging ? 10 : 0)
                         }
                     }
 
                     if !hiddenCats.isEmpty {
-                        Section(
-                            header: Text("Weitere Optionen")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.50))
-                        ) {
-                            ForEach(hiddenCats) { cat in
+                        VStack(alignment: .leading, spacing: 0) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.10))
+                                .frame(height: 0.5)
+
+                            Text("WEITERE OPTIONEN")
+                                .font(.system(size: 11, weight: .semibold))
+                                .tracking(0.6)
+                                .foregroundColor(Color.white.opacity(0.45))
+                                .padding(.horizontal, 14)
+                                .padding(.top, 14)
+                                .padding(.bottom, 6)
+
+                            ForEach(Array(hiddenCats.enumerated()), id: \.element.id) { index, cat in
                                 HStack(spacing: 12) {
                                     Button(action: {
                                         toggleCategoryInline(cat)
@@ -464,33 +530,33 @@ public struct LibraryView: View {
 
                                     Image(systemName: cat.iconName)
                                         .font(.system(size: 17))
-                                        .foregroundColor(.white.opacity(0.45))
+                                        .foregroundColor(Color.white.opacity(0.45))
                                         .frame(width: 24, alignment: .center)
 
                                     Text(cat.label)
                                         .font(.system(size: 16))
-                                        .foregroundColor(.white.opacity(0.65))
+                                        .foregroundColor(Color.white.opacity(0.65))
 
                                     Spacer()
                                 }
                                 .frame(height: rowHeight)
-                                .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14))
-                                .listRowBackground(Color.white.opacity(0.03))
-                                .listRowSeparatorTint(Color.white.opacity(0.08))
+                                .padding(.horizontal, 14)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     toggleCategoryInline(cat)
+                                }
+                                .overlay(alignment: .bottom) {
+                                    if index < hiddenCats.count - 1 {
+                                        Rectangle()
+                                            .fill(Color.white.opacity(0.08))
+                                            .frame(height: 0.5)
+                                            .padding(.leading, 52)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .scrollDisabled(true)
-                .environment(\.editMode, .constant(.active))
-                .environment(\.defaultMinListRowHeight, rowHeight)
-                .frame(height: listHeight)
                 .background(Color.white.opacity(0.04))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(
@@ -504,7 +570,7 @@ public struct LibraryView: View {
                             HStack(spacing: 14) {
                                 Image(systemName: cat.iconName)
                                     .font(.system(size: 18, weight: .medium))
-                                    .foregroundColor(Color(hex: "#fc3c44"))
+                                    .foregroundColor(.white)
                                     .frame(width: 24, alignment: .center)
 
                                 Text(cat.label)
@@ -514,7 +580,7 @@ public struct LibraryView: View {
                                 Spacer()
 
                                 if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
-                                    Text("\(offlineManager.downloadedTrackIds.count)")
+                                    Text(String(offlineManager.downloadedTrackIds.count))
                                         .font(.system(size: 13))
                                         .foregroundColor(Color.white.opacity(0.45))
                                 }
@@ -624,22 +690,14 @@ public struct LibraryView: View {
                             coverUrl: pl.cover
                         )) {
                             HStack(spacing: 12) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(hex: "#18181b"))
-                                        .frame(width: 52, height: 52)
-                                    PortCachedAsyncImage(url: resolveCoverURL(pl.cover, serverURL: serverURL)) { img in
-                                        img
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 52, height: 52)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    } placeholder: {
-                                        Image(systemName: "music.note.list")
-                                            .font(.system(size: 18))
-                                            .foregroundColor(Color.white.opacity(0.30))
-                                    }
-                                }
+                                PlaylistArtworkView(
+                                    coverUrl: pl.cover,
+                                    trackCovers: pl.trackCovers,
+                                    cornerRadius: 8,
+                                    iconSize: 20,
+                                    serverURL: serverURL
+                                )
+                                .frame(width: 52, height: 52)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
                                         .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
@@ -650,7 +708,7 @@ public struct LibraryView: View {
                                         .font(.system(size: 15, weight: .semibold))
                                         .foregroundColor(.white)
                                         .lineLimit(1)
-                                    let countStr = pl.nbTracks.map { "\($0) Titel" } ?? (pl.user ?? "Port Music")
+                                    let countStr = pl.nbTracks.map { "\(String($0)) Titel" } ?? (pl.user ?? "Port Music")
                                     Text(countStr)
                                         .font(.system(size: 12))
                                         .foregroundColor(Color(hex: "#a0a0a0"))
@@ -811,7 +869,7 @@ public struct LibraryView: View {
                         .frame(width: 48, height: 48)
                     Image(systemName: "waveform")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Color(hex: "#fc3c44"))
+                        .foregroundColor(.white)
                 }
             }
             .overlay(
@@ -822,7 +880,7 @@ public struct LibraryView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
+                    .foregroundColor(.white)
                     .lineLimit(1)
 
                 HStack(spacing: 4) {

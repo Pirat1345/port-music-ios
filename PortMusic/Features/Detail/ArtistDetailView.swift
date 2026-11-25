@@ -203,7 +203,7 @@ public struct ArtistDetailView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
-                        // ── HERO BANNER HEADER ──
+                        // ── HERO BANNER HEADER (Randlos bis ganz nach oben) ──
                         heroBannerHeader(scrollProxy: scrollProxy)
 
                         // ── CONTENT SECTIONS ──
@@ -274,13 +274,15 @@ public struct ArtistDetailView: View {
                         Spacer(minLength: 130)
                     }
                 }
+                .ignoresSafeArea(edges: .top)
                 .refreshable {
                     await loadArtistData()
                 }
             }
         }
-        .navigationTitle(displayName)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .preferredColorScheme(.dark)
         .tint(.white)
         .task(id: artistName) {
@@ -309,12 +311,21 @@ public struct ArtistDetailView: View {
         }
     }
 
-    // MARK: - Hero Banner Header (Octave Aesthetic)
+    // MARK: - Hero Banner Header (Octave Full-Bleed Top + Serif Font)
+    private var topSafeAreaInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?.safeAreaInsets.top ?? 54
+    }
+
     private func heroBannerHeader(scrollProxy: ScrollViewProxy) -> some View {
-        ZStack(alignment: .bottomLeading) {
+        let heroHeight: CGFloat = 340 + topSafeAreaInset
+
+        return ZStack(alignment: .bottom) {
             GeometryReader { geo in
                 let width = geo.size.width
-                let height = max(geo.size.height, 310)
+                let height = max(geo.size.height, heroHeight)
 
                 ZStack {
                     Color(hex: "#121214")
@@ -324,7 +335,7 @@ public struct ArtistDetailView: View {
                             img
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: width, height: height)
+                                .frame(width: width, height: height, alignment: .top)
                                 .clipped()
                         } placeholder: {
                             Color(hex: "#18181b")
@@ -337,13 +348,13 @@ public struct ArtistDetailView: View {
                         )
                     }
 
-                    // Sanfter Octave-Gradient nach Schwarz
+                    // Sanfter Octave-Gradient von oben und unten nach reinem Schwarz
                     LinearGradient(
                         stops: [
-                            .init(color: Color.black.opacity(0.18), location: 0.0),
-                            .init(color: Color.black.opacity(0.12), location: 0.28),
-                            .init(color: Color.black.opacity(0.65), location: 0.65),
-                            .init(color: Color.black.opacity(0.92), location: 0.88),
+                            .init(color: Color.black.opacity(0.32), location: 0.0),
+                            .init(color: Color.black.opacity(0.06), location: 0.25),
+                            .init(color: Color.black.opacity(0.28), location: 0.55),
+                            .init(color: Color.black.opacity(0.84), location: 0.86),
                             .init(color: Color.black, location: 1.0)
                         ],
                         startPoint: .top,
@@ -351,32 +362,46 @@ public struct ArtistDetailView: View {
                     )
                 }
             }
-            .frame(height: 320)
+            .frame(height: heroHeight)
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color(hex: "#3b82f6"))
-                    Text((artistData?.artistType ?? "").lowercased() == "group" ? "Verifizierte Band" : "Verifizierter Künstler")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.88))
-                }
-
+            VStack(alignment: .center, spacing: 8) {
                 Text(displayName)
-                    .font(.system(size: 34, weight: .black))
+                    .font(.system(size: 36, weight: .black, design: .serif))
+                    .tracking(3.5)
+                    .textCase(.uppercase)
                     .foregroundColor(.white)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.62)
-                    .multilineTextAlignment(.leading)
-                    .shadow(color: Color.black.opacity(0.85), radius: 8, y: 2)
+                    .minimumScaleFactor(0.55)
+                    .multilineTextAlignment(.center)
+                    .shadow(color: Color.black.opacity(0.92), radius: 14, y: 4)
+                    .padding(.horizontal, 12)
 
                 Text(fanCountFormatted)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.75))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.82))
+                    .multilineTextAlignment(.center)
 
-                HStack(spacing: 12) {
-                    // Play / Pause All
+                HStack(spacing: 14) {
+                    if hasAboutInfo {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.45)) {
+                                scrollProxy.scrollTo("about_section", anchor: .top)
+                            }
+                        }) {
+                            Image(systemName: "info")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 42, height: 42)
+                                .background(Color.white.opacity(0.12))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                                )
+                        }
+                    }
+
+                    // Play / Pause All (Weißer Octave Hero Button)
                     Button(action: {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         if isArtistCurrentlyPlaying {
@@ -385,18 +410,14 @@ public struct ArtistDetailView: View {
                             playAllTopTracks(shuffle: false)
                         }
                     }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: isArtistCurrentlyPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 14, weight: .bold))
-                            Text(isArtistCurrentlyPlaying ? "Pause" : "Abspielen")
-                                .font(.system(size: 14, weight: .bold))
-                        }
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 12)
-                        .background(Color.white)
-                        .clipShape(Capsule())
-                        .shadow(color: Color.black.opacity(0.35), radius: 6, y: 2)
+                        Image(systemName: isArtistCurrentlyPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(.black)
+                            .offset(x: isArtistCurrentlyPlaying ? 0 : 1.5)
+                            .frame(width: 58, height: 58)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .shadow(color: Color.black.opacity(0.45), radius: 10, y: 4)
                     }
                     .disabled(effectiveTrackItems.isEmpty)
                     .opacity(effectiveTrackItems.isEmpty ? 0.55 : 1.0)
@@ -409,12 +430,12 @@ public struct ArtistDetailView: View {
                         Image(systemName: "shuffle")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.14))
+                            .frame(width: 42, height: 42)
+                            .background(Color.white.opacity(0.12))
                             .clipShape(Circle())
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
                             )
                     }
                     .disabled(effectiveTrackItems.isEmpty)
@@ -425,43 +446,22 @@ public struct ArtistDetailView: View {
                         Image(systemName: isSaved ? "heart.fill" : "heart")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(isSaved ? Color(hex: "#fc3c44") : .white)
-                            .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.14))
+                            .frame(width: 42, height: 42)
+                            .background(Color.white.opacity(0.12))
                             .clipShape(Circle())
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
                             )
                     }
-
-                    // Scroll to About Section
-                    if hasAboutInfo {
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.45)) {
-                                scrollProxy.scrollTo("about_section", anchor: .top)
-                            }
-                        }) {
-                            Image(systemName: "info.circle")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.14))
-                                .clipShape(Circle())
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                                )
-                        }
-                    }
-
-                    Spacer()
                 }
-                .padding(.top, 4)
+                .padding(.top, 8)
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
         }
-        .frame(height: 320)
+        .frame(height: heroHeight)
     }
 
     // MARK: - Offline Notice Banner
@@ -535,7 +535,7 @@ public struct ArtistDetailView: View {
                             .foregroundColor(.white)
                             .lineLimit(2)
 
-                        Text(release.year.map { "\($0)" } ?? "Single / Album")
+                        Text(release.year.map { String($0) } ?? "Single / Album")
                             .font(.system(size: 12.5))
                             .foregroundColor(Color.white.opacity(0.55))
                     }
@@ -592,7 +592,7 @@ public struct ArtistDetailView: View {
                     let track = item.toTrack(fallbackCover: displayCover, fallbackAlbum: displayName)
                     ArtistTopTrackRow(
                         track: track,
-                        rank: item.rank ?? (index + 1),
+                        rank: index + 1,
                         contextQueue: fullQueue,
                         serverURL: serverURL,
                         albumSubtitle: item.album ?? displayName
@@ -646,7 +646,7 @@ public struct ArtistDetailView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 14))
 
                                     if let year = album.year {
-                                        Text("\(year)")
+                                        Text(String(year))
                                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 7)
@@ -670,7 +670,7 @@ public struct ArtistDetailView: View {
                                         .lineLimit(1)
                                         .frame(width: 155, alignment: .leading)
 
-                                    let subText = album.nbTracks.map { "\($0) Titel" } ?? (album.year.map { "\($0) · Album" } ?? "Album")
+                                    let subText = album.nbTracks.map { "\(String($0)) Titel" } ?? (album.year.map { "\(String($0)) · Album" } ?? "Album")
                                     Text(subText)
                                         .font(.system(size: 11))
                                         .foregroundColor(Color(hex: "#a0a0a0"))
@@ -715,7 +715,7 @@ public struct ArtistDetailView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
                                     if let year = single.year {
-                                        Text("\(year)")
+                                        Text(String(year))
                                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 6)
@@ -739,7 +739,7 @@ public struct ArtistDetailView: View {
                                         .lineLimit(1)
                                         .frame(width: 140, alignment: .leading)
 
-                                    Text(single.year.map { "\($0) · Single" } ?? "Single")
+                                    Text(single.year.map { "\(String($0)) · Single" } ?? "Single")
                                         .font(.system(size: 11))
                                         .foregroundColor(Color(hex: "#a0a0a0"))
                                         .lineLimit(1)
@@ -1100,7 +1100,7 @@ public struct ArtistDetailView: View {
         VStack(spacing: 14) {
             Image(systemName: sessionManager.isOfflineMode ? "wifi.slash" : "exclamationmark.triangle.fill")
                 .font(.system(size: 34))
-                .foregroundColor(sessionManager.isOfflineMode ? PortColors.accentOrange : Color(hex: "#fc3c44"))
+                .foregroundColor(Color.white.opacity(0.85))
 
             Text(sessionManager.isOfflineMode ? "Künstler offline nicht verfügbar" : "Künstler konnte nicht geladen werden")
                 .font(.system(size: 15, weight: .bold))
@@ -1341,9 +1341,11 @@ private struct ArtistTopTrackRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text("\(rank)")
+            Text(String(rank))
                 .font(.system(size: 13.5, weight: .bold, design: .monospaced))
-                .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : Color.white.opacity(0.45))
+                .foregroundColor(isPlayingThis ? .white : Color.white.opacity(0.45))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .frame(width: 24, alignment: .center)
 
             ZStack {
@@ -1371,11 +1373,11 @@ private struct ArtistTopTrackRow: View {
                             .fill(Color.black.opacity(0.60))
                             .frame(width: 44, height: 44)
                         if player.isPlaying {
-                            EqualizerBarsView(color: Color(hex: "#fc3c44"))
+                            EqualizerBarsView(color: .white)
                         } else {
                             Image(systemName: "pause.fill")
                                 .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(Color(hex: "#fc3c44"))
+                                .foregroundColor(.white)
                         }
                     }
                 }
@@ -1387,7 +1389,7 @@ private struct ArtistTopTrackRow: View {
                 HStack(spacing: 5) {
                     Text(track.title)
                         .font(.system(size: 14, weight: isPlayingThis ? .bold : .semibold))
-                        .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
+                        .foregroundColor(.white)
                         .lineLimit(1)
 
                     if track.isExplicit {
