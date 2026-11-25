@@ -432,9 +432,9 @@ public struct LibraryCategoryDetailView: View {
             case .all:
                 break
             case .favorites:
-                result = result.filter { favoriteIds.contains($0.id) || FavoritesManager.shared.isFavorite($0.id) }
+                result = result.filter { favoriteIds.contains($0.id) || FavoritesManager.shared.isFavorite(trackId: $0.id) }
             case .downloads:
-                result = result.filter { offlineManager.isDownloaded($0.id) }
+                result = result.filter { offlineManager.isDownloaded(trackId: $0.id) }
             }
         }
 
@@ -566,8 +566,8 @@ public struct LibraryCategoryDetailView: View {
                             index: index,
                             contextQueue: filtered,
                             serverURL: serverURL,
-                            isLiked: favoriteIds.contains(track.id) || FavoritesManager.shared.isFavorite(track.id),
-                            isDownloaded: offlineManager.isDownloaded(track.id),
+                            isLiked: favoriteIds.contains(track.id) || FavoritesManager.shared.isFavorite(trackId: track.id),
+                            isDownloaded: offlineManager.isDownloaded(trackId: track.id),
                             showCover: true,
                             showTrackNumber: false
                         )
@@ -642,8 +642,8 @@ public struct LibraryCategoryDetailView: View {
             // Enrich missing artist portraits via discovery artist endpoint
             let needCover = artistList.prefix(12).filter { ($0.picture?.isEmpty ?? true) }
             for art in needCover {
-                if let detail = await MusicService.shared.fetchArtistDetail(name: art.name, serverURL: serverURL, token: token),
-                   let pic = detail.picture ?? detail.pictureXl ?? detail.pictureMedium, !pic.isEmpty {
+                if let detail = await MusicService.shared.fetchArtist(name: art.name, serverURL: serverURL, token: token),
+                   let pic = detail.picture, !pic.isEmpty {
                     await MainActor.run {
                         if let idx = self.artists.firstIndex(where: { $0.name.lowercased() == art.name.lowercased() }) {
                             let existing = self.artists[idx]

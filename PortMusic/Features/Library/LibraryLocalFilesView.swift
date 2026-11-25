@@ -125,7 +125,7 @@ public struct LibraryLocalFilesView: View {
                                 index: index,
                                 contextQueue: filteredTracks,
                                 serverURL: serverURL,
-                                isLiked: FavoritesManager.shared.isFavorite(track.id),
+                                isLiked: FavoritesManager.shared.isFavorite(trackId: track.id),
                                 isDownloaded: false,
                                 showCover: true,
                                 showTrackNumber: false

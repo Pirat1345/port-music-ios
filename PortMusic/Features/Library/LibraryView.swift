@@ -10,6 +10,7 @@ private struct LibraryCategoryConfig: Identifiable, Codable, Equatable {
 
 public struct LibraryView: View {
     public let serverURL: String
+    public let user: User?
 
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var favoritesManager = FavoritesManager.shared
@@ -30,8 +31,9 @@ public struct LibraryView: View {
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
     private static let categoriesStorageKey = "port_music_library_categories_config_v2"
 
-    public init(serverURL: String) {
+    public init(serverURL: String, user: User? = nil) {
         self.serverURL = serverURL
+        self.user = user
         self._categoriesConfig = State(initialValue: Self.loadSavedCategories())
     }
 
@@ -108,7 +110,7 @@ public struct LibraryView: View {
         .task {
             await loadLibraryData()
         }
-        .onChange(of: favoritesManager.favoriteIds) { _ in
+        .onChange(of: favoritesManager.favoritedTrackIds) { _ in
             Task {
                 await refreshFavoritesOnly()
             }
@@ -678,12 +680,13 @@ public struct LibraryView: View {
                     ForEach(uniqueAlbums) { album in
                         PortAlbumCard(
                             title: album.album ?? album.title,
-                            artist: album.artist,
+                            subtitle: album.artist,
                             coverUrl: album.coverUrl,
-                            serverURL: serverURL
-                        ) {
-                            player.play(track: album, from: uniqueAlbums, serverURL: serverURL)
-                        }
+                            serverURL: serverURL,
+                            onTap: {
+                                player.play(track: album, from: uniqueAlbums, serverURL: serverURL)
+                            }
+                        )
                     }
                 }
             }
@@ -699,7 +702,7 @@ public struct LibraryView: View {
             } else {
                 LazyVStack(spacing: 4) {
                     ForEach(displayTracks) { track in
-                        let isFav = favoritesManager.isFavorite(track.id)
+                        let isFav = favoritesManager.isFavorite(trackId: track.id)
                         trackRowItem(track: track, queue: displayTracks, isFav: isFav)
                     }
                 }
