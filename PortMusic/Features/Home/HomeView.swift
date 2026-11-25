@@ -81,11 +81,20 @@ public struct HomeView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task {
+                if sessionManager.isOfflineMode {
+                    _ = await sessionManager.retryConnection()
+                }
                 let token = SessionManager.shared.currentToken
+                await FavoritesManager.shared.syncPendingWithServer(serverURL: serverURL, token: token)
                 let historyRes = await MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
                 if !historyRes.isEmpty {
                     player.mergeServerHistory(historyRes)
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .portMusicDidReconnect)) { _ in
+            Task {
+                await loadHomeData()
             }
         }
         .sheet(isPresented: $showSettingsSheet) {
@@ -1253,8 +1262,14 @@ public struct HomeView: View {
         }
 
         await MainActor.run {
-            self.userFavorites = favsRes
-            self.userPlaylists = plsRes
+            if !favsRes.isEmpty || discoveryRes != nil {
+                self.userFavorites = favsRes
+            } else if self.userFavorites.isEmpty {
+                self.userFavorites = FavoritesManager.shared.cachedFavoriteTracks
+            }
+            if !plsRes.isEmpty || discoveryRes != nil {
+                self.userPlaylists = plsRes
+            }
         }
 
         if let response = discoveryRes {

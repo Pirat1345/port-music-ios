@@ -196,12 +196,67 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     // MARK: - Playback Control API
+    private func resolveOfflineCandidate(
+        requested: Track,
+        contextQueue: [Track]
+    ) -> (track: Track, queue: [Track])? {
+        guard SessionManager.shared.isOfflineMode else {
+            return (requested, contextQueue)
+        }
+
+        let downloader = OfflineDownloadManager.shared
+        if !requested.isLive && downloader.localAudioFileURL(for: requested.id) != nil {
+            return (requested, contextQueue)
+        }
+
+        // Offline: wenn gewuenschter Song nicht heruntergeladen ist, automatisch auf naechsten geladenen Song springen
+        let candidatePool: [Track]
+        if contextQueue.count > 1 {
+            candidatePool = contextQueue
+        } else if !self.queue.isEmpty {
+            candidatePool = self.queue
+        } else {
+            candidatePool = downloader.allDownloadedTracks()
+        }
+
+        if let startIdx = candidatePool.firstIndex(where: { $0.id == requested.id }) {
+            let after = candidatePool.indices.dropFirst(startIdx + 1).first {
+                downloader.localAudioFileURL(for: candidatePool[$0].id) != nil
+            }
+            let wrapped = after ?? candidatePool.indices.first {
+                downloader.localAudioFileURL(for: candidatePool[$0].id) != nil
+            }
+            if let matchIdx = wrapped {
+                return (candidatePool[matchIdx], candidatePool)
+            }
+        } else if let firstInPool = candidatePool.first(where: {
+            downloader.localAudioFileURL(for: $0.id) != nil
+        }) {
+            return (firstInPool, candidatePool)
+        }
+
+        let allOffline = downloader.allDownloadedTracks()
+        if let fallback = allOffline.first {
+            return (fallback, allOffline)
+        }
+        return nil
+    }
+
     public func play(track: Track, from contextQueue: [Track] = [], serverURL: String? = nil) {
         if let sUrl = serverURL, !sUrl.isEmpty {
             self.currentServerURL = sUrl
         }
         let effectiveServerURL = (serverURL != nil && !serverURL!.isEmpty) ? serverURL! : (self.currentServerURL ?? SessionManager.shared.serverURL ?? "")
         let token = SessionManager.shared.currentToken
+
+        guard let resolvedOffline = resolveOfflineCandidate(requested: track, contextQueue: contextQueue) else {
+            self.isPlayingOffline = false
+            self.isBuffering = false
+            self.isPlaying = false
+            return
+        }
+        let track = resolvedOffline.track
+        let contextQueue = resolvedOffline.queue
 
         // Track-Historie fuer Rueckwaerts-Springen fuehren (nur bei Vorwaerts-Wiedergabe)
         if !isNavigatingBackward, let current = self.currentTrack, current.id != track.id {
@@ -425,27 +480,50 @@ public final class AudioPlayerManager: ObservableObject {
         }
 
         if SessionManager.shared.isOfflineMode {
-            let downloaded = OfflineDownloadManager.shared.downloadedTrackIds
-            if !downloaded.isEmpty {
-                var idx = queueIndex + 1
-                while idx < queue.count {
-                    if downloaded.contains(queue[idx].id) {
-                        self.queueIndex = idx
-                        play(track: queue[idx], from: queue, serverURL: activeURL)
-                        return
-                    }
-                    idx += 1
-                }
-                if isRepeat, let firstMatch = queue.firstIndex(where: { downloaded.contains($0.id) }) {
-                    self.queueIndex = firstMatch
-                    play(track: queue[firstMatch], from: queue, serverURL: activeURL)
+            let downloader = OfflineDownloadManager.shared
+            let playableIndices = queue.indices.filter { downloader.localAudioFileURL(for: queue[$0].id) != nil }
+
+            if isShuffle && playableIndices.count > 1 {
+                let candidates = playableIndices.filter { $0 != queueIndex }
+                if let pick = candidates.randomElement() {
+                    self.queueIndex = pick
+                    play(track: queue[pick], from: queue, serverURL: activeURL)
                     return
                 }
-                let offlineList = OfflineDownloadManager.shared.allDownloadedTracks()
-                if let first = offlineList.first {
-                    play(track: first, from: offlineList, serverURL: activeURL)
-                }
             }
+
+            if let nextIdx = playableIndices.first(where: { $0 > queueIndex }) {
+                self.queueIndex = nextIdx
+                play(track: queue[nextIdx], from: queue, serverURL: activeURL)
+                return
+            }
+
+            // Weitere lokale Downloads an die Queue haengen, bevor gewrappt wird
+            let offlineList = downloader.allDownloadedTracks()
+            let existingIds = Set(queue.map { $0.id })
+            let extraOffline = offlineList.filter { !existingIds.contains($0.id) }
+            if let firstNew = extraOffline.first {
+                self.queue.append(contentsOf: extraOffline)
+                if let newIdx = self.queue.firstIndex(where: { $0.id == firstNew.id }) {
+                    self.queueIndex = newIdx
+                }
+                play(track: firstNew, from: self.queue, serverURL: activeURL)
+                return
+            }
+
+            if let firstPlayable = playableIndices.first {
+                self.queueIndex = firstPlayable
+                play(track: queue[firstPlayable], from: queue, serverURL: activeURL)
+                return
+            }
+
+            if let first = offlineList.first {
+                play(track: first, from: offlineList, serverURL: activeURL)
+                return
+            }
+
+            self.isPlaying = false
+            self.isBuffering = false
             return
         }
 
@@ -568,6 +646,45 @@ public final class AudioPlayerManager: ObservableObject {
             return
         }
 
+        if SessionManager.shared.isOfflineMode {
+            let downloader = OfflineDownloadManager.shared
+            var idx = queueIndex - 1
+            while idx >= 0 && idx < queue.count {
+                if downloader.localAudioFileURL(for: queue[idx].id) != nil {
+                    self.queueIndex = idx
+                    self.isNavigatingBackward = true
+                    play(track: queue[idx], from: queue, serverURL: activeURL)
+                    self.isNavigatingBackward = false
+                    return
+                }
+                idx -= 1
+            }
+
+            if let prevPastIdx = pastTracks.lastIndex(where: { downloader.localAudioFileURL(for: $0.id) != nil }) {
+                let prevTrack = pastTracks.remove(at: prevPastIdx)
+                self.queue.insert(prevTrack, at: 0)
+                self.queueIndex = 0
+                self.isNavigatingBackward = true
+                play(track: prevTrack, from: queue, serverURL: activeURL)
+                self.isNavigatingBackward = false
+                return
+            }
+
+            if let prevRecent = recentTracks.first(where: {
+                $0.id != currentTrack?.id && downloader.localAudioFileURL(for: $0.id) != nil
+            }) {
+                self.queue.insert(prevRecent, at: 0)
+                self.queueIndex = 0
+                self.isNavigatingBackward = true
+                play(track: prevRecent, from: queue, serverURL: activeURL)
+                self.isNavigatingBackward = false
+                return
+            }
+
+            seek(to: 0)
+            return
+        }
+
         let prevIndex = queueIndex - 1
         if prevIndex >= 0 && prevIndex < queue.count {
             self.queueIndex = prevIndex
@@ -648,6 +765,27 @@ public final class AudioPlayerManager: ObservableObject {
         queue.append(track)
     }
 
+    public func pruneQueueToDownloadedOnly() {
+        let downloader = OfflineDownloadManager.shared
+        let filtered = queue.filter { downloader.isDownloaded(trackId: $0.id) }
+        if filtered.isEmpty {
+            let allOffline = downloader.allDownloadedTracks()
+            self.queue = allOffline
+            if let cur = currentTrack, let idx = allOffline.firstIndex(where: { $0.id == cur.id }) {
+                self.queueIndex = idx
+            } else {
+                self.queueIndex = 0
+            }
+            return
+        }
+        self.queue = filtered
+        if let cur = currentTrack, let idx = filtered.firstIndex(where: { $0.id == cur.id }) {
+            self.queueIndex = idx
+        } else {
+            self.queueIndex = 0
+        }
+    }
+
     public func playAll(tracks: [Track], shuffle: Bool = false, serverURL: String? = nil) {
         guard !tracks.isEmpty else { return }
         let activeURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
@@ -678,13 +816,13 @@ public final class AudioPlayerManager: ObservableObject {
                     self.isBuffering = false
                     print("AudioPlayerManager: Item failed to play: \(String(describing: observedItem.error))")
                     guard self.isPlaying else { return }
-                    if !self.isPlayingOffline {
+                    if !self.isPlayingOffline && self.isConnectionFailureError(observedItem.error) {
                         SessionManager.shared.setOfflineMode(true)
                     }
-                    let hasLocalNext = self.queue.dropFirst(min(self.queueIndex + 1, self.queue.count)).contains {
-                        OfflineDownloadManager.shared.isDownloaded(trackId: $0.id)
-                    }
-                    if !SessionManager.shared.isOfflineMode || hasLocalNext {
+                    let downloader = OfflineDownloadManager.shared
+                    let hasOfflineTracks = self.queue.contains(where: { downloader.isDownloaded(trackId: $0.id) })
+                        || !downloader.allDownloadedTracks().isEmpty
+                    if !SessionManager.shared.isOfflineMode || hasOfflineTracks {
                         self.next()
                     } else {
                         self.isPlaying = false
@@ -770,8 +908,12 @@ public final class AudioPlayerManager: ObservableObject {
         }
     }
 
-    @objc private func playerItemDidFailToEnd() {
+    @objc private func playerItemDidFailToEnd(_ notification: Notification) {
         Task { @MainActor in
+            let failError = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            if !self.isPlayingOffline && self.isConnectionFailureError(failError) {
+                SessionManager.shared.setOfflineMode(true)
+            }
             guard self.isPlaying else {
                 print("AudioPlayerManager: Stream failed while paused, skipping ignored")
                 return
@@ -783,11 +925,34 @@ public final class AudioPlayerManager: ObservableObject {
                     self.next()
                     return
                 }
+                if SessionManager.shared.isOfflineMode && !self.isPlayingOffline {
+                    print("AudioPlayerManager: Verbindung während Wiedergabe unterbrochen, wechsle auf nächsten Offline-Song.")
+                    self.next()
+                    return
+                }
                 print("AudioPlayerManager: Premature stream failure at \(self.currentTime)/\(self.duration), skipping ignored")
                 return
             }
             self.next()
         }
+    }
+
+    private func isConnectionFailureError(_ error: Error?) -> Bool {
+        guard let nsErr = error as NSError? else { return true }
+        if nsErr.domain == NSURLErrorDomain {
+            let offlineCodes: Set<Int> = [
+                NSURLErrorNotConnectedToInternet,
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorTimedOut,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorCannotFindHost,
+                NSURLErrorDNSLookupFailed,
+                NSURLErrorDataNotAllowed,
+                NSURLErrorInternationalRoamingOff
+            ]
+            return offlineCodes.contains(nsErr.code)
+        }
+        return SessionManager.shared.isOfflineMode
     }
 
     // MARK: - Lock Screen & Control Center (MPNowPlayingInfoCenter)

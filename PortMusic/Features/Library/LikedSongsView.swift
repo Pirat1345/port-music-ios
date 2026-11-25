@@ -152,6 +152,16 @@ public struct LikedSongsView: View {
         .task {
             await loadFavorites()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .portMusicDidReconnect)) { _ in
+            Task {
+                await loadFavorites()
+            }
+        }
+        .onReceive(FavoritesManager.shared.$cachedFavoriteTracks) { updated in
+            if SessionManager.shared.isOfflineMode || !updated.isEmpty {
+                self.favorites = updated
+            }
+        }
     }
 
     // MARK: - Hero Banner Section
@@ -385,9 +395,13 @@ public struct LikedSongsView: View {
         isLoading = true
         let cacheKey = "port_music_cached_favorites_v1"
 
-        // Sofort Cache vorladen, falls Offline-Modus aktiv
-        if let data = UserDefaults.standard.data(forKey: cacheKey),
-           let cached = try? JSONDecoder().decode([Track].self, from: data), !cached.isEmpty {
+        // Sofort Cache (inkl. lokaler Offline-Likes/-Unlikes) vorladen
+        if !FavoritesManager.shared.cachedFavoriteTracks.isEmpty {
+            await MainActor.run {
+                self.favorites = FavoritesManager.shared.cachedFavoriteTracks
+            }
+        } else if let data = UserDefaults.standard.data(forKey: cacheKey),
+                  let cached = try? JSONDecoder().decode([Track].self, from: data), !cached.isEmpty {
             await MainActor.run {
                 self.favorites = cached
             }
@@ -398,7 +412,9 @@ public struct LikedSongsView: View {
                 FavoritesManager.shared.isFavorite(trackId: $0.id)
             }
             await MainActor.run {
-                if self.favorites.isEmpty {
+                if !FavoritesManager.shared.cachedFavoriteTracks.isEmpty {
+                    self.favorites = FavoritesManager.shared.cachedFavoriteTracks
+                } else if self.favorites.isEmpty {
                     self.favorites = offlineFavs
                 }
                 self.isLoading = false
@@ -409,11 +425,13 @@ public struct LikedSongsView: View {
         let token = SessionManager.shared.currentToken
         let fetched = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
         await MainActor.run {
-            if !fetched.isEmpty {
+            if !SessionManager.shared.isOfflineMode {
                 self.favorites = fetched
                 if let encoded = try? JSONEncoder().encode(fetched) {
                     UserDefaults.standard.set(encoded, forKey: cacheKey)
                 }
+            } else if !FavoritesManager.shared.cachedFavoriteTracks.isEmpty {
+                self.favorites = FavoritesManager.shared.cachedFavoriteTracks
             } else if self.favorites.isEmpty {
                 self.favorites = OfflineDownloadManager.shared.allDownloadedTracks().filter {
                     FavoritesManager.shared.isFavorite(trackId: $0.id)

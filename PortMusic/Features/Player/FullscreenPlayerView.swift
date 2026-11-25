@@ -498,16 +498,16 @@ public struct FullscreenPlayerView: View {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
                     isFavorite.toggle()
-                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
+                    let targetState = isFavorite
+                    FavoritesManager.shared.enqueueMutation(track: track, isFavorite: targetState)
                     Task {
                         let token = SessionManager.shared.currentToken
-                        let ok = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
-                        if !ok {
-                            await MainActor.run {
-                                isFavorite.toggle()
-                                FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: isFavorite)
-                            }
-                        }
+                        _ = await MusicService.shared.toggleFavorite(
+                            track: track,
+                            desiredState: targetState,
+                            serverURL: serverURL,
+                            token: token
+                        )
                     }
                 }) {
                     ZStack {
@@ -1088,30 +1088,65 @@ public struct FullscreenPlayerView: View {
     private func loadTrackExtras() async {
         guard let track = player.currentTrack else { return }
 
-        // Favoriten-Status synchronisieren
+        // Favoriten-Status (inkl. Offline-Vormerkung) sofort synchronisieren
         let localFav = FavoritesManager.shared.isFavorite(trackId: track.id)
         await MainActor.run {
             self.isFavorite = localFav
         }
+
+        // Lokal gespeicherte Offline-Lyrics sofort ohne Netzwerk laden
+        let cachedLocalLrc = OfflineDownloadManager.shared.localLyrics(for: track.id)
+        if let localRaw = cachedLocalLrc {
+            await MainActor.run {
+                self.lyricsLines = parseLRC(localRaw)
+                self.isLoadingLyrics = false
+            }
+        }
+
         let token = SessionManager.shared.currentToken
         if sessionManager.isOfflineMode {
-            lyricsLines = []
-            isLoadingLyrics = false
+            if cachedLocalLrc == nil {
+                await MainActor.run {
+                    self.lyricsLines = []
+                    self.isLoadingLyrics = false
+                }
+            }
             return
         }
+
         let serverFav = await MusicService.shared.checkIsFavorite(trackId: track.id, serverURL: serverURL, token: token)
         await MainActor.run {
             self.isFavorite = serverFav
-            FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: serverFav)
         }
 
-        isLoadingLyrics = true
-        if let rawLrc = await MusicService.shared.fetchLyrics(trackId: track.id, title: track.title, artist: track.artist, serverURL: serverURL, token: token) {
-            lyricsLines = parseLRC(rawLrc)
-        } else {
-            lyricsLines = []
+        if cachedLocalLrc == nil {
+            await MainActor.run {
+                self.isLoadingLyrics = true
+            }
         }
-        isLoadingLyrics = false
+        if let rawLrc = await MusicService.shared.fetchLyrics(
+            trackId: track.id,
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            durationSeconds: track.durationSeconds > 0 ? track.durationSeconds : nil,
+            serverURL: serverURL,
+            token: token
+        ) {
+            if OfflineDownloadManager.shared.isDownloaded(trackId: track.id) {
+                OfflineDownloadManager.shared.saveLyrics(rawLrc, for: track.id)
+            }
+            await MainActor.run {
+                self.lyricsLines = parseLRC(rawLrc)
+            }
+        } else if cachedLocalLrc == nil {
+            await MainActor.run {
+                self.lyricsLines = []
+            }
+        }
+        await MainActor.run {
+            self.isLoadingLyrics = false
+        }
     }
 
     private func formatSeconds(_ seconds: Double) -> String {
@@ -1125,8 +1160,14 @@ public struct FullscreenPlayerView: View {
 // MARK: - Queue Sheet
 public struct QueueSheetView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+    @ObservedObject private var sessionManager = SessionManager.shared
     public let serverURL: String
     public let onClose: () -> Void
+
+    private var hasNonDownloadedQueueItems: Bool {
+        player.queue.contains { !offlineManager.isDownloaded(trackId: $0.id) }
+    }
 
     public var body: some View {
         ZStack {
@@ -1135,12 +1176,34 @@ public struct QueueSheetView: View {
 
             VStack(spacing: 0) {
                 // Header
-                HStack {
-                    Text("Warteschlange")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(PortColors.textPrimary)
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Warteschlange")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(PortColors.textPrimary)
+                        if sessionManager.isOfflineMode {
+                            Text("Offline: nicht geladene Songs werden übersprungen")
+                                .font(.system(size: 11.5))
+                                .foregroundColor(PortColors.accentOrange)
+                        }
+                    }
 
                     Spacer()
+
+                    if sessionManager.isOfflineMode && hasNonDownloadedQueueItems {
+                        Button(action: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            player.pruneQueueToDownloadedOnly()
+                        }) {
+                            Text("Bereinigen")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.white.opacity(0.14))
+                                .clipShape(Capsule())
+                        }
+                    }
 
                     Button(action: onClose) {
                         Image(systemName: "xmark.circle.fill")
@@ -1180,7 +1243,11 @@ public struct QueueSheetView: View {
     @ViewBuilder
     private func queueRow(index: Int, item: Track) -> some View {
         let isCurrent = (index == player.queueIndex)
+        let isDownloaded = offlineManager.isDownloaded(trackId: item.id)
+        let isUnavailableOffline = sessionManager.isOfflineMode && !isDownloaded && !isCurrent
+
         Button(action: {
+            guard !isUnavailableOffline else { return }
             player.play(track: item, from: player.queue)
         }) {
             HStack(spacing: 12) {
@@ -1189,7 +1256,7 @@ public struct QueueSheetView: View {
                     .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.40))
                     .frame(width: 24)
 
-                queueCoverImage(url: item.coverUrl)
+                queueCoverImage(track: item)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(item.title)
@@ -1197,10 +1264,21 @@ public struct QueueSheetView: View {
                         .foregroundColor(isCurrent ? Color.white : PortColors.textPrimary)
                         .lineLimit(1)
 
-                    Text(item.artist)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.white.opacity(0.65))
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if isDownloaded {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(hex: "#00d26a"))
+                        } else if sessionManager.isOfflineMode {
+                            Image(systemName: "wifi.slash")
+                                .font(.system(size: 11))
+                                .foregroundColor(PortColors.accentOrange.opacity(0.85))
+                        }
+                        Text(item.artist)
+                            .font(.system(size: 12))
+                            .foregroundColor(Color.white.opacity(0.65))
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer()
@@ -1212,18 +1290,21 @@ public struct QueueSheetView: View {
                 }
             }
             .padding(.vertical, 4)
+            .opacity(isUnavailableOffline ? 0.38 : 1.0)
         }
+        .disabled(isUnavailableOffline)
         .listRowBackground(Color.white.opacity(isCurrent ? 0.12 : 0.04))
     }
 
     @ViewBuilder
-    private func queueCoverImage(url: String?) -> some View {
+    private func queueCoverImage(track: Track) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color.white.opacity(0.08))
                 .frame(width: 38, height: 38)
 
-            let resolved = resolveCoverURL(url, serverURL: serverURL)
+            let localCover = offlineManager.localCoverFileURL(for: track.id)
+            let resolved = localCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
             PortCachedAsyncImage(url: resolved) { image in
                 image
                     .resizable()

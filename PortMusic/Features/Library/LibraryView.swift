@@ -142,6 +142,11 @@ public struct LibraryView: View {
         .task {
             await loadLibraryData()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .portMusicDidReconnect)) { _ in
+            Task {
+                await loadLibraryData()
+            }
+        }
         .onChange(of: favoritesManager.favoritedTrackIds) { _ in
             Task {
                 await refreshFavoritesOnly()
@@ -898,9 +903,13 @@ public struct LibraryView: View {
         let plCacheKey = "port_music_cached_playlists_v1"
 
         // Sofort zwischengespeicherte Playlists & Favoriten laden fuer Offline-Start
-        if favorites.isEmpty,
-           let fData = UserDefaults.standard.data(forKey: favCacheKey),
-           let cachedFavs = try? JSONDecoder().decode([Track].self, from: fData) {
+        if !favoritesManager.cachedFavoriteTracks.isEmpty {
+            await MainActor.run {
+                self.favorites = favoritesManager.cachedFavoriteTracks
+            }
+        } else if favorites.isEmpty,
+                  let fData = UserDefaults.standard.data(forKey: favCacheKey),
+                  let cachedFavs = try? JSONDecoder().decode([Track].self, from: fData) {
             await MainActor.run {
                 self.favorites = cachedFavs
             }
@@ -915,7 +924,9 @@ public struct LibraryView: View {
 
         if sessionManager.isOfflineMode {
             await MainActor.run {
-                if self.favorites.isEmpty {
+                if !favoritesManager.cachedFavoriteTracks.isEmpty {
+                    self.favorites = favoritesManager.cachedFavoriteTracks
+                } else if self.favorites.isEmpty {
                     self.favorites = offlineManager.allDownloadedTracks().filter {
                         FavoritesManager.shared.isFavorite(trackId: $0.id)
                     }
@@ -934,11 +945,13 @@ public struct LibraryView: View {
         let (favs, pls, hist) = await (favTask, plTask, histTask)
 
         await MainActor.run {
-            if !favs.isEmpty {
+            if !sessionManager.isOfflineMode {
                 self.favorites = favs
                 if let encoded = try? JSONEncoder().encode(favs) {
                     UserDefaults.standard.set(encoded, forKey: favCacheKey)
                 }
+            } else if !favoritesManager.cachedFavoriteTracks.isEmpty {
+                self.favorites = favoritesManager.cachedFavoriteTracks
             }
             if !pls.isEmpty {
                 self.playlists = pls
@@ -949,14 +962,17 @@ public struct LibraryView: View {
             if !hist.isEmpty {
                 self.historyTracks = hist
             }
-            for f in self.favorites {
-                FavoritesManager.shared.setFavorite(trackId: f.id, isFavorite: true)
-            }
             self.isLoading = false
         }
     }
 
     private func refreshFavoritesOnly() async {
+        if sessionManager.isOfflineMode {
+            await MainActor.run {
+                self.favorites = favoritesManager.cachedFavoriteTracks
+            }
+            return
+        }
         let token = SessionManager.shared.currentToken
         let favs = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
         await MainActor.run {

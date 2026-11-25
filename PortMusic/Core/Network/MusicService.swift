@@ -672,10 +672,15 @@ public final class MusicService {
         return resultPlaylists
     }
 
-    // MARK: - Fetch Favorites (/api/favorites & /api/state)
+    // MARK: - Fetch Favorites (/api/favorites & /api/state) + Offline Sync Flush
     public func fetchFavorites(serverURL: String, token: String?) async -> [Track] {
+        // Zuerst ausstehende Offline-Likes/-Unlikes an den Server uebertragen
+        await FavoritesManager.shared.syncPendingWithServer(serverURL: serverURL, token: token)
+
         let base = cleanURL(serverURL)
         var resultTracks: [Track] = []
+        var serverResponded = false
+        var hadTransportError = false
 
         // Helper to parse dynamic track dictionaries from backend TrackRecord / ApiTrackDto
         func parseTrackDict(_ item: [String: Any]) -> Track? {
@@ -726,23 +731,30 @@ public final class MusicService {
         if let url = URL(string: "\(base)/api/favorites") {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            request.timeoutInterval = 6.0
             if let tok = token, !tok.isEmpty {
                 request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                request.setValue(tok, forHTTPHeaderField: "x-session-token")
             }
 
-            if let (data, response) = try? await session.data(for: request),
-               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
-                if let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                    for item in jsonArray {
-                        if let track = parseTrackDict(item) {
-                            resultTracks.append(track)
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                    serverResponded = true
+                    if let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                        for item in jsonArray {
+                            if let track = parseTrackDict(item) {
+                                resultTracks.append(track)
+                            }
                         }
+                    } else if let tracks = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
+                        resultTracks.append(contentsOf: tracks.map { $0.toTrack() })
+                    } else if let directTracks = try? JSONDecoder().decode([Track].self, from: data) {
+                        resultTracks.append(contentsOf: directTracks)
                     }
-                } else if let tracks = try? JSONDecoder().decode([DiscoveryTrack].self, from: data) {
-                    resultTracks.append(contentsOf: tracks.map { $0.toTrack() })
-                } else if let directTracks = try? JSONDecoder().decode([Track].self, from: data) {
-                    resultTracks.append(contentsOf: directTracks)
                 }
+            } catch {
+                hadTransportError = true
             }
         }
 
@@ -750,32 +762,58 @@ public final class MusicService {
         if resultTracks.isEmpty, let stateUrl = URL(string: "\(base)/api/state") {
             var request = URLRequest(url: stateUrl)
             request.httpMethod = "GET"
+            request.timeoutInterval = 6.0
             if let tok = token, !tok.isEmpty {
                 request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                request.setValue(tok, forHTTPHeaderField: "x-session-token")
             }
 
-            if let (data, response) = try? await session.data(for: request),
-               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let favList = json["favorites"] as? [[String: Any]] {
-                for item in favList {
-                    if let track = parseTrackDict(item) {
-                        resultTracks.append(track)
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                    serverResponded = true
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let favList = json["favorites"] as? [[String: Any]] {
+                        for item in favList {
+                            if let track = parseTrackDict(item) {
+                                resultTracks.append(track)
+                            }
+                        }
                     }
                 }
+            } catch {
+                hadTransportError = true
             }
         }
 
-        await MainActor.run {
-            FavoritesManager.shared.syncWithList(resultTracks)
+        if serverResponded {
+            return await MainActor.run {
+                SessionManager.shared.setOfflineMode(false)
+                return FavoritesManager.shared.syncWithServerList(resultTracks)
+            }
+        } else {
+            return await MainActor.run {
+                if hadTransportError {
+                    SessionManager.shared.setOfflineMode(true)
+                }
+                return FavoritesManager.shared.cachedFavoriteTracks
+            }
         }
-        return resultTracks
     }
 
     // MARK: - Check Favorite (/api/favorites/:id)
     public func checkIsFavorite(trackId: String, serverURL: String, token: String?) async -> Bool {
         let trimmed = trackId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
+
+        // Lokale ausstehende Offline-Aenderung hat Vorrang bis zum Server-Abgleich
+        if let pendingVal = await MainActor.run(body: { FavoritesManager.shared.pendingMutations[trimmed]?.isFavorite }) {
+            return pendingVal
+        }
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return await MainActor.run { FavoritesManager.shared.isFavorite(trackId: trimmed) }
+        }
+
         let base = cleanURL(serverURL)
         let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
         let encodedId = trimmed.addingPercentEncoding(withAllowedCharacters: allowed) ?? trimmed
@@ -783,8 +821,10 @@ public final class MusicService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 5.0
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            request.setValue(tok, forHTTPHeaderField: "x-session-token")
         }
 
         do {
@@ -795,17 +835,23 @@ public final class MusicService {
                 }
             }
             if let isFav = try? JSONDecoder().decode(Bool.self, from: data) {
-                await MainActor.run {
+                return await MainActor.run {
+                    if let pendingVal = FavoritesManager.shared.pendingMutations[trimmed]?.isFavorite {
+                        return pendingVal
+                    }
                     FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: isFav)
+                    return isFav
                 }
-                return isFav
             }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let isFav = (json["isFavorite"] as? Bool) ?? (json["favorite"] as? Bool) {
-                await MainActor.run {
+                return await MainActor.run {
+                    if let pendingVal = FavoritesManager.shared.pendingMutations[trimmed]?.isFavorite {
+                        return pendingVal
+                    }
                     FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: isFav)
+                    return isFav
                 }
-                return isFav
             }
             return await MainActor.run {
                 FavoritesManager.shared.isFavorite(trackId: trimmed)
@@ -817,76 +863,116 @@ public final class MusicService {
         }
     }
 
+    // MARK: - Direct Server Request for Favorites (POST /api/favorites, DELETE /api/favorites/:id)
+    public func sendFavoriteRequest(track: Track, isFavorite: Bool, serverURL: String, token: String?) async -> Bool {
+        let trimmed = track.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let base = cleanURL(serverURL)
+        guard !base.isEmpty else { return false }
+
+        if isFavorite {
+            guard let url = URL(string: "\(base)/api/favorites") else { return false }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 6.0
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                request.setValue(tok, forHTTPHeaderField: "x-session-token")
+            }
+
+            var durSec: Double = track.durationSeconds > 0 ? track.durationSeconds : 210.0
+            let parts = track.duration.split(separator: ":")
+            if parts.count == 2, let m = Double(parts[0]), let s = Double(parts[1]), (m * 60 + s) > 0 {
+                durSec = m * 60 + s
+            }
+
+            let body: [String: Any] = [
+                "id": trimmed,
+                "title": track.title,
+                "artist": track.artist,
+                "album": track.album ?? "",
+                "duration": durSec,
+                "cover_url": track.coverUrl ?? "",
+                "cached_at": Int64(Date().timeIntervalSince1970 * 1000)
+            ]
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+            do {
+                let (_, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                    return true
+                }
+                return false
+            } catch {
+                return false
+            }
+        } else {
+            let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+            let encodedId = trimmed.addingPercentEncoding(withAllowedCharacters: allowed) ?? trimmed
+            guard let url = URL(string: "\(base)/api/favorites/\(encodedId)") else { return false }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.timeoutInterval = 6.0
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                request.setValue(tok, forHTTPHeaderField: "x-session-token")
+            }
+
+            do {
+                let (_, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, ((200...299).contains(http.statusCode) || http.statusCode == 404) {
+                    return true
+                }
+                return false
+            } catch {
+                return false
+            }
+        }
+    }
+
+    // MARK: - Unified Offline-Capable Favorite State Setter
+    @discardableResult
+    public func setFavoriteState(track: Track, isFavorite: Bool, serverURL: String, token: String?) async -> Bool {
+        let trimmed = track.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        // 1. Sofort lokal anwenden & fuer Reconnect-Sync vormerken
+        await MainActor.run {
+            FavoritesManager.shared.enqueueMutation(track: track, isFavorite: isFavorite)
+        }
+
+        // 2. Falls offline: direkt als lokal gesichert bestaetigen
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return true
+        }
+
+        // 3. Direkt an Server senden; bei Transportfehler bleibt Mutation in Queue
+        let synced = await sendFavoriteRequest(track: track, isFavorite: isFavorite, serverURL: serverURL, token: token)
+        if synced {
+            await MainActor.run {
+                FavoritesManager.shared.resolveMutationOnline(trackId: trimmed)
+            }
+        } else {
+            await MainActor.run {
+                SessionManager.shared.setOfflineMode(true)
+            }
+        }
+        return true
+    }
+
     // MARK: - Add Favorite (POST /api/favorites)
     public func addFavorite(track: Track, serverURL: String, token: String?) async -> Bool {
-        let base = cleanURL(serverURL)
-        guard let url = URL(string: "\(base)/api/favorites") else { return false }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let tok = token, !tok.isEmpty {
-            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
-        }
-
-        var durSec: Double = 210.0
-        let parts = track.duration.split(separator: ":")
-        if parts.count == 2, let m = Double(parts[0]), let s = Double(parts[1]) {
-            durSec = m * 60 + s
-        }
-
-        let body: [String: Any] = [
-            "id": track.id,
-            "title": track.title,
-            "artist": track.artist,
-            "album": track.album ?? "",
-            "duration": durSec,
-            "cover_url": track.coverUrl ?? "",
-            "cached_at": Int64(Date().timeIntervalSince1970 * 1000)
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        do {
-            let (_, response) = try await session.data(for: request)
-            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
-                await MainActor.run {
-                    FavoritesManager.shared.setFavorite(trackId: track.id, isFavorite: true)
-                }
-                return true
-            }
-            return false
-        } catch {
-            return false
-        }
+        await setFavoriteState(track: track, isFavorite: true, serverURL: serverURL, token: token)
     }
 
     // MARK: - Remove Favorite (DELETE /api/favorites/:id)
     public func removeFavorite(trackId: String, serverURL: String, token: String?) async -> Bool {
         let trimmed = trackId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        let base = cleanURL(serverURL)
-        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
-        let encodedId = trimmed.addingPercentEncoding(withAllowedCharacters: allowed) ?? trimmed
-        guard let url = URL(string: "\(base)/api/favorites/\(encodedId)") else { return false }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        if let tok = token, !tok.isEmpty {
-            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
-        }
-
-        do {
-            let (_, response) = try await session.data(for: request)
-            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
-                await MainActor.run {
-                    FavoritesManager.shared.setFavorite(trackId: trimmed, isFavorite: false)
-                }
-                return true
-            }
-            return false
-        } catch {
-            return false
-        }
+        let dummy = Track(id: trimmed, title: "", artist: "")
+        return await setFavoriteState(track: dummy, isFavorite: false, serverURL: serverURL, token: token)
     }
 
     // MARK: - Toggle Favorite (/api/favorites)
@@ -902,13 +988,15 @@ public final class MusicService {
     }
 
     @discardableResult
-    public func toggleFavorite(track: Track, serverURL: String, token: String?) async -> Bool {
-        let isCurrentlyFav = await checkIsFavorite(trackId: track.id, serverURL: serverURL, token: token)
-        if isCurrentlyFav {
-            return await removeFavorite(trackId: track.id, serverURL: serverURL, token: token)
+    public func toggleFavorite(track: Track, desiredState: Bool? = nil, serverURL: String, token: String?) async -> Bool {
+        let targetState: Bool
+        if let explicit = desiredState {
+            targetState = explicit
         } else {
-            return await addFavorite(track: track, serverURL: serverURL, token: token)
+            let currentFav = await checkIsFavorite(trackId: track.id, serverURL: serverURL, token: token)
+            targetState = !currentFav
         }
+        return await setFavoriteState(track: track, isFavorite: targetState, serverURL: serverURL, token: token)
     }
 
     // MARK: - Online Playlist Discovery (/api/discovery/playlist/:id)

@@ -49,6 +49,7 @@ public struct TrackRowView: View {
 
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+    @ObservedObject private var sessionManager = SessionManager.shared
     @State private var localLiked: Bool = false
     @State private var showShareSheet: Bool = false
 
@@ -87,6 +88,13 @@ public struct TrackRowView: View {
         player.currentTrack?.id == track.id
     }
 
+    private var isUnavailableOffline: Bool {
+        sessionManager.isOfflineMode &&
+        !offlineManager.isDownloaded(trackId: track.id) &&
+        !isDownloaded &&
+        !track.isLive
+    }
+
     public var body: some View {
         HStack(spacing: 12) {
             // Optional: Track Index Number (fuer Alben / Playlists)
@@ -100,10 +108,12 @@ public struct TrackRowView: View {
             // Thumbnail Artwork mit 6px Rundung & Play-State-Overlay
             if showCover {
                 artworkView
+                    .opacity(isUnavailableOffline ? 0.42 : 1.0)
             }
 
             // Title & Artist / Album Metadaten
             titleAndArtistView
+                .opacity(isUnavailableOffline ? 0.45 : 1.0)
 
             Spacer(minLength: 6)
 
@@ -113,6 +123,11 @@ public struct TrackRowView: View {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 13))
                         .foregroundColor(Color(hex: "#10b981"))
+                        .padding(.trailing, 2)
+                } else if isUnavailableOffline {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.white.opacity(0.35))
                         .padding(.trailing, 2)
                 }
 
@@ -144,10 +159,16 @@ public struct TrackRowView: View {
             handleRowTap()
         }
         .onAppear {
-            self.localLiked = isLiked
+            if FavoritesManager.shared.pendingMutations[track.id] != nil {
+                self.localLiked = FavoritesManager.shared.isFavorite(trackId: track.id)
+            } else {
+                self.localLiked = isLiked || FavoritesManager.shared.isFavorite(trackId: track.id)
+            }
         }
         .onChange(of: isLiked) { newVal in
-            self.localLiked = newVal
+            if FavoritesManager.shared.pendingMutations[track.id] == nil {
+                self.localLiked = newVal
+            }
         }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [
@@ -365,11 +386,18 @@ public struct TrackRowView: View {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
         localLiked.toggle()
+        let desired = localLiked
+        FavoritesManager.shared.enqueueMutation(track: track, isFavorite: desired)
         onToggleLike?()
 
         let token = SessionManager.shared.currentToken
         Task {
-            _ = await MusicService.shared.toggleFavorite(track: track, serverURL: serverURL, token: token)
+            _ = await MusicService.shared.toggleFavorite(
+                track: track,
+                desiredState: desired,
+                serverURL: serverURL,
+                token: token
+            )
         }
     }
 }

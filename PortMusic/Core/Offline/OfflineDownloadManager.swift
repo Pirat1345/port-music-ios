@@ -8,6 +8,7 @@ public struct OfflineTrackRecord: Codable, Identifiable, Equatable {
     public let track: Track
     public let localFileName: String
     public let localCoverFileName: String?
+    public let localLyricsFileName: String?
     public let sizeBytes: Int64
     public let downloadedAt: Date
     public var playlistIds: [String]
@@ -16,6 +17,7 @@ public struct OfflineTrackRecord: Codable, Identifiable, Equatable {
         track: Track,
         localFileName: String,
         localCoverFileName: String? = nil,
+        localLyricsFileName: String? = nil,
         sizeBytes: Int64 = 0,
         downloadedAt: Date = Date(),
         playlistIds: [String] = []
@@ -23,6 +25,7 @@ public struct OfflineTrackRecord: Codable, Identifiable, Equatable {
         self.track = track
         self.localFileName = localFileName
         self.localCoverFileName = localCoverFileName
+        self.localLyricsFileName = localLyricsFileName
         self.sizeBytes = sizeBytes
         self.downloadedAt = downloadedAt
         self.playlistIds = playlistIds
@@ -50,6 +53,7 @@ public final class OfflineDownloadManager: ObservableObject {
     private let playlistsMetaFileName = "offline_playlists.json"
     private let tracksSubdir = "OfflineTracks"
     private let coversSubdir = "OfflineCovers"
+    private let lyricsSubdir = "OfflineLyrics"
 
     private let downloadSession: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -74,6 +78,23 @@ public final class OfflineDownloadManager: ObservableObject {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         return dir
+    }
+
+    private var lyricsDirectoryURL: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs.appendingPathComponent(lyricsSubdir, isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
+
+    private func safeTrackId(for trackId: String) -> String {
+        trackId
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+            .replacingOccurrences(of: "?", with: "_")
+            .replacingOccurrences(of: "&", with: "_")
     }
 
     private var manifestFileURL: URL {
@@ -120,10 +141,25 @@ public final class OfflineDownloadManager: ObservableObject {
                         cleanCoverName = nil
                     }
                 }
+                // Pruefe ob Lyrics-Datei existiert (inkl. Self-Healing per Safe-ID)
+                var cleanLyricsName = record.localLyricsFileName
+                if let lrcName = cleanLyricsName {
+                    let lrcURL = lyricsDirectoryURL.appendingPathComponent(lrcName)
+                    if !FileManager.default.fileExists(atPath: lrcURL.path) {
+                        cleanLyricsName = nil
+                    }
+                } else {
+                    let fallbackName = "\(safeTrackId(for: id)).lrc"
+                    let fallbackURL = lyricsDirectoryURL.appendingPathComponent(fallbackName)
+                    if FileManager.default.fileExists(atPath: fallbackURL.path) {
+                        cleanLyricsName = fallbackName
+                    }
+                }
                 validRecords[id] = OfflineTrackRecord(
                     track: record.track,
                     localFileName: record.localFileName,
                     localCoverFileName: cleanCoverName,
+                    localLyricsFileName: cleanLyricsName,
                     sizeBytes: record.sizeBytes,
                     downloadedAt: record.downloadedAt,
                     playlistIds: record.playlistIds
@@ -193,6 +229,50 @@ public final class OfflineDownloadManager: ObservableObject {
         return UIImage(contentsOfFile: url.path)
     }
 
+    public func localLyricsFileURL(for trackId: String) -> URL? {
+        if let record = records[trackId], let lrcName = record.localLyricsFileName {
+            let fileURL = lyricsDirectoryURL.appendingPathComponent(lrcName)
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                return fileURL
+            }
+        }
+        let fallbackURL = lyricsDirectoryURL.appendingPathComponent("\(safeTrackId(for: trackId)).lrc")
+        if FileManager.default.fileExists(atPath: fallbackURL.path) {
+            return fallbackURL
+        }
+        return nil
+    }
+
+    public func localLyrics(for trackId: String) -> String? {
+        guard let url = localLyricsFileURL(for: trackId),
+              let content = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : content
+    }
+
+    public func saveLyrics(_ lrc: String, for trackId: String) {
+        let trimmed = lrc.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var record = records[trackId] else { return }
+        let fileName = "\(safeTrackId(for: trackId)).lrc"
+        let targetURL = lyricsDirectoryURL.appendingPathComponent(fileName)
+        try? lrc.write(to: targetURL, atomically: true, encoding: .utf8)
+        if record.localLyricsFileName != fileName {
+            record = OfflineTrackRecord(
+                track: record.track,
+                localFileName: record.localFileName,
+                localCoverFileName: record.localCoverFileName,
+                localLyricsFileName: fileName,
+                sizeBytes: record.sizeBytes,
+                downloadedAt: record.downloadedAt,
+                playlistIds: record.playlistIds
+            )
+            records[trackId] = record
+            saveManifest()
+        }
+    }
+
     public func allDownloadedTracks() -> [Track] {
         records.values
             .sorted(by: { $0.downloadedAt > $1.downloadedAt })
@@ -255,6 +335,23 @@ public final class OfflineDownloadManager: ObservableObject {
             }
             if localCoverFileURL(for: track.id) == nil {
                 _ = await ensureCoverSavedForRecord(trackId: track.id, preferredCoverUrl: track.coverUrl, serverURL: serverURL, token: token)
+            }
+            if localLyrics(for: track.id) == nil, !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let safeId = safeTrackId(for: track.id)
+                if let lrcName = await fetchAndPersistLyrics(track: track, safeTrackId: safeId, serverURL: serverURL, token: token),
+                   var record = records[track.id] {
+                    record = OfflineTrackRecord(
+                        track: record.track,
+                        localFileName: record.localFileName,
+                        localCoverFileName: record.localCoverFileName,
+                        localLyricsFileName: lrcName,
+                        sizeBytes: record.sizeBytes,
+                        downloadedAt: record.downloadedAt,
+                        playlistIds: record.playlistIds
+                    )
+                    records[track.id] = record
+                    saveManifest()
+                }
             }
             return true
         }
@@ -345,14 +442,23 @@ public final class OfflineDownloadManager: ObservableObject {
         do {
             try validData.write(to: targetFileURL, options: .atomic)
 
-            // Mehrstufige Cover-Speicherung (Cache -> Authenticated URL -> Embedded Artwork -> Discovery Search)
-            let localCoverName = await fetchAndPersistCover(
+            // Mehrstufige Cover- & Lyrics-Speicherung parallel ausfuehren
+            async let coverNameTask = fetchAndPersistCover(
                 track: track,
                 safeTrackId: safeTrackId,
                 audioFileURL: targetFileURL,
                 serverURL: base,
                 token: token
             )
+            async let lyricsNameTask = fetchAndPersistLyrics(
+                track: track,
+                safeTrackId: safeTrackId,
+                serverURL: base,
+                token: token
+            )
+
+            downloadProgressMap[track.id] = 0.90
+            let (localCoverName, localLyricsName) = await (coverNameTask, lyricsNameTask)
 
             let size = Int64(validData.count)
             var pIds: [String] = []
@@ -362,6 +468,7 @@ public final class OfflineDownloadManager: ObservableObject {
                 track: track,
                 localFileName: fileName,
                 localCoverFileName: localCoverName,
+                localLyricsFileName: localLyricsName,
                 sizeBytes: size,
                 downloadedAt: Date(),
                 playlistIds: pIds
@@ -492,6 +599,7 @@ public final class OfflineDownloadManager: ObservableObject {
             track: record.track,
             localFileName: record.localFileName,
             localCoverFileName: coverName,
+            localLyricsFileName: record.localLyricsFileName,
             sizeBytes: record.sizeBytes,
             downloadedAt: record.downloadedAt,
             playlistIds: record.playlistIds
@@ -505,11 +613,7 @@ public final class OfflineDownloadManager: ObservableObject {
     @discardableResult
     private func ensureCoverSavedForRecord(trackId: String, preferredCoverUrl: String?, serverURL: String, token: String?) async -> Bool {
         guard var record = records[trackId] else { return false }
-        let safeId = trackId
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "?", with: "_")
-            .replacingOccurrences(of: "&", with: "_")
+        let safeId = safeTrackId(for: trackId)
         let audioURL = tracksDirectoryURL.appendingPathComponent(record.localFileName)
         let trackForLookup = Track(
             id: record.track.id,
@@ -534,6 +638,7 @@ public final class OfflineDownloadManager: ObservableObject {
                 track: trackForLookup,
                 localFileName: record.localFileName,
                 localCoverFileName: newCoverName,
+                localLyricsFileName: record.localLyricsFileName,
                 sizeBytes: record.sizeBytes,
                 downloadedAt: record.downloadedAt,
                 playlistIds: record.playlistIds
@@ -543,6 +648,67 @@ public final class OfflineDownloadManager: ObservableObject {
             return true
         }
         return false
+    }
+
+    private func fetchAndPersistLyrics(
+        track: Track,
+        safeTrackId: String,
+        serverURL: String,
+        token: String?
+    ) async -> String? {
+        let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        guard !base.isEmpty else { return nil }
+
+        let dur: Double? = track.durationSeconds > 0 ? track.durationSeconds : nil
+        guard let rawLrc = await MusicService.shared.fetchLyrics(
+            trackId: track.id,
+            title: track.title,
+            artist: track.artist,
+            album: track.album,
+            durationSeconds: dur,
+            serverURL: base,
+            token: token
+        ) else {
+            return nil
+        }
+
+        let trimmed = rawLrc.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let lyricsFileName = "\(safeTrackId).lrc"
+        let targetURL = lyricsDirectoryURL.appendingPathComponent(lyricsFileName)
+        do {
+            try rawLrc.write(to: targetURL, atomically: true, encoding: .utf8)
+            return lyricsFileName
+        } catch {
+            return nil
+        }
+    }
+
+    public func repairMissingLyricsIfNeeded(serverURL: String, token: String?) async {
+        let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        guard !base.isEmpty, !SessionManager.shared.isOfflineMode else { return }
+
+        let missingRecords = records.values.filter { localLyrics(for: $0.track.id) == nil }
+        guard !missingRecords.isEmpty else { return }
+
+        for rec in missingRecords {
+            if SessionManager.shared.isOfflineMode { break }
+            let safeId = safeTrackId(for: rec.track.id)
+            if let lrcName = await fetchAndPersistLyrics(track: rec.track, safeTrackId: safeId, serverURL: base, token: token),
+               let latestRecord = records[rec.track.id] {
+                records[rec.track.id] = OfflineTrackRecord(
+                    track: latestRecord.track,
+                    localFileName: latestRecord.localFileName,
+                    localCoverFileName: latestRecord.localCoverFileName,
+                    localLyricsFileName: lrcName,
+                    sizeBytes: latestRecord.sizeBytes,
+                    downloadedAt: latestRecord.downloadedAt,
+                    playlistIds: latestRecord.playlistIds
+                )
+                saveManifest()
+            }
+        }
     }
 
     private func repairMissingCoversIfNeeded() async {
@@ -611,6 +777,14 @@ public final class OfflineDownloadManager: ObservableObject {
             try? FileManager.default.removeItem(at: coverURL)
         }
 
+        if let lrcName = record.localLyricsFileName {
+            let lrcURL = lyricsDirectoryURL.appendingPathComponent(lrcName)
+            try? FileManager.default.removeItem(at: lrcURL)
+        } else {
+            let fallbackLrc = lyricsDirectoryURL.appendingPathComponent("\(safeTrackId(for: trackId)).lrc")
+            try? FileManager.default.removeItem(at: fallbackLrc)
+        }
+
         records.removeValue(forKey: trackId)
         downloadedTrackIds.remove(trackId)
         saveManifest()
@@ -619,6 +793,7 @@ public final class OfflineDownloadManager: ObservableObject {
     public func removeAllDownloads() {
         try? FileManager.default.removeItem(at: tracksDirectoryURL)
         try? FileManager.default.removeItem(at: coversDirectoryURL)
+        try? FileManager.default.removeItem(at: lyricsDirectoryURL)
         try? FileManager.default.removeItem(at: manifestFileURL)
         try? FileManager.default.removeItem(at: playlistsMetaFileURL)
 

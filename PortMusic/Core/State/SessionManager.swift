@@ -1,5 +1,10 @@
 import Foundation
 import Combine
+import Network
+
+public extension Notification.Name {
+    static let portMusicDidReconnect = Notification.Name("portMusicDidReconnect")
+}
 
 @MainActor
 public final class SessionManager: ObservableObject {
@@ -10,6 +15,11 @@ public final class SessionManager: ObservableObject {
     @Published public var serverURL: String? = nil
     @Published public var isRestoringSession: Bool = false
     @Published public var isOfflineMode: Bool = false
+
+    private let pathMonitor = NWPathMonitor()
+    private let monitorQueue = DispatchQueue(label: "com.portmusic.network.monitor")
+    private var lastPathSatisfied: Bool = true
+    private var isProbingReconnect: Bool = false
 
     public var currentToken: String? {
         if let kc = KeychainHelper.shared.getToken(), !kc.isEmpty {
@@ -50,6 +60,26 @@ public final class SessionManager: ObservableObject {
             self.isAuthenticated = false
             self.isRestoringSession = false
         }
+
+        startNetworkMonitoring()
+    }
+
+    private func startNetworkMonitoring() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = (path.status == .satisfied)
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let wasUnsatisfied = !self.lastPathSatisfied
+                self.lastPathSatisfied = satisfied
+
+                if !satisfied {
+                    self.setOfflineMode(true)
+                } else if (wasUnsatisfied || self.isOfflineMode) && self.isAuthenticated {
+                    _ = await self.retryConnection()
+                }
+            }
+        }
+        pathMonitor.start(queue: monitorQueue)
     }
 
     // MARK: - Sitzungswiederherstellung im Hintergrund (Offline-First)
@@ -101,6 +131,7 @@ public final class SessionManager: ObservableObject {
             self.isAuthenticated = true
             self.isOfflineMode = false
             cacheUserProfile(profile)
+            await handleOnlineSyncAfterReconnect(serverURL: storedURL, token: token)
         } catch let error as AuthError {
             switch error {
             case .unauthorized, .sessionExpired, .invalidCredentials:
@@ -125,16 +156,25 @@ public final class SessionManager: ObservableObject {
 
     @discardableResult
     public func retryConnection() async -> Bool {
-        guard let storedURL = serverURL, !storedURL.isEmpty,
+        guard !isProbingReconnect,
+              let storedURL = serverURL, !storedURL.isEmpty,
               let token = currentToken, !token.isEmpty else {
             return false
         }
+        isProbingReconnect = true
+        defer { isProbingReconnect = false }
+
         do {
             let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token, timeout: 4.0)
+            let wasOffline = self.isOfflineMode
             self.currentUser = profile
             self.isAuthenticated = true
             self.isOfflineMode = false
             cacheUserProfile(profile)
+            await handleOnlineSyncAfterReconnect(serverURL: storedURL, token: token)
+            if wasOffline {
+                NotificationCenter.default.post(name: .portMusicDidReconnect, object: nil)
+            }
             return true
         } catch let error as AuthError {
             switch error {
@@ -151,9 +191,22 @@ public final class SessionManager: ObservableObject {
         }
     }
 
+    private func handleOnlineSyncAfterReconnect(serverURL: String, token: String) async {
+        await FavoritesManager.shared.syncPendingWithServer(serverURL: serverURL, token: token)
+        _ = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
+        await OfflineDownloadManager.shared.repairMissingLyricsIfNeeded(serverURL: serverURL, token: token)
+    }
+
     public func setOfflineMode(_ offline: Bool) {
         if self.isOfflineMode != offline {
+            let becameOnline = (self.isOfflineMode == true && offline == false)
             self.isOfflineMode = offline
+            if becameOnline, let url = serverURL, let tok = currentToken, !url.isEmpty, !tok.isEmpty {
+                Task {
+                    await handleOnlineSyncAfterReconnect(serverURL: url, token: tok)
+                    NotificationCenter.default.post(name: .portMusicDidReconnect, object: nil)
+                }
+            }
         }
     }
 
