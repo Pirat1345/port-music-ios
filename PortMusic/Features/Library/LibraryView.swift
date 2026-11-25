@@ -27,9 +27,8 @@ public struct LibraryView: View {
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var showImportPlaylistSheet: Bool = false
     @State private var isEditingCategories: Bool = false
-    @State private var draggingCategoryId: String? = nil
-    @State private var dragRawTranslationY: CGFloat = 0
-    @State private var accumulatedSwapOffsetY: CGFloat = 0
+    @State private var categoryEditMode: EditMode = .inactive
+    @State private var editListGeneration: Int = 0
     @State private var categoriesConfig: [LibraryCategoryConfig] = LibraryView.defaultCategories()
 
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
@@ -357,26 +356,24 @@ public struct LibraryView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Category Links Section (Inline Apple Drag & Drop Edit Mode)
+    // MARK: - Category Links Section (Native Apple List .onMove Drag & Drop + Separate Unclipped Hidden Card)
     private var categoryLinksSection: some View {
         let visibleCats = categoriesConfig.filter { $0.visible }
         let hiddenCats = categoriesConfig.filter { !$0.visible }
         let rowHeight: CGFloat = 52
+        let visibleListHeight = CGFloat(visibleCats.count) * rowHeight + 4
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 10) {
             // Rechts über der obersten Option ("Playlists"): Bearbeiten <-> Fertig
             HStack {
                 if isEditingCategories {
                     Button(action: {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
-                            draggingCategoryId = nil
-                            dragRawTranslationY = 0
-                            accumulatedSwapOffsetY = 0
-                            let defaults = Self.defaultCategories()
-                            categoriesConfig = defaults
-                            persistCategories(defaults)
-                        }
+                        let defaults = Self.defaultCategories()
+                        categoriesConfig = defaults
+                        persistCategories(defaults)
+                        categoryEditMode = .inactive
+                        editListGeneration += 1
                     }) {
                         Text("Zurücksetzen")
                             .font(.system(size: 13, weight: .medium))
@@ -389,11 +386,17 @@ public struct LibraryView: View {
 
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
-                        draggingCategoryId = nil
-                        dragRawTranslationY = 0
-                        accumulatedSwapOffsetY = 0
-                        isEditingCategories.toggle()
+                    if isEditingCategories {
+                        categoryEditMode = .inactive
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                            isEditingCategories = false
+                        }
+                    } else {
+                        categoryEditMode = .inactive
+                        editListGeneration += 1
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.84)) {
+                            isEditingCategories = true
+                        }
                     }
                 }) {
                     Text(isEditingCategories ? "Fertig" : "Bearbeiten")
@@ -405,10 +408,10 @@ public struct LibraryView: View {
             .padding(.horizontal, 4)
 
             if isEditingCategories {
-                VStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
-                            let isDragging = draggingCategoryId == cat.id
+                VStack(alignment: .leading, spacing: 14) {
+                    // 1. Natives Apple List (.onMove) für sichtbare Kategorien (flüssiges Drag & Drop wie Leisten-Menü)
+                    List {
+                        ForEach(visibleCats) { cat in
                             HStack(spacing: 12) {
                                 Button(action: {
                                     toggleCategoryInline(cat)
@@ -422,6 +425,7 @@ public struct LibraryView: View {
                                             .foregroundColor(.black)
                                     }
                                     .frame(width: 28, height: 28)
+                                    .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
 
@@ -435,134 +439,100 @@ public struct LibraryView: View {
                                     .foregroundColor(.white)
 
                                 Spacer()
-
-                                // Immer sichtbares 3-Striche Drag-Handle rechts
-                                Image(systemName: "line.3.horizontal")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(isDragging ? .white : Color.white.opacity(0.45))
-                                    .frame(width: 44, height: rowHeight)
-                                    .contentShape(Rectangle())
-                                    .gesture(
-                                        DragGesture(minimumDistance: 2)
-                                            .onChanged { value in
-                                                if draggingCategoryId == nil {
-                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                                    draggingCategoryId = cat.id
-                                                    accumulatedSwapOffsetY = 0
-                                                }
-                                                dragRawTranslationY = value.translation.height
-                                                let currentDelta = dragRawTranslationY - accumulatedSwapOffsetY
-                                                let currentVisible = categoriesConfig.filter { $0.visible }
-                                                let currentHidden = categoriesConfig.filter { !$0.visible }
-                                                guard let curIdx = currentVisible.firstIndex(where: { $0.id == cat.id }) else { return }
-
-                                                if currentDelta > rowHeight * 0.55, curIdx < currentVisible.count - 1 {
-                                                    var reordered = currentVisible
-                                                    reordered.swapAt(curIdx, curIdx + 1)
-                                                    UISelectionFeedbackGenerator().selectionChanged()
-                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
-                                                        accumulatedSwapOffsetY += rowHeight
-                                                        categoriesConfig = reordered + currentHidden
-                                                    }
-                                                } else if currentDelta < -rowHeight * 0.55, curIdx > 0 {
-                                                    var reordered = currentVisible
-                                                    reordered.swapAt(curIdx, curIdx - 1)
-                                                    UISelectionFeedbackGenerator().selectionChanged()
-                                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
-                                                        accumulatedSwapOffsetY -= rowHeight
-                                                        categoriesConfig = reordered + currentHidden
-                                                    }
-                                                }
-                                            }
-                                            .onEnded { _ in
-                                                withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
-                                                    draggingCategoryId = nil
-                                                    dragRawTranslationY = 0
-                                                    accumulatedSwapOffsetY = 0
-                                                }
-                                                persistCategories(categoriesConfig)
-                                            }
-                                    )
                             }
                             .frame(height: rowHeight)
-                            .padding(.leading, 14)
-                            .padding(.trailing, 4)
-                            .background(isDragging ? Color.white.opacity(0.10) : Color.clear)
-                            .overlay(alignment: .bottom) {
-                                if index < visibleCats.count - 1 && !isDragging {
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.08))
-                                        .frame(height: 0.5)
-                                        .padding(.leading, 52)
-                                }
-                            }
-                            .scaleEffect(isDragging ? 1.02 : 1.0)
-                            .offset(y: isDragging ? (dragRawTranslationY - accumulatedSwapOffsetY) : 0)
-                            .zIndex(isDragging ? 10 : 0)
+                            .moveDisabled(false)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14))
+                            .listRowBackground(Color.white.opacity(0.04))
+                            .listRowSeparatorTint(Color.white.opacity(0.08))
+                            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .onMove { indices, newOffset in
+                            var updatedVisible = visibleCats
+                            updatedVisible.move(fromOffsets: indices, toOffset: newOffset)
+                            categoriesConfig = updatedVisible + hiddenCats
+                            persistCategories(categoriesConfig)
                         }
                     }
+                    .id(editListGeneration)
+                    .onAppear {
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                categoryEditMode = .active
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDisabled(true)
+                    .environment(\.editMode, $categoryEditMode)
+                    .environment(\.defaultMinListRowHeight, rowHeight)
+                    .frame(height: visibleListHeight)
+                    .background(Color.white.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    )
 
+                    // 2. Separater, dynamisch wachsender Kasten für "WEITERE OPTIONEN" (wird nie abgeschnitten)
                     if !hiddenCats.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Rectangle()
-                                .fill(Color.white.opacity(0.10))
-                                .frame(height: 0.5)
-
+                        VStack(alignment: .leading, spacing: 6) {
                             Text("WEITERE OPTIONEN")
                                 .font(.system(size: 11, weight: .semibold))
                                 .tracking(0.6)
                                 .foregroundColor(Color.white.opacity(0.45))
-                                .padding(.horizontal, 14)
-                                .padding(.top, 14)
-                                .padding(.bottom, 6)
+                                .padding(.horizontal, 6)
 
-                            ForEach(Array(hiddenCats.enumerated()), id: \.element.id) { index, cat in
-                                HStack(spacing: 12) {
-                                    Button(action: {
-                                        toggleCategoryInline(cat)
-                                    }) {
-                                        Image(systemName: "circle")
-                                            .font(.system(size: 21))
-                                            .foregroundColor(Color.white.opacity(0.35))
-                                            .frame(width: 28, height: 28)
+                            VStack(spacing: 0) {
+                                ForEach(Array(hiddenCats.enumerated()), id: \.element.id) { index, cat in
+                                    HStack(spacing: 12) {
+                                        Button(action: {
+                                            toggleCategoryInline(cat)
+                                        }) {
+                                            Image(systemName: "circle")
+                                                .font(.system(size: 21))
+                                                .foregroundColor(Color.white.opacity(0.35))
+                                                .frame(width: 28, height: 28)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Image(systemName: cat.iconName)
+                                            .font(.system(size: 17))
+                                            .foregroundColor(Color.white.opacity(0.45))
+                                            .frame(width: 24, alignment: .center)
+
+                                        Text(cat.label)
+                                            .font(.system(size: 16))
+                                            .foregroundColor(Color.white.opacity(0.65))
+
+                                        Spacer()
                                     }
-                                    .buttonStyle(.plain)
-
-                                    Image(systemName: cat.iconName)
-                                        .font(.system(size: 17))
-                                        .foregroundColor(Color.white.opacity(0.45))
-                                        .frame(width: 24, alignment: .center)
-
-                                    Text(cat.label)
-                                        .font(.system(size: 16))
-                                        .foregroundColor(Color.white.opacity(0.65))
-
-                                    Spacer()
-                                }
-                                .frame(height: rowHeight)
-                                .padding(.horizontal, 14)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    toggleCategoryInline(cat)
-                                }
-                                .overlay(alignment: .bottom) {
-                                    if index < hiddenCats.count - 1 {
-                                        Rectangle()
-                                            .fill(Color.white.opacity(0.08))
-                                            .frame(height: 0.5)
-                                            .padding(.leading, 52)
+                                    .frame(height: rowHeight)
+                                    .padding(.horizontal, 14)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        toggleCategoryInline(cat)
+                                    }
+                                    .overlay(alignment: .bottom) {
+                                        if index < hiddenCats.count - 1 {
+                                            Rectangle()
+                                                .fill(Color.white.opacity(0.08))
+                                                .frame(height: 0.5)
+                                                .padding(.leading, 52)
+                                        }
                                     }
                                 }
                             }
+                            .background(Color.white.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            )
                         }
                     }
                 }
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                )
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
@@ -620,13 +590,14 @@ public struct LibraryView: View {
             return
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-            categoriesConfig[idx].visible.toggle()
-            let visible = categoriesConfig.filter { $0.visible }
-            let hidden = categoriesConfig.filter { !$0.visible }
-            categoriesConfig = visible + hidden
-            persistCategories(categoriesConfig)
-        }
+        categoriesConfig[idx].visible.toggle()
+        let visible = categoriesConfig.filter { $0.visible }
+        let hidden = categoriesConfig.filter { !$0.visible }
+        categoriesConfig = visible + hidden
+        persistCategories(categoriesConfig)
+        // List gezielt neu einhängen & EditMode frisch aktivieren, damit das 3-Striche-Handle immer sicher erscheint
+        categoryEditMode = .inactive
+        editListGeneration += 1
     }
 
     // MARK: - Segmented Tab Bar
