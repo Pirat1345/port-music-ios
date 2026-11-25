@@ -182,34 +182,17 @@ public struct AppleCategoryDetailView: View {
             .buttonStyle(PlainButtonStyle())
             .accessibilityLabel("Zurück")
 
-            HStack(spacing: 10) {
-                Button(action: toggleCategoryPlayPause) {
-                    Image(systemName: isCategoryCurrentlyPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.black)
-                        .offset(x: isCategoryCurrentlyPlaying ? 0 : 1)
-                        .frame(width: 34, height: 34)
-                        .background(Color.white)
-                        .clipShape(Circle())
-                        .shadow(color: Color.black.opacity(0.35), radius: 6, y: 2)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(allAvailableTracks.isEmpty)
-                .opacity(allAvailableTracks.isEmpty ? 0.55 : 1.0)
-                .accessibilityLabel(isCategoryCurrentlyPlaying ? "Pause" : "Wiedergabe")
-
-                Text(effectiveTitle)
-                    .font(.system(size: 15, weight: .black, design: .serif))
-                    .tracking(2.0)
-                    .textCase(.uppercase)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .opacity(showStickyTopBar ? 1 : 0)
-            .offset(y: showStickyTopBar ? 0 : -6)
-            .scaleEffect(showStickyTopBar ? 1 : 0.95, anchor: .leading)
-            .allowsHitTesting(showStickyTopBar)
+            Text(effectiveTitle)
+                .font(.system(size: 16, weight: .black, design: .serif))
+                .tracking(2.0)
+                .textCase(.uppercase)
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .opacity(showStickyTopBar ? 1 : 0)
+                .offset(y: showStickyTopBar ? 0 : -6)
+                .scaleEffect(showStickyTopBar ? 1 : 0.95, anchor: .leading)
+                .allowsHitTesting(showStickyTopBar)
 
             Spacer(minLength: 0)
         }
@@ -297,43 +280,6 @@ public struct AppleCategoryDetailView: View {
                     .multilineTextAlignment(.center)
                     .shadow(color: Color.black.opacity(0.90), radius: 14, y: 4)
                     .padding(.horizontal, 12)
-
-                if totalItemCount > 0 {
-                    Text("\(allAvailableTracks.count) Songs · Entdecken & Charts")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color.white.opacity(0.78))
-                }
-
-                HStack(spacing: 14) {
-                    // Zufallswiedergabe
-                    Button(action: { playAll(shuffle: true) }) {
-                        Image(systemName: "shuffle")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 42, height: 42)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.20), lineWidth: 1)
-                            )
-                    }
-                    .disabled(allAvailableTracks.isEmpty)
-                    .opacity(allAvailableTracks.isEmpty ? 0.45 : 1.0)
-
-                    // Play / Pause All (Weißer Octave Hero Button)
-                    Button(action: toggleCategoryPlayPause) {
-                        Image(systemName: isCategoryCurrentlyPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.black)
-                            .offset(x: isCategoryCurrentlyPlaying ? 0 : 1.5)
-                            .frame(width: 58, height: 58)
-                            .background(Color.white)
-                            .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.45), radius: 10, y: 4)
-                    }
-                    .disabled(allAvailableTracks.isEmpty)
-                    .opacity(allAvailableTracks.isEmpty ? 0.55 : 1.0)
                     .background(
                         GeometryReader { geo in
                             Color.clear.preference(
@@ -342,8 +288,43 @@ public struct AppleCategoryDetailView: View {
                             )
                         }
                     )
+
+                if !allAvailableTracks.isEmpty {
+                    Text("\(allAvailableTracks.count) Songs · Entdecken & Charts")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.78))
+
+                    HStack(spacing: 14) {
+                        Button(action: { playAll(shuffle: true) }) {
+                            Image(systemName: "shuffle")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 42, height: 42)
+                                .background(Color.white.opacity(0.12))
+                                .clipShape(Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                                )
+                        }
+
+                        Button(action: toggleCategoryPlayPause) {
+                            Image(systemName: isCategoryCurrentlyPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(.black)
+                                .offset(x: isCategoryCurrentlyPlaying ? 0 : 1.5)
+                                .frame(width: 58, height: 58)
+                                .background(Color.white)
+                                .clipShape(Circle())
+                                .shadow(color: Color.black.opacity(0.45), radius: 10, y: 4)
+                        }
+                    }
+                    .padding(.top, 6)
+                } else if totalItemCount > 0 {
+                    Text("Kuratierte Playlists & Highlights")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.78))
                 }
-                .padding(.top, 6)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 22)
