@@ -80,18 +80,18 @@ public struct FolderCoverView: View {
         switch count {
         case 1:
             return [
-                FolderCoverSlot(xRatio: 0.50, yRatio: 0.36, sizeRatio: 0.40, angle: 0, zIndex: 1)
+                FolderCoverSlot(xRatio: 0.50, yRatio: 0.34, sizeRatio: 0.42, angle: 0, zIndex: 1)
             ]
         case 2:
             return [
-                FolderCoverSlot(xRatio: 0.32, yRatio: 0.37, sizeRatio: 0.34, angle: -5, zIndex: 1),
-                FolderCoverSlot(xRatio: 0.68, yRatio: 0.37, sizeRatio: 0.34, angle: 5, zIndex: 2)
+                FolderCoverSlot(xRatio: 0.31, yRatio: 0.36, sizeRatio: 0.36, angle: -5, zIndex: 1),
+                FolderCoverSlot(xRatio: 0.69, yRatio: 0.36, sizeRatio: 0.36, angle: 5, zIndex: 2)
             ]
         default:
             return [
-                FolderCoverSlot(xRatio: 0.28, yRatio: 0.38, sizeRatio: 0.30, angle: -8, zIndex: 1),
-                FolderCoverSlot(xRatio: 0.50, yRatio: 0.34, sizeRatio: 0.35, angle: 0, zIndex: 3),
-                FolderCoverSlot(xRatio: 0.72, yRatio: 0.38, sizeRatio: 0.30, angle: 8, zIndex: 2)
+                FolderCoverSlot(xRatio: 0.28, yRatio: 0.37, sizeRatio: 0.32, angle: -8, zIndex: 1),
+                FolderCoverSlot(xRatio: 0.50, yRatio: 0.31, sizeRatio: 0.37, angle: 0, zIndex: 3),
+                FolderCoverSlot(xRatio: 0.72, yRatio: 0.37, sizeRatio: 0.32, angle: 8, zIndex: 2)
             ]
         }
     }
@@ -143,16 +143,16 @@ public struct FolderCoverView: View {
                             )
                     )
 
-                // Aufgefaecherte Playlist-Cover im Inneren des Ordners
+                // Aufgefaecherte Playlist-Cover: ragen oben ueber die Ordnerkante hinaus (kein Clip auf BackShape!)
                 if !shown.isEmpty {
                     ZStack {
                         ForEach(Array(shown.enumerated()), id: \.offset) { idx, pl in
                             let slot = layoutSlots[idx]
                             let cardSize = min(w, h) * slot.sizeRatio
-                            let popOffset: CGFloat = isHighlighted ? -h * 0.05 : 0
+                            let popOffset: CGFloat = isHighlighted ? -h * 0.06 : 0
 
                             ZStack {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
                                     .fill(Color(hex: "#1f1f25"))
                                     .frame(width: cardSize, height: cardSize)
 
@@ -161,7 +161,7 @@ public struct FolderCoverView: View {
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
                                         .frame(width: cardSize, height: cardSize)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                                 } placeholder: {
                                     Image(systemName: "music.note")
                                         .font(.system(size: cardSize * 0.34, weight: .medium))
@@ -170,16 +170,16 @@ public struct FolderCoverView: View {
                             }
                             .frame(width: cardSize, height: cardSize)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(Color.white.opacity(0.14), lineWidth: 0.6)
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
                             )
-                            .shadow(color: Color.black.opacity(0.45), radius: 4, y: 2)
-                            .rotationEffect(.degrees(slot.angle))
+                            .shadow(color: Color.black.opacity(0.55), radius: 5, y: 3)
+                            .rotationEffect(.degrees(slot.angle), anchor: .bottom)
                             .position(x: w * slot.xRatio, y: h * slot.yRatio + popOffset)
                             .zIndex(slot.zIndex)
                         }
                     }
-                    .clipShape(FolderBackShape())
+                    .zIndex(10)
                 }
 
                 // Schattensaum ueber der Taschen-Kante, damit Cover optisch drinnen stecken
@@ -194,6 +194,7 @@ public struct FolderCoverView: View {
                     .frame(width: w * (200.0 / 240.0), height: h * (14.0 / 240.0))
                     .position(x: w * 0.50, y: h * (77.0 / 240.0))
                     .clipShape(FolderBackShape())
+                    .zIndex(15)
 
                 // Vorderwand (abgerundete Mac-Ordner-Tasche mit Lichtkante oben)
                 FolderFrontShape()
@@ -220,8 +221,9 @@ public struct FolderCoverView: View {
                             )
                     )
                     .offset(y: isHighlighted ? 2 : 0)
+                    .zIndex(20)
             }
-            .offset(y: h * 0.04)
+            .offset(y: h * 0.11)
             .animation(.spring(response: 0.28, dampingFraction: 0.8), value: isHighlighted)
         }
         .aspectRatio(1, contentMode: .fit)
