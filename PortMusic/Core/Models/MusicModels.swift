@@ -1347,6 +1347,12 @@ public struct LibraryCollectionsData {
     }
 }
 
+public struct PodcastChartsListResponse: Codable {
+    public let country: String?
+    public let genre: Int?
+    public let results: [PodcastItem]?
+}
+
 // MARK: - Podcast Models (/api/podcasts/*)
 public struct PodcastItem: Codable, Identifiable, Equatable, Hashable {
     public let id: String

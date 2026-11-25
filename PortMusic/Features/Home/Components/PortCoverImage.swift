@@ -19,6 +19,18 @@ public func resolveCoverURL(_ raw: String?, serverURL: String) -> URL? {
         return URL(string: cleaned)
     }
 
+    if cleaned.hasPrefix("/radio/") {
+        let rel = String(cleaned.dropFirst("/radio/".count))
+        let ns = rel as NSString
+        let ext = ns.pathExtension
+        let baseName = ns.deletingPathExtension
+        if let bundled = Bundle.main.url(forResource: baseName, withExtension: ext, subdirectory: "radio")
+            ?? Bundle.main.url(forResource: baseName, withExtension: ext, subdirectory: "Resources/radio")
+            ?? Bundle.main.url(forResource: baseName, withExtension: ext) {
+            return bundled
+        }
+    }
+
     if cleaned.hasPrefix("http://") || cleaned.hasPrefix("https://") {
         if let direct = URL(string: cleaned) {
             return direct

@@ -500,41 +500,43 @@ public struct FullscreenPlayerView: View {
 
             Spacer()
 
-            // Runde Aktionsbuttons rechts: Favorit & Optionen
+            // Runde Aktionsbuttons rechts: Favorit (nur für reguläre Titel) & Optionen
             HStack(spacing: 10) {
-                // Favoriten-Button (Runder Frosted Glass Button mit Herz in #fc3c44)
-                Button(action: {
-                    guard let track = player.currentTrack else { return }
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.impactOccurred()
-                    isFavorite.toggle()
-                    let targetState = isFavorite
-                    FavoritesManager.shared.enqueueMutation(track: track, isFavorite: targetState)
-                    Task {
-                        let token = SessionManager.shared.currentToken
-                        _ = await MusicService.shared.toggleFavorite(
-                            track: track,
-                            desiredState: targetState,
-                            serverURL: serverURL,
-                            token: token
-                        )
-                    }
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.12))
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                if player.currentTrack?.isLive != true {
+                    // Favoriten-Button (Runder Frosted Glass Button mit Herz in #fc3c44)
+                    Button(action: {
+                        guard let track = player.currentTrack else { return }
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        isFavorite.toggle()
+                        let targetState = isFavorite
+                        FavoritesManager.shared.enqueueMutation(track: track, isFavorite: targetState)
+                        Task {
+                            let token = SessionManager.shared.currentToken
+                            _ = await MusicService.shared.toggleFavorite(
+                                track: track,
+                                desiredState: targetState,
+                                serverURL: serverURL,
+                                token: token
                             )
-                            .frame(width: 44, height: 44)
+                        }
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.12))
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                )
+                                .frame(width: 44, height: 44)
 
-                        Image(systemName: isFavorite ? "heart.fill" : "heart")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(isFavorite ? Color(hex: "#fc3c44") : Color.white)
+                            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(isFavorite ? Color(hex: "#fc3c44") : Color.white)
+                        }
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
 
                 // Optionen-Menü (Runder Frosted Glass Button mit •••)
                 Menu {
@@ -614,66 +616,110 @@ public struct FullscreenPlayerView: View {
 
     @ViewBuilder
     private func scrubberContent(fixedWidth: CGFloat?) -> some View {
-        VStack(spacing: 8) {
-            if let w = fixedWidth {
-                scrubberBar(width: w)
-            } else {
-                GeometryReader { geo in
-                    scrubberBar(width: geo.size.width)
-                }
-                .frame(height: 24)
-            }
+        if player.currentTrack?.isLive == true {
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(height: 1.5)
 
-            // Links vergangen, Mitte Qualitäts-Chip ("High" / "Lossless"), Rechts verbleibend (-M:SS)
-            HStack {
-                Text(formatSeconds(activeProgress))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.60))
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(hex: "#ff3b30"))
+                            .frame(width: 7, height: 7)
+                            .shadow(color: Color(hex: "#ff3b30").opacity(0.75), radius: 4)
 
-                Spacer()
-
-                let isOfflineTrack = player.isPlayingOffline || (player.currentTrack.map { offlineManager.isDownloaded(trackId: $0.id) } ?? false)
-                if isOfflineTrack {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "#10b981"))
-                        Text("Offline · Lokal")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.92))
+                        Text("LIVE")
+                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                            .tracking(1.6)
+                            .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3.5)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
                     .background(
                         Capsule()
-                            .fill(Color(hex: "#10b981").opacity(0.18))
+                            .fill(Color.white.opacity(0.12))
                             .overlay(
                                 Capsule()
-                                    .stroke(Color(hex: "#10b981").opacity(0.35), lineWidth: 0.6)
+                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.6)
                             )
                     )
-                } else {
-                    Text(player.currentTrack?.isLive == true ? "Live Radio" : "High")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundColor(Color.white.opacity(0.85))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule()
-                                .fill(Color.white.opacity(0.14))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                                )
-                        )
+
+                    Rectangle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(height: 1.5)
                 }
 
-                Spacer()
+                let subtitle = player.currentTrack?.album.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                Text(subtitle.isEmpty || subtitle == "Radio" ? "Live-Übertragung" : subtitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.62))
+                    .lineLimit(1)
+            }
+            .frame(width: fixedWidth)
+            .padding(.vertical, 2)
+        } else {
+            VStack(spacing: 8) {
+                if let w = fixedWidth {
+                    scrubberBar(width: w)
+                } else {
+                    GeometryReader { geo in
+                        scrubberBar(width: geo.size.width)
+                    }
+                    .frame(height: 24)
+                }
 
-                let remaining = max(0, player.duration - activeProgress)
-                Text("-" + formatSeconds(remaining))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.60))
+                // Links vergangen, Mitte Qualitäts-Chip ("High" / "Offline"), Rechts verbleibend (-M:SS)
+                HStack {
+                    Text(formatSeconds(activeProgress))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.60))
+
+                    Spacer()
+
+                    let isOfflineTrack = player.isPlayingOffline || (player.currentTrack.map { offlineManager.isDownloaded(trackId: $0.id) } ?? false)
+                    if isOfflineTrack {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color(hex: "#10b981"))
+                            Text("Offline · Lokal")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(Color.white.opacity(0.92))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            Capsule()
+                                .fill(Color(hex: "#10b981").opacity(0.18))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color(hex: "#10b981").opacity(0.35), lineWidth: 0.6)
+                                )
+                        )
+                    } else {
+                        Text("High")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.85))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(Color.white.opacity(0.14))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                    )
+                            )
+                    }
+
+                    Spacer()
+
+                    let remaining = max(0, player.duration - activeProgress)
+                    Text("-" + formatSeconds(remaining))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.60))
+                }
             }
         }
     }
@@ -776,12 +822,14 @@ public struct FullscreenPlayerView: View {
 
     // MARK: - Untere Aktionsleiste (Lyrics, AirPlay, Shuffle, Repeat, Queue)
     public var bottomActionRow: some View {
-        let isLyricsActive = (showLyrics || sidePanelMode == .lyrics)
+        let isLive = (player.currentTrack?.isLive == true)
+        let isLyricsActive = !isLive && (showLyrics || sidePanelMode == .lyrics)
         let isQueueActive = (sidePanelMode == .queue)
 
         return HStack(spacing: 0) {
             // 1. Lyrics Toggle (quote.bubble)
             Button(action: {
+                guard !isLive else { return }
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -794,10 +842,11 @@ public struct FullscreenPlayerView: View {
             }) {
                 Image(systemName: isLyricsActive ? "quote.bubble.fill" : "quote.bubble")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(isLyricsActive ? .white : Color.white.opacity(0.65))
+                    .foregroundColor(isLyricsActive ? .white : Color.white.opacity(isLive ? 0.25 : 0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(isLive)
 
             // 2. AirPlay Symbol
             Button(action: {
@@ -813,29 +862,33 @@ public struct FullscreenPlayerView: View {
 
             // 3. Shuffle
             Button(action: {
+                guard !isLive else { return }
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 player.toggleShuffle()
             }) {
                 Image(systemName: "shuffle")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(player.isShuffle ? .white : Color.white.opacity(0.65))
+                    .foregroundColor(!isLive && player.isShuffle ? .white : Color.white.opacity(isLive ? 0.25 : 0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(isLive)
 
             // 4. Repeat
             Button(action: {
+                guard !isLive else { return }
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
                 player.toggleRepeat()
             }) {
-                Image(systemName: player.isRepeat ? "repeat.1" : "repeat")
+                Image(systemName: !isLive && player.isRepeat ? "repeat.1" : "repeat")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(player.isRepeat ? .white : Color.white.opacity(0.65))
+                    .foregroundColor(!isLive && player.isRepeat ? .white : Color.white.opacity(isLive ? 0.25 : 0.65))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(isLive)
 
             // 5. Queue Toggle (list.bullet)
             Button(action: {

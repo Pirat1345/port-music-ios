@@ -529,8 +529,8 @@ public final class MusicService {
         }
         guard let (data, resp) = try? await discoverySession.data(for: req),
               let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
-              let wrapper = try? JSONDecoder().decode([String: [PodcastItem]].self, from: data),
-              let results = wrapper["results"] else {
+              let wrapper = try? JSONDecoder().decode(PodcastChartsListResponse.self, from: data),
+              let results = wrapper.results else {
             return cachedPodcastCharts(genre: genre)
         }
         if !results.isEmpty {
@@ -558,10 +558,10 @@ public final class MusicService {
         }
         guard let (data, resp) = try? await discoverySession.data(for: req),
               let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
-              let wrapper = try? JSONDecoder().decode([String: [PodcastItem]].self, from: data) else {
+              let wrapper = try? JSONDecoder().decode(PodcastChartsListResponse.self, from: data) else {
             return []
         }
-        return wrapper["results"] ?? []
+        return wrapper.results ?? []
     }
 
     public func resolvePodcastURL(url inputUrl: String, serverURL: String, token: String?) async -> PodcastResolveResult? {

@@ -299,6 +299,11 @@ public final class AudioPlayerManager: ObservableObject {
         }
 
         self.currentTrack = track
+        DebugLogStore.shared.log(
+            tag: track.isLive ? "play:live" : "call:play",
+            category: .stream,
+            message: "\(track.title) (\(track.artist)) offline=\(OfflineDownloadManager.shared.localAudioFileURL(for: track.id) != nil)"
+        )
         let initialSeek = (startAt ?? 0.0) > 1.0 && !track.isLive ? startAt : nil
         self.pendingSeekTime = initialSeek
         self.currentTime = initialSeek ?? 0.0
@@ -556,7 +561,13 @@ public final class AudioPlayerManager: ObservableObject {
             self.queueIndex = 0
             play(track: firstTrack, from: queue, serverURL: activeURL)
         } else {
-            extendAutoplayQueueAndPlayNext(serverURL: activeURL)
+            let autoplayEnabled = UserDefaults.standard.object(forKey: "playback_autoplay_enabled") as? Bool ?? true
+            if autoplayEnabled {
+                extendAutoplayQueueAndPlayNext(serverURL: activeURL)
+            } else {
+                self.isPlaying = false
+                self.isBuffering = false
+            }
         }
     }
 

@@ -11,11 +11,26 @@ public extension Notification.Name {
 public final class SessionManager: ObservableObject {
     public static let shared = SessionManager()
 
+    public enum NetworkInterfaceKind: String, Equatable {
+        case wifi = "WLAN (Wi-Fi)"
+        case cellular = "Mobile Daten"
+        case wiredEthernet = "Ethernet"
+        case other = "Verbindung aktiv"
+        case disconnected = "Kein Internet"
+    }
+
     @Published public var isAuthenticated: Bool = false
     @Published public var currentUser: UserProfile? = nil
     @Published public var serverURL: String? = nil
     @Published public var isRestoringSession: Bool = false
     @Published public var isOfflineMode: Bool = false
+
+    @Published public private(set) var isPathSatisfied: Bool = true
+    @Published public private(set) var networkInterface: NetworkInterfaceKind = .other
+    @Published public private(set) var isExpensiveConnection: Bool = false
+    @Published public private(set) var isConstrainedConnection: Bool = false
+    @Published public private(set) var networkStatusRaw: String = "wird geprüft"
+    @Published public private(set) var lastNetworkUpdate: Date = Date()
 
     private let pathMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "com.portmusic.network.monitor")
@@ -68,8 +83,46 @@ public final class SessionManager: ObservableObject {
     private func startNetworkMonitoring() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let satisfied = (path.status == .satisfied)
+            let iface: NetworkInterfaceKind
+            if !satisfied {
+                iface = .disconnected
+            } else if path.usesInterfaceType(.wifi) {
+                iface = .wifi
+            } else if path.usesInterfaceType(.cellular) {
+                iface = .cellular
+            } else if path.usesInterfaceType(.wiredEthernet) {
+                iface = .wiredEthernet
+            } else {
+                iface = .other
+            }
+            let rawStatus: String
+            switch path.status {
+            case .satisfied: rawStatus = "satisfied"
+            case .unsatisfied: rawStatus = "unsatisfied"
+            case .requiresConnection: rawStatus = "requiresConnection"
+            @unknown default: rawStatus = "unknown"
+            }
+            let expensive = path.isExpensive
+            let constrained = path.isConstrained
+
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
+                let changed = (self.networkInterface != iface || self.isPathSatisfied != satisfied || self.networkStatusRaw != rawStatus)
+                self.isPathSatisfied = satisfied
+                self.networkInterface = iface
+                self.isExpensiveConnection = expensive
+                self.isConstrainedConnection = constrained
+                self.networkStatusRaw = rawStatus
+                self.lastNetworkUpdate = Date()
+
+                if changed {
+                    DebugLogStore.shared.log(
+                        tag: "net:path",
+                        category: .system,
+                        message: "Status=\(rawStatus), Typ=\(iface.rawValue), teuer=\(expensive), sparmodus=\(constrained)"
+                    )
+                }
+
                 let wasUnsatisfied = !self.lastPathSatisfied
                 self.lastPathSatisfied = satisfied
 

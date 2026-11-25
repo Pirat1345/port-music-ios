@@ -302,9 +302,17 @@ public struct PlayerBarView: View {
                     .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
                 }
 
-                // Titel + optionaler Offline-Indikator
+                // Titel + optionaler Live-/Offline-Indikator
                 HStack(spacing: 5) {
-                    if isOfflineTrack {
+                    if track.isLive {
+                        Circle()
+                            .fill(Color(hex: "#ff3b30"))
+                            .frame(width: 6, height: 6)
+                        Text("LIVE")
+                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .tracking(0.8)
+                            .foregroundColor(Color(hex: "#ff453a"))
+                    } else if isOfflineTrack {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.system(size: 11))
                             .foregroundColor(Color(hex: "#10b981"))
@@ -396,13 +404,23 @@ public struct PlayerBarView: View {
                             .lineLimit(1)
 
                         HStack(spacing: 4) {
-                            if isOfflineTrack {
+                            if track.isLive {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(Color(hex: "#ff3b30"))
+                                        .frame(width: 6, height: 6)
+                                    Text("LIVE")
+                                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                        .tracking(0.8)
+                                        .foregroundColor(Color(hex: "#ff453a"))
+                                }
+                            } else if isOfflineTrack {
                                 Image(systemName: "arrow.down.circle.fill")
                                     .font(.system(size: 10.5))
                                     .foregroundColor(Color(hex: "#10b981"))
                             }
 
-                            Text(displayArtist)
+                            Text(track.isLive && displayArtist == "Radio" ? "Live-Übertragung" : displayArtist)
                                 .font(.system(size: 11.5, weight: .regular))
                                 .foregroundColor(Color.white.opacity(0.65))
                                 .lineLimit(1)
@@ -461,10 +479,12 @@ public struct PlayerBarView: View {
             .padding(.horizontal, 12)
             .frame(height: 48)
 
-            // 2px filigrane Fortschrittslinie direkt am unteren Rand der Kapsel
-            timelineScrubberSection
-                .padding(.horizontal, 16)
-                .padding(.bottom, 2)
+            // 2px filigrane Fortschrittslinie direkt am unteren Rand der Kapsel (nicht bei Live-Radio!)
+            if !track.isLive {
+                timelineScrubberSection
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 2)
+            }
         }
     }
 
