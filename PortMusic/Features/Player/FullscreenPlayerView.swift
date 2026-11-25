@@ -5,6 +5,8 @@ public struct FullscreenPlayerView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var volumeManager = SystemVolumeManager.shared
     @ObservedObject private var progress = AudioPlayerProgress.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+    @ObservedObject private var sessionManager = SessionManager.shared
     public let serverURL: String
     public let onClose: () -> Void
 
@@ -184,7 +186,8 @@ public struct FullscreenPlayerView: View {
                     .scaleEffect(1.25)
                     .clipped()
             } else {
-                let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+                let offlineCover = player.currentTrack.flatMap { offlineManager.localCoverFileURL(for: $0.id) }
+                let resolved = offlineCover ?? resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
@@ -406,7 +409,8 @@ public struct FullscreenPlayerView: View {
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             } else {
-                let resolved = resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+                let offlineCover = player.currentTrack.flatMap { offlineManager.localCoverFileURL(for: $0.id) }
+                let resolved = offlineCover ?? resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
                 PortCachedAsyncImage(url: resolved) { image in
                     image
                         .resizable()
@@ -522,11 +526,51 @@ public struct FullscreenPlayerView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
 
-                // Optionen-Button (Runder Frosted Glass Button mit •••)
-                Button(action: {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                }) {
+                // Optionen-Menü (Runder Frosted Glass Button mit •••)
+                Menu {
+                    if let current = player.currentTrack {
+                        if offlineManager.isDownloaded(trackId: current.id) {
+                            Button(role: .destructive, action: {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                offlineManager.removeDownload(trackId: current.id)
+                            }) {
+                                Label("Offline-Download entfernen", systemImage: "trash")
+                            }
+                        } else if offlineManager.isDownloading(trackId: current.id) {
+                            Button(action: {}) {
+                                Label("Wird heruntergeladen...", systemImage: "arrow.down.circle")
+                            }
+                            .disabled(true)
+                        } else if !current.isLive {
+                            Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                Task {
+                                    await offlineManager.downloadTrack(
+                                        track: current,
+                                        serverURL: serverURL,
+                                        token: SessionManager.shared.currentToken
+                                    )
+                                }
+                            }) {
+                                Label("Offline speichern", systemImage: "arrow.down.circle")
+                            }
+                        }
+
+                        Divider()
+                    }
+
+                    Button(action: {
+                        if (UIDevice.current.userInterfaceIdiom == .pad) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                sidePanelMode = (sidePanelMode == .queue) ? .none : .queue
+                            }
+                        } else {
+                            showQueueSheet = true
+                        }
+                    }) {
+                        Label("Warteschlange anzeigen", systemImage: "list.bullet")
+                    }
+                } label: {
                     ZStack {
                         Circle()
                             .fill(Color.white.opacity(0.12))
@@ -572,19 +616,41 @@ public struct FullscreenPlayerView: View {
 
                 Spacer()
 
-                Text("High")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.85))
+                let isOfflineTrack = player.isPlayingOffline || (player.currentTrack.map { offlineManager.isDownloaded(trackId: $0.id) } ?? false)
+                if isOfflineTrack {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(hex: "#10b981"))
+                        Text("Offline · Lokal")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.92))
+                    }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
+                    .padding(.vertical, 3.5)
                     .background(
                         Capsule()
-                            .fill(Color.white.opacity(0.14))
+                            .fill(Color(hex: "#10b981").opacity(0.18))
                             .overlay(
                                 Capsule()
-                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                    .stroke(Color(hex: "#10b981").opacity(0.35), lineWidth: 0.6)
                             )
                     )
+                } else {
+                    Text(player.currentTrack?.isLive == true ? "Live Radio" : "High")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(Color.white.opacity(0.85))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.14))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                )
+                        )
+                }
 
                 Spacer()
 
@@ -1028,6 +1094,11 @@ public struct FullscreenPlayerView: View {
             self.isFavorite = localFav
         }
         let token = SessionManager.shared.currentToken
+        if sessionManager.isOfflineMode {
+            lyricsLines = []
+            isLoadingLyrics = false
+            return
+        }
         let serverFav = await MusicService.shared.checkIsFavorite(trackId: track.id, serverURL: serverURL, token: token)
         await MainActor.run {
             self.isFavorite = serverFav

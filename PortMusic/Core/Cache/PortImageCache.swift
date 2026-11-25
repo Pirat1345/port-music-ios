@@ -98,9 +98,53 @@ public final class PortImageCache {
         }
     }
 
+    // MARK: - Synchronous Disk & Memory Image Helpers
+    public func storeImage(_ image: UIImage, for url: URL) {
+        let key = url.absoluteString as NSString
+        let cost = Int(image.size.width * image.size.height * 4)
+        memoryCache.setObject(image, forKey: key, cost: cost)
+        if !url.isFileURL, let data = image.jpegData(compressionQuality: 0.90) {
+            let diskURL = diskFilePath(for: url.absoluteString)
+            diskQueue.async { [diskCacheURL = self.diskCacheURL, fileManager = self.fileManager] in
+                if !fileManager.fileExists(atPath: diskCacheURL.path) {
+                    try? fileManager.createDirectory(at: diskCacheURL, withIntermediateDirectories: true, attributes: nil)
+                }
+                try? data.write(to: diskURL, options: .atomic)
+            }
+        }
+    }
+
+    public func cachedImageData(for url: URL) -> Data? {
+        if url.isFileURL {
+            return try? Data(contentsOf: url)
+        }
+        let diskURL = diskFilePath(for: url.absoluteString)
+        if fileManager.fileExists(atPath: diskURL.path),
+           let data = try? Data(contentsOf: diskURL), !data.isEmpty {
+            return data
+        }
+        if let memImg = imageFromMemory(for: url) {
+            return memImg.jpegData(compressionQuality: 0.90) ?? memImg.pngData()
+        }
+        return nil
+    }
+
     // MARK: - Internal Disk & Network Fetch
     private func fetchAndDecode(url: URL) async -> UIImage? {
         let key = url.absoluteString as NSString
+
+        // 0. Lokale file:// URLs direkt von Flash laden (ohne HTTPURLResponse-Check!)
+        if url.isFileURL {
+            if let data = try? Data(contentsOf: url),
+               let localImage = UIImage(data: data) {
+                let decoded = await localImage.byPreparingForDisplay() ?? localImage
+                let cost = Int(decoded.size.width * decoded.size.height * 4)
+                memoryCache.setObject(decoded, forKey: key, cost: cost)
+                return decoded
+            }
+            return nil
+        }
+
         let diskURL = diskFilePath(for: url.absoluteString)
 
         // 1. Check L2 Disk Cache
@@ -113,10 +157,17 @@ public final class PortImageCache {
             return decoded
         }
 
-        // 2. Network Download
+        // 2. Network Download (mit Auth-Header fuer lokale Server-Cover unter /api/...)
         var request = URLRequest(url: url)
-        request.timeoutInterval = 15.0
+        request.timeoutInterval = 8.0
         request.cachePolicy = .returnCacheDataElseLoad
+        if url.path.hasPrefix("/api/") || url.path.contains("/files/") {
+            let token = KeychainHelper.shared.getToken() ?? UserDefaults.standard.string(forKey: "portmusic_auth_token")
+            if let tok = token, !tok.isEmpty {
+                request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                request.setValue(tok, forHTTPHeaderField: "x-session-token")
+            }
+        }
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

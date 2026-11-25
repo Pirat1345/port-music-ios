@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Floating Frosted Glass MiniPlayer (Apple Liquid Glass Kapsel mit Gestensteuerung)
 public struct PlayerBarView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     public let serverURL: String
     public let isInline: Bool
     public let onOpenFullscreen: () -> Void
@@ -271,34 +272,53 @@ public struct PlayerBarView: View {
     // MARK: - Inline Minibar (Exakt wie in Octave: Sitzt im minimierten Zustand zwischen linkem und rechtem 62pt-Kreis)
     @ViewBuilder
     private func inlineContentView(track: Track) -> some View {
+        let isOfflineTrack = player.isPlayingOffline || offlineManager.isDownloaded(trackId: track.id)
+
         HStack(spacing: 10) {
             // Antippbarer & Wischbarer Info-Bereich (Cover bleibt fest, nur Text gleitet)
             HStack(spacing: 10) {
-                // Mini Cover Artwork (38x38, 8pt Radius) - Bleibt fest an Ort und Stelle
-                let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
-                PortCachedAsyncImage(url: resolved) { image in
-                    image
+                // Mini Cover Artwork (38x38, 8pt Radius) - Prefer loaded artwork or local offline cover
+                if let artwork = player.nowPlayingArtwork {
+                    Image(uiImage: artwork)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 38, height: 38)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.12))
-                        .frame(width: 38, height: 38)
+                        .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
+                } else {
+                    let offlineCover = offlineManager.localCoverFileURL(for: track.id)
+                    let resolved = offlineCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                    PortCachedAsyncImage(url: resolved) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 38, height: 38)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.white.opacity(0.12))
+                            .frame(width: 38, height: 38)
+                    }
+                    .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
                 }
-                .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1)
 
-                // Titel - Nur der Text verschiebt sich beim Wischen mit dynamischem Rand-Fade!
-                Text(track.title)
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(x: horizontalDragOffset)
-                    .opacity(textOpacity)
-                    .mask(dynamicEdgeFadeMask)
-                    .animation(nil, value: horizontalDragOffset)
+                // Titel + optionaler Offline-Indikator
+                HStack(spacing: 5) {
+                    if isOfflineTrack {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "#10b981"))
+                    }
+                    Text(track.title)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .offset(x: horizontalDragOffset)
+                .opacity(textOpacity)
+                .mask(dynamicEdgeFadeMask)
+                .animation(nil, value: horizontalDragOffset)
             }
             .contentShape(Rectangle())
             .gesture(swipeAndTapGesture)
@@ -328,27 +348,38 @@ public struct PlayerBarView: View {
     // MARK: - Vollwertige Schwebende Minibar (Im Ruhezustand über der durchgehenden Leiste)
     @ViewBuilder
     private func expandedContentView(track: Track) -> some View {
+        let isOfflineTrack = player.isPlayingOffline || offlineManager.isDownloaded(trackId: track.id)
+
         ZStack(alignment: .bottom) {
             HStack(spacing: 10) {
                 // Linker Bereich: Cover + Titel + Interpret (Cover bleibt fest, nur Text gleitet)
                 HStack(spacing: 10) {
-                    // Cover-Artwork (44x44 Standard) - Bleibt fest an Ort und Stelle
+                    // Cover-Artwork (44x44 Standard) - Prefer geladenes Artwork oder lokales Offline-Cover
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(Color.white.opacity(0.08))
                             .frame(width: 44, height: 44)
 
-                        let resolved = resolveCoverURL(track.coverUrl, serverURL: serverURL)
-                        PortCachedAsyncImage(url: resolved) { image in
-                            image
+                        if let artwork = player.nowPlayingArtwork {
+                            Image(uiImage: artwork)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: 44, height: 44)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                        } placeholder: {
-                            Image(systemName: "music.note")
-                                .font(.system(size: 15))
-                                .foregroundColor(Color.white.opacity(0.5))
+                        } else {
+                            let offlineCover = offlineManager.localCoverFileURL(for: track.id)
+                            let resolved = offlineCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                            PortCachedAsyncImage(url: resolved) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            } placeholder: {
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(Color.white.opacity(0.5))
+                            }
                         }
                     }
                     .frame(width: 44, height: 44)
@@ -364,10 +395,18 @@ public struct PlayerBarView: View {
                             .foregroundColor(.white)
                             .lineLimit(1)
 
-                        Text(displayArtist)
-                            .font(.system(size: 11.5, weight: .regular))
-                            .foregroundColor(Color.white.opacity(0.65))
-                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            if isOfflineTrack {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(Color(hex: "#10b981"))
+                            }
+
+                            Text(displayArtist)
+                                .font(.system(size: 11.5, weight: .regular))
+                                .foregroundColor(Color.white.opacity(0.65))
+                                .lineLimit(1)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .offset(x: horizontalDragOffset)

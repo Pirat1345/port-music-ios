@@ -7,8 +7,8 @@ public final class MusicService {
 
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15.0
-        config.timeoutIntervalForResource = 30.0
+        config.timeoutIntervalForRequest = 5.0
+        config.timeoutIntervalForResource = 12.0
         self.session = URLSession(configuration: config)
     }
 
@@ -790,7 +790,9 @@ public final class MusicService {
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return false
+                return await MainActor.run {
+                    FavoritesManager.shared.isFavorite(trackId: trimmed)
+                }
             }
             if let isFav = try? JSONDecoder().decode(Bool.self, from: data) {
                 await MainActor.run {
@@ -805,9 +807,13 @@ public final class MusicService {
                 }
                 return isFav
             }
-            return false
+            return await MainActor.run {
+                FavoritesManager.shared.isFavorite(trackId: trimmed)
+            }
         } catch {
-            return false
+            return await MainActor.run {
+                FavoritesManager.shared.isFavorite(trackId: trimmed)
+            }
         }
     }
 

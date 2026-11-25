@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 // MARK: - Library Category Configuration (Mirrors Web LibraryPage DEFAULT_CATEGORY_ORDER)
 private struct LibraryCategoryConfig: Identifiable, Codable, Equatable {
@@ -15,6 +15,7 @@ public struct LibraryView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var favoritesManager = FavoritesManager.shared
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+    @ObservedObject private var sessionManager = SessionManager.shared
 
     @State private var favorites: [Track] = []
     @State private var playlists: [DiscoveryPlaylist] = []
@@ -79,10 +80,41 @@ public struct LibraryView: View {
     public var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
-                // Header + Web Action Pills (Bearbeiten, Importieren, Neu)
+                // Header + Web Action Pills (Importieren, Neu) + Offline Pill falls offline
                 headerSection
                     .padding(.top, 12)
                     .padding(.horizontal, 20)
+
+                if sessionManager.isOfflineMode {
+                    HStack(spacing: 10) {
+                        Image(systemName: "wifi.slash")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(PortColors.accentOrange)
+                        Text("Offline-Modus · \(offlineManager.downloadedTrackIds.count) Songs gespeichert")
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.85))
+                            .lineLimit(1)
+                        Spacer()
+                        Button("Verbinden") {
+                            Task {
+                                _ = await sessionManager.retryConnection()
+                                await loadLibraryData()
+                            }
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.10), lineWidth: 1))
+                    .padding(.horizontal, 20)
+                }
 
                 // Hero Section: Liked Songs Card & Playlists Carousel
                 heroCarouselSection
@@ -754,7 +786,9 @@ public struct LibraryView: View {
                     .fill(Color(hex: "#18181b"))
                     .frame(width: 48, height: 48)
 
-                PortCachedAsyncImage(url: resolveCoverURL(track.coverUrl, serverURL: serverURL)) { img in
+                let offlineCover = offlineManager.localCoverFileURL(for: track.id)
+                let resolvedCover = offlineCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                PortCachedAsyncImage(url: resolvedCover) { img in
                     img
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -786,10 +820,17 @@ public struct LibraryView: View {
                     .foregroundColor(isPlayingThis ? Color(hex: "#fc3c44") : .white)
                     .lineLimit(1)
 
-                Text(track.artist)
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "#a0a0a0"))
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if offlineManager.isDownloaded(trackId: track.id) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(Color(hex: "#10b981"))
+                    }
+                    Text(track.artist)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "#a0a0a0"))
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -850,9 +891,40 @@ public struct LibraryView: View {
         return result
     }
 
-    // MARK: - Data Loading
+    // MARK: - Data Loading (With Offline Cache Support)
     private func loadLibraryData() async {
         isLoading = true
+        let favCacheKey = "port_music_cached_favorites_v1"
+        let plCacheKey = "port_music_cached_playlists_v1"
+
+        // Sofort zwischengespeicherte Playlists & Favoriten laden fuer Offline-Start
+        if favorites.isEmpty,
+           let fData = UserDefaults.standard.data(forKey: favCacheKey),
+           let cachedFavs = try? JSONDecoder().decode([Track].self, from: fData) {
+            await MainActor.run {
+                self.favorites = cachedFavs
+            }
+        }
+        if playlists.isEmpty,
+           let pData = UserDefaults.standard.data(forKey: plCacheKey),
+           let cachedPls = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: pData) {
+            await MainActor.run {
+                self.playlists = cachedPls
+            }
+        }
+
+        if sessionManager.isOfflineMode {
+            await MainActor.run {
+                if self.favorites.isEmpty {
+                    self.favorites = offlineManager.allDownloadedTracks().filter {
+                        FavoritesManager.shared.isFavorite(trackId: $0.id)
+                    }
+                }
+                self.isLoading = false
+            }
+            return
+        }
+
         let token = SessionManager.shared.currentToken
 
         async let favTask = MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
@@ -862,10 +934,22 @@ public struct LibraryView: View {
         let (favs, pls, hist) = await (favTask, plTask, histTask)
 
         await MainActor.run {
-            self.favorites = favs
-            self.playlists = pls
-            self.historyTracks = hist
-            for f in favs {
+            if !favs.isEmpty {
+                self.favorites = favs
+                if let encoded = try? JSONEncoder().encode(favs) {
+                    UserDefaults.standard.set(encoded, forKey: favCacheKey)
+                }
+            }
+            if !pls.isEmpty {
+                self.playlists = pls
+                if let encoded = try? JSONEncoder().encode(pls) {
+                    UserDefaults.standard.set(encoded, forKey: plCacheKey)
+                }
+            }
+            if !hist.isEmpty {
+                self.historyTracks = hist
+            }
+            for f in self.favorites {
                 FavoritesManager.shared.setFavorite(trackId: f.id, isFavorite: true)
             }
             self.isLoading = false

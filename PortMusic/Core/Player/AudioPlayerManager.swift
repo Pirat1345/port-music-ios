@@ -21,6 +21,7 @@ public final class AudioPlayerManager: ObservableObject {
     @Published public private(set) var currentTrack: Track? = nil
     @Published public private(set) var isPlaying: Bool = false
     @Published public private(set) var isBuffering: Bool = false
+    @Published public private(set) var isPlayingOffline: Bool = false
     @Published public private(set) var duration: Double = 0.0
     @Published public private(set) var queue: [Track] = []
     @Published public private(set) var queueIndex: Int = 0
@@ -90,6 +91,8 @@ public final class AudioPlayerManager: ObservableObject {
             } else {
                 self.queue = [track]
             }
+            self.isPlayingOffline = OfflineDownloadManager.shared.localAudioFileURL(for: track.id) != nil
+            loadArtwork(from: track.coverUrl)
         }
     }
 
@@ -244,8 +247,8 @@ public final class AudioPlayerManager: ObservableObject {
         self.duration = parseDurationSeconds(from: track)
         self.isBuffering = true
 
-        // Background-Metadaten-Anreicherung falls Dauer unbekannt (0s)
-        if self.duration <= 0 {
+        // Background-Metadaten-Anreicherung falls Dauer unbekannt (0s) und online
+        if self.duration <= 0 && !SessionManager.shared.isOfflineMode {
             let searchQ = "\(track.title) \(track.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
             if !searchQ.isEmpty {
                 let trackId = track.id
@@ -277,18 +280,28 @@ public final class AudioPlayerManager: ObservableObject {
         }
         persistRecentTracks()
 
-        // Background Playback Reporting to server
-        Task {
-            await MusicService.shared.reportPlayback(track: track, serverURL: effectiveServerURL, token: token)
+        // Background Playback Reporting to server (nur wenn online)
+        if !SessionManager.shared.isOfflineMode {
+            Task {
+                await MusicService.shared.reportPlayback(track: track, serverURL: effectiveServerURL, token: token)
+            }
         }
 
         // Hybrid-Wiedergabe: Bevorzuge lokale Offline-Datei, falls vorhanden (0 ms Latenz, kein Traffic)
         let playbackURL: URL
         if let localURL = OfflineDownloadManager.shared.localAudioFileURL(for: track.id) {
             playbackURL = localURL
+            self.isPlayingOffline = true
+        } else if SessionManager.shared.isOfflineMode {
+            self.isPlayingOffline = false
+            self.isBuffering = false
+            self.isPlaying = false
+            return
         } else if let streamURL = MusicService.shared.streamURL(for: track, serverURL: effectiveServerURL) {
             playbackURL = streamURL
+            self.isPlayingOffline = false
         } else {
+            self.isPlayingOffline = false
             self.isBuffering = false
             return
         }
@@ -411,6 +424,31 @@ public final class AudioPlayerManager: ObservableObject {
             return
         }
 
+        if SessionManager.shared.isOfflineMode {
+            let downloaded = OfflineDownloadManager.shared.downloadedTrackIds
+            if !downloaded.isEmpty {
+                var idx = queueIndex + 1
+                while idx < queue.count {
+                    if downloaded.contains(queue[idx].id) {
+                        self.queueIndex = idx
+                        play(track: queue[idx], from: queue, serverURL: activeURL)
+                        return
+                    }
+                    idx += 1
+                }
+                if isRepeat, let firstMatch = queue.firstIndex(where: { downloaded.contains($0.id) }) {
+                    self.queueIndex = firstMatch
+                    play(track: queue[firstMatch], from: queue, serverURL: activeURL)
+                    return
+                }
+                let offlineList = OfflineDownloadManager.shared.allDownloadedTracks()
+                if let first = offlineList.first {
+                    play(track: first, from: offlineList, serverURL: activeURL)
+                }
+            }
+            return
+        }
+
         var nextIndex = queueIndex + 1
         if isShuffle && queue.count > 1 {
             var randomIdx = Int.random(in: 0..<queue.count)
@@ -435,6 +473,19 @@ public final class AudioPlayerManager: ObservableObject {
 
     private func extendAutoplayQueueAndPlayNext(serverURL: String) {
         Task { @MainActor in
+            if SessionManager.shared.isOfflineMode {
+                let offlineList = OfflineDownloadManager.shared.allDownloadedTracks()
+                let existingIds = Set(self.queue.map { $0.id })
+                let newOffline = offlineList.filter { !existingIds.contains($0.id) }
+                if let firstNew = newOffline.first {
+                    self.queue.append(contentsOf: newOffline)
+                    self.queueIndex += 1
+                    self.play(track: firstNew, from: self.queue, serverURL: serverURL)
+                } else if let firstOffline = offlineList.first {
+                    self.play(track: firstOffline, from: offlineList, serverURL: serverURL)
+                }
+                return
+            }
             let token = SessionManager.shared.currentToken
             let existingIds = Set(self.queue.map { $0.id })
 
@@ -627,7 +678,17 @@ public final class AudioPlayerManager: ObservableObject {
                     self.isBuffering = false
                     print("AudioPlayerManager: Item failed to play: \(String(describing: observedItem.error))")
                     guard self.isPlaying else { return }
-                    self.next()
+                    if !self.isPlayingOffline {
+                        SessionManager.shared.setOfflineMode(true)
+                    }
+                    let hasLocalNext = self.queue.dropFirst(min(self.queueIndex + 1, self.queue.count)).contains {
+                        OfflineDownloadManager.shared.isDownloaded(trackId: $0.id)
+                    }
+                    if !SessionManager.shared.isOfflineMode || hasLocalNext {
+                        self.next()
+                    } else {
+                        self.isPlaying = false
+                    }
                 case .unknown:
                     break
                 @unknown default:
@@ -811,15 +872,30 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     private func loadArtwork(from urlString: String?) {
+        let targetId = currentTrack?.id
         nowPlayingArtwork = nil
 
-        // 1. Lokales Offline-Cover direkt von Flash laden (sofortiges Lockscreen-Artwork ohne Netzwerk)
-        if let current = currentTrack,
-           let localCoverURL = OfflineDownloadManager.shared.localCoverFileURL(for: current.id),
-           let localImage = UIImage(contentsOfFile: localCoverURL.path) {
+        // 1. Lokales Offline-Cover direkt von Flash laden (sofortiges Artwork ohne Netzwerk)
+        if let tid = targetId,
+           let localImage = OfflineDownloadManager.shared.localCoverImage(for: tid) {
             self.nowPlayingArtwork = localImage
             self.updateNowPlayingInfo()
             return
+        }
+
+        // 2. Falls Audiodatei lokal vorliegt, eingebettetes Artwork aus der M4A/MP3-Datei extrahieren
+        if let tid = targetId, OfflineDownloadManager.shared.localAudioFileURL(for: tid) != nil {
+            Task {
+                if let embedded = await OfflineDownloadManager.shared.extractAndCacheArtwork(for: tid) {
+                    await MainActor.run {
+                        if self.currentTrack?.id == tid {
+                            self.nowPlayingArtwork = embedded
+                            self.updateNowPlayingInfo()
+                        }
+                    }
+                    return
+                }
+            }
         }
 
         let resolvedURL = resolveCoverURL(urlString, serverURL: currentServerURL ?? SessionManager.shared.serverURL ?? "")
@@ -831,8 +907,10 @@ public final class AudioPlayerManager: ObservableObject {
         Task {
             if let image = await PortImageCache.shared.loadImage(for: url) {
                 await MainActor.run {
-                    self.nowPlayingArtwork = image
-                    self.updateNowPlayingInfo()
+                    if self.currentTrack?.id == targetId {
+                        self.nowPlayingArtwork = image
+                        self.updateNowPlayingInfo()
+                    }
                 }
             }
         }

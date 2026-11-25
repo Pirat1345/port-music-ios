@@ -165,6 +165,7 @@ public final class AuthService {
 
         if let token = token, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(token, forHTTPHeaderField: "x-session-token")
         }
 
         if let bodyData = bodyData {
@@ -211,7 +212,7 @@ public final class AuthService {
 
     // MARK: - 1. Sitzungsprüfung (GET /api/auth/check)
 
-    public func checkAuth(serverURL: String, token: String) async throws -> UserProfile {
+    public func checkAuth(serverURL: String, token: String, timeout: TimeInterval = 4.5) async throws -> UserProfile {
         let base = ServerPingService.normalize(rawInput: serverURL)
         guard let url = URL(string: "\(base)/api/auth/check") else {
             throw AuthError.networkError("Ungültige Server-Adresse.")
@@ -219,7 +220,8 @@ public final class AuthService {
 
         let request = makeRequest(url: url, method: "GET", token: token)
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 10.0
+        config.timeoutIntervalForRequest = timeout
+        config.timeoutIntervalForResource = timeout
         let session = URLSession(configuration: config)
 
         let data: Data

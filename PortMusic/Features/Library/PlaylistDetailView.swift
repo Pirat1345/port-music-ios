@@ -474,6 +474,29 @@ public struct PlaylistDetailView: View {
             return
         }
 
+        // 3. Offline-Fallback: Lade gespeicherte Tracks aus OfflineDownloadManager
+        let offlineTracks = OfflineDownloadManager.shared.downloadedTracks(forPlaylistId: playlistId)
+        if !offlineTracks.isEmpty {
+            let meta = OfflineDownloadManager.shared.downloadedPlaylistMeta(forPlaylistId: playlistId)
+            await MainActor.run {
+                self.playlistData = DiscoveryPlaylistDetailData(
+                    id: playlistId,
+                    title: meta?.name ?? initialTitle ?? "Playlist",
+                    description: nil,
+                    cover: meta?.coverUrl ?? initialCover,
+                    heroArtwork: nil,
+                    motionVideo: nil,
+                    user: "Offline",
+                    nbTracks: offlineTracks.count,
+                    tracks: []
+                )
+                self.tracks = offlineTracks
+                self.isDownloaded = true
+                self.isLoading = false
+            }
+            return
+        }
+
         await MainActor.run {
             self.isLoading = false
             if self.tracks.isEmpty {
@@ -496,6 +519,7 @@ public struct PlaylistDetailView: View {
             OfflineDownloadManager.shared.downloadPlaylist(
                 playlistId: playlistId,
                 name: displayTitle,
+                coverUrl: displayCover,
                 tracks: tracks,
                 serverURL: serverURL,
                 token: SessionManager.shared.currentToken

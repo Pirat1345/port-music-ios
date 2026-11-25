@@ -6,6 +6,7 @@ public struct HomeView: View {
 
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+    @ObservedObject private var sessionManager = SessionManager.shared
 
     @State private var discovery: DiscoveryHomeResponse? = nil
     @State private var userFavorites: [Track] = []
@@ -96,20 +97,17 @@ public struct HomeView: View {
 
     @ViewBuilder
     private var mainContentBody: some View {
-        if isLoading && discovery == nil {
+        if sessionManager.isOfflineMode && discovery == nil {
+            offlineHomeSection(tracks: offlineManager.allDownloadedTracks())
+        } else if isLoading && discovery == nil {
             VStack(spacing: 28) {
                 PortShelfSkeletonView()
                 PortShelfSkeletonView()
                 PortShelfSkeletonView()
             }
             .padding(.top, 16)
-        } else if let error = errorMessage, discovery == nil {
-            let offlineTracks = offlineManager.allDownloadedTracks()
-            if !offlineTracks.isEmpty {
-                offlineHomeSection(tracks: offlineTracks)
-            } else {
-                errorStateView(error)
-            }
+        } else if errorMessage != nil, discovery == nil {
+            offlineHomeSection(tracks: offlineManager.allDownloadedTracks())
         } else if let data = discovery {
             let deduplicated = deduplicateShelves(data: data, recentHistory: player.recentTracks)
             discoveryShelvesContent(deduplicated: deduplicated, rawData: data)
@@ -241,8 +239,11 @@ public struct HomeView: View {
 
                 Spacer()
 
-                Button("Neu laden") {
-                    Task { await loadHomeData() }
+                Button("Verbinden") {
+                    Task {
+                        _ = await SessionManager.shared.retryConnection()
+                        await loadHomeData()
+                    }
                 }
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.white)
@@ -256,30 +257,48 @@ public struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 20)
 
-            PortShelfHeader(
-                iconName: "arrow.down.circle.fill",
-                iconColor: Color(hex: "#00d26a"),
-                title: "Heruntergeladene Musik",
-                seeAllTitle: "Alle anzeigen",
-                seeAllRoute: .libraryCategory(category: "downloaded")
-            )
-            .padding(.horizontal, 20)
-
-            LazyVStack(spacing: 4) {
-                ForEach(Array(tracks.prefix(20).enumerated()), id: \.element.id) { index, track in
-                    TrackRowView(
-                        track: track,
-                        index: index,
-                        contextQueue: tracks,
-                        serverURL: serverURL,
-                        isLiked: false,
-                        isDownloaded: true,
-                        showCover: true,
-                        showTrackNumber: false
-                    )
+            if tracks.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 36))
+                        .foregroundColor(Color.white.opacity(0.30))
+                    Text("Noch keine Songs heruntergeladen")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Speichere Songs im WLAN über das Drei-Punkte-Menü, um sie ohne Internet zu hören.")
+                        .font(.system(size: 12.5))
+                        .foregroundColor(Color.white.opacity(0.55))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 36)
+            } else {
+                PortShelfHeader(
+                    iconName: "arrow.down.circle.fill",
+                    iconColor: Color(hex: "#00d26a"),
+                    title: "Heruntergeladene Musik",
+                    seeAllTitle: "Alle anzeigen",
+                    seeAllRoute: .libraryCategory(category: "downloaded")
+                )
+                .padding(.horizontal, 20)
+
+                LazyVStack(spacing: 4) {
+                    ForEach(Array(tracks.prefix(30).enumerated()), id: \.element.id) { index, track in
+                        TrackRowView(
+                            track: track,
+                            index: index,
+                            contextQueue: tracks,
+                            serverURL: serverURL,
+                            isLiked: FavoritesManager.shared.isFavorite(trackId: track.id),
+                            isDownloaded: true,
+                            showCover: true,
+                            showTrackNumber: false
+                        )
+                    }
+                }
+                .padding(.horizontal, 20)
             }
-            .padding(.horizontal, 20)
         }
     }
 
@@ -1240,6 +1259,7 @@ public struct HomeView: View {
 
         if let response = discoveryRes {
             await MainActor.run {
+                SessionManager.shared.setOfflineMode(false)
                 self.discovery = response
                 self.isLoading = false
             }
@@ -1247,7 +1267,8 @@ public struct HomeView: View {
             await enrichPersonalizedShelves(discovery: response, favorites: favsRes, token: token)
         } else {
             await MainActor.run {
-                self.errorMessage = "Keine Verbindung zum Discovery-Dienst auf \(serverURL)."
+                SessionManager.shared.setOfflineMode(true)
+                self.errorMessage = "Keine Verbindung zum Server auf \(serverURL)."
                 self.isLoading = false
             }
         }

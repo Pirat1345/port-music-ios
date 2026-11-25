@@ -8,68 +8,152 @@ public final class SessionManager: ObservableObject {
     @Published public var isAuthenticated: Bool = false
     @Published public var currentUser: UserProfile? = nil
     @Published public var serverURL: String? = nil
-    @Published public var isRestoringSession: Bool = true
+    @Published public var isRestoringSession: Bool = false
+    @Published public var isOfflineMode: Bool = false
 
     public var currentToken: String? {
-        KeychainHelper.shared.getToken()
+        if let kc = KeychainHelper.shared.getToken(), !kc.isEmpty {
+            return kc
+        }
+        if let ud = UserDefaults.standard.string(forKey: tokenBackupKey), !ud.isEmpty {
+            return ud
+        }
+        return nil
     }
 
     private let serverURLStorageKey = "portmusic_server_url"
     private let userStorageKey = "portmusic_auth_user"
+    private let tokenBackupKey = "portmusic_auth_token"
 
     public init() {
-        let storedURL = UserDefaults.standard.string(forKey: serverURLStorageKey)
-        if let url = storedURL, !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let storedURL = UserDefaults.standard.string(forKey: serverURLStorageKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = storedURL, !url.isEmpty {
             self.serverURL = url
         }
-        if let cached = loadCachedUserProfile() {
-            self.currentUser = cached
+
+        let token = (KeychainHelper.shared.getToken() ?? UserDefaults.standard.string(forKey: tokenBackupKey)) ?? ""
+        let cached = loadCachedUserProfile()
+
+        if let url = storedURL, !url.isEmpty, (!token.isEmpty || cached != nil) {
+            // Sofort mit lokal gespeichertem Konto starten (0 ms Start ohne blockierenden Ladebildschirm)
+            self.currentUser = cached ?? UserProfile(
+                id: "cached_user",
+                username: "Offline-Konto",
+                email: nil,
+                role: "user",
+                avatar: nil
+            )
             self.isAuthenticated = true
+            self.isRestoringSession = false
+        } else {
+            self.isAuthenticated = false
+            self.isRestoringSession = false
         }
     }
 
-    // MARK: - Sitzungswiederherstellung beim App-Start
+    // MARK: - Sitzungswiederherstellung im Hintergrund (Offline-First)
 
     public func restoreSession() async {
-        isRestoringSession = true
-        defer {
-            isRestoringSession = false
-        }
-
-        guard let storedURL = UserDefaults.standard.string(forKey: serverURLStorageKey),
-              !storedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let storedURL = UserDefaults.standard.string(forKey: serverURLStorageKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !storedURL.isEmpty else {
             self.serverURL = nil
             self.isAuthenticated = false
             self.currentUser = nil
+            self.isRestoringSession = false
             return
         }
 
         self.serverURL = storedURL
 
-        guard let token = KeychainHelper.shared.getToken(), !token.isEmpty else {
+        let token = currentToken ?? ""
+        let cached = loadCachedUserProfile()
+
+        if token.isEmpty && cached == nil {
             self.isAuthenticated = false
             self.currentUser = nil
+            self.isRestoringSession = false
+            return
+        }
+
+        // Sofort im eingeloggten Konto bleiben, waehrend im Hintergrund geprueft wird
+        if self.currentUser == nil {
+            self.currentUser = cached ?? UserProfile(
+                id: "cached_user",
+                username: "Offline-Konto",
+                email: nil,
+                role: "user",
+                avatar: nil
+            )
+        }
+        self.isAuthenticated = true
+        self.isRestoringSession = false
+
+        guard !token.isEmpty else {
+            self.isOfflineMode = true
             return
         }
 
         do {
-            let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token)
+            let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token, timeout: 3.5)
             self.currentUser = profile
             self.isAuthenticated = true
+            self.isOfflineMode = false
             cacheUserProfile(profile)
         } catch let error as AuthError {
             switch error {
             case .unauthorized, .sessionExpired, .invalidCredentials:
+                // Nur abmelden, wenn der Server explizit 401/ungueltig geantwortet hat
                 KeychainHelper.shared.deleteToken()
+                UserDefaults.standard.removeObject(forKey: tokenBackupKey)
                 clearCachedUserProfile()
                 self.currentUser = nil
                 self.isAuthenticated = false
-            default:
-                // Bei Netzwerkfehlern oder anderen Status Server beibehalten
-                self.isAuthenticated = false
+                self.isOfflineMode = false
+            case .networkError, .serverError, .tooManyAttempts, .invalidCode, .captchaRequired, .unknown:
+                // Server nicht erreichbar / anderes WLAN / kein Internet -> Eingeloggt im Offline-Modus bleiben
+                self.isOfflineMode = true
+                self.isAuthenticated = true
             }
         } catch {
-            self.isAuthenticated = false
+            // Transportfehler -> Konto behalten, Offline-Modus aktivieren
+            self.isOfflineMode = true
+            self.isAuthenticated = true
+        }
+    }
+
+    @discardableResult
+    public func retryConnection() async -> Bool {
+        guard let storedURL = serverURL, !storedURL.isEmpty,
+              let token = currentToken, !token.isEmpty else {
+            return false
+        }
+        do {
+            let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token, timeout: 4.0)
+            self.currentUser = profile
+            self.isAuthenticated = true
+            self.isOfflineMode = false
+            cacheUserProfile(profile)
+            return true
+        } catch let error as AuthError {
+            switch error {
+            case .unauthorized, .sessionExpired, .invalidCredentials:
+                logout()
+                return false
+            default:
+                self.isOfflineMode = true
+                return false
+            }
+        } catch {
+            self.isOfflineMode = true
+            return false
+        }
+    }
+
+    public func setOfflineMode(_ offline: Bool) {
+        if self.isOfflineMode != offline {
+            self.isOfflineMode = offline
         }
     }
 
@@ -78,20 +162,26 @@ public final class SessionManager: ObservableObject {
     public func loginSuccess(user: UserProfile, token: String, serverURL: String) {
         if !token.isEmpty {
             KeychainHelper.shared.saveToken(token)
+            UserDefaults.standard.set(token, forKey: tokenBackupKey)
         }
         updateServerURL(serverURL)
         cacheUserProfile(user)
 
         self.currentUser = user
         self.isAuthenticated = true
+        self.isOfflineMode = false
+        self.isRestoringSession = false
     }
 
     public func logout() {
         KeychainHelper.shared.deleteToken()
+        UserDefaults.standard.removeObject(forKey: tokenBackupKey)
         clearCachedUserProfile()
 
         self.currentUser = nil
         self.isAuthenticated = false
+        self.isOfflineMode = false
+        self.isRestoringSession = false
     }
 
     public func updateServerURL(_ url: String) {
@@ -104,10 +194,17 @@ public final class SessionManager: ObservableObject {
         guard let storedURL = serverURL ?? UserDefaults.standard.string(forKey: serverURLStorageKey),
               let token = currentToken, !token.isEmpty else { return }
         do {
-            let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token)
+            let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token, timeout: 4.5)
             self.currentUser = profile
+            self.isOfflineMode = false
             cacheUserProfile(profile)
-        } catch {}
+        } catch let error as AuthError {
+            if case .networkError = error {
+                self.isOfflineMode = true
+            }
+        } catch {
+            self.isOfflineMode = true
+        }
     }
 
     // MARK: - Lokaler Profil-Cache

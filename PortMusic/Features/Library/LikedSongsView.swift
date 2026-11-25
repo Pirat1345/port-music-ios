@@ -383,10 +383,42 @@ public struct LikedSongsView: View {
     // MARK: - Load Favorites
     private func loadFavorites() async {
         isLoading = true
+        let cacheKey = "port_music_cached_favorites_v1"
+
+        // Sofort Cache vorladen, falls Offline-Modus aktiv
+        if let data = UserDefaults.standard.data(forKey: cacheKey),
+           let cached = try? JSONDecoder().decode([Track].self, from: data), !cached.isEmpty {
+            await MainActor.run {
+                self.favorites = cached
+            }
+        }
+
+        if SessionManager.shared.isOfflineMode {
+            let offlineFavs = OfflineDownloadManager.shared.allDownloadedTracks().filter {
+                FavoritesManager.shared.isFavorite(trackId: $0.id)
+            }
+            await MainActor.run {
+                if self.favorites.isEmpty {
+                    self.favorites = offlineFavs
+                }
+                self.isLoading = false
+            }
+            return
+        }
+
         let token = SessionManager.shared.currentToken
         let fetched = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
         await MainActor.run {
-            self.favorites = fetched
+            if !fetched.isEmpty {
+                self.favorites = fetched
+                if let encoded = try? JSONEncoder().encode(fetched) {
+                    UserDefaults.standard.set(encoded, forKey: cacheKey)
+                }
+            } else if self.favorites.isEmpty {
+                self.favorites = OfflineDownloadManager.shared.allDownloadedTracks().filter {
+                    FavoritesManager.shared.isFavorite(trackId: $0.id)
+                }
+            }
             self.isLoading = false
         }
     }
