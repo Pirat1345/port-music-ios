@@ -650,7 +650,7 @@ public struct FullscreenPlayerView: View {
                         .frame(height: 1.5)
                 }
 
-                let subtitle = player.currentTrack?.album.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let subtitle = player.currentTrack?.album?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 Text(subtitle.isEmpty || subtitle == "Radio" ? "Live-Übertragung" : subtitle)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Color.white.opacity(0.62))
