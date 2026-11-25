@@ -784,12 +784,48 @@ public final class MusicService {
         }
     }
 
-    // MARK: - Category Detail (/api/category/:id)
+    // MARK: - Category Detail (/api/category/:id) mit Offline-Cache
+    private let categoryDetailCacheKey = "port_music_category_detail_cache_v1"
+
+    public func cachedCategoryDetail(id: String) -> AppleCategoryDetailData? {
+        let key = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty,
+              let data = UserDefaults.standard.data(forKey: categoryDetailCacheKey),
+              let dict = try? JSONDecoder().decode([String: AppleCategoryDetailData].self, from: data) else {
+            return nil
+        }
+        return dict[key]
+    }
+
+    private func persistCategoryDetail(_ detail: AppleCategoryDetailData, for id: String) {
+        let key = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty else { return }
+        var dict: [String: AppleCategoryDetailData] = [:]
+        if let data = UserDefaults.standard.data(forKey: categoryDetailCacheKey),
+           let existing = try? JSONDecoder().decode([String: AppleCategoryDetailData].self, from: data) {
+            dict = existing
+        }
+        dict[key] = detail
+        if dict.count > 25 {
+            let keep = Array(dict.keys.prefix(15))
+            var trimmed: [String: AppleCategoryDetailData] = [:]
+            for k in keep { trimmed[k] = dict[k] }
+            trimmed[key] = detail
+            dict = trimmed
+        }
+        if let encoded = try? JSONEncoder().encode(dict) {
+            UserDefaults.standard.set(encoded, forKey: categoryDetailCacheKey)
+        }
+    }
+
     public func fetchCategoryDetail(id: String, serverURL: String, token: String?) async -> AppleCategoryDetailData? {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return cachedCategoryDetail(id: id)
+        }
         let base = cleanURL(serverURL)
         guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(string: "\(base)/api/category/\(encoded)") else {
-            return nil
+            return cachedCategoryDetail(id: id)
         }
 
         var request = URLRequest(url: url)
@@ -803,11 +839,13 @@ public final class MusicService {
         do {
             let (data, response) = try await discoverySession.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return nil
+                return cachedCategoryDetail(id: id)
             }
-            return try JSONDecoder().decode(AppleCategoryDetailData.self, from: data)
+            let decoded = try JSONDecoder().decode(AppleCategoryDetailData.self, from: data)
+            persistCategoryDetail(decoded, for: id)
+            return decoded
         } catch {
-            return nil
+            return cachedCategoryDetail(id: id)
         }
     }
 

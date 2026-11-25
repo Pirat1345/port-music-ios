@@ -1834,7 +1834,7 @@ private struct ArtistPlayButtonMaxYPreferenceKey: PreferenceKey {
     }
 }
 
-private struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
+struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
     func makeCoordinator() -> PopGestureCoordinator {
         PopGestureCoordinator()
     }
