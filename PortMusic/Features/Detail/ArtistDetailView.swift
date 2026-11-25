@@ -85,7 +85,7 @@ public struct ArtistDetailView: View {
                 return "\(prefix) · \(fans) Fans"
             }
         }
-        return sessionManager.isOfflineMode ? "\(prefix) · Offline-Modus" : "Verifizierter \(prefix)"
+        return sessionManager.isOfflineMode ? "\(prefix) · Offline-Modus" : prefix
     }
 
     private var effectiveTrackItems: [DiscoveryArtistTrackItem] {
