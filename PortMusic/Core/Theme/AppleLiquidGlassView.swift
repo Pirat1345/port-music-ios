@@ -97,3 +97,156 @@ public struct AppleLiquidGlassView: UIViewRepresentable {
         }
     }
 }
+
+// MARK: - Native iOS 26 Liquid Glass Container & Shape Modifiers (mit sicherem Blur-Fallback)
+
+public struct PortBottomGlassContainer<Content: View>: View {
+    public let spacing: CGFloat
+    public let useLiquidGlass: Bool
+    @ViewBuilder public let content: () -> Content
+
+    public init(
+        spacing: CGFloat = 12,
+        useLiquidGlass: Bool = true,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.spacing = spacing
+        self.useLiquidGlass = useLiquidGlass
+        self.content = content
+    }
+
+    public var body: some View {
+        #if compiler(>=6.2)
+        if useLiquidGlass, #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) {
+                HStack(spacing: spacing) {
+                    content()
+                }
+            }
+        } else {
+            HStack(spacing: spacing) {
+                content()
+            }
+        }
+        #else
+        HStack(spacing: spacing) {
+            content()
+        }
+        #endif
+    }
+}
+
+public extension View {
+    @ViewBuilder
+    func portLiquidGlassCapsule(interactive: Bool = true, enabled: Bool = true) -> some View {
+        #if compiler(>=6.2)
+        if enabled, #available(iOS 26.0, *) {
+            self
+                .glassEffect(interactive ? .regular.interactive() : .regular, in: Capsule())
+        } else {
+            self.background(
+                ZStack {
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                    Capsule()
+                        .strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.18), location: 0.0),
+                                    .init(color: Color.white.opacity(0.04), location: 1.0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                }
+                .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+            )
+        }
+        #else
+        self.background(
+            ZStack {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.18), location: 0.0),
+                                .init(color: Color.white.opacity(0.04), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+            }
+            .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+        )
+        #endif
+    }
+
+    @ViewBuilder
+    func portLiquidGlassCircle(interactive: Bool = true, enabled: Bool = true) -> some View {
+        #if compiler(>=6.2)
+        if enabled, #available(iOS 26.0, *) {
+            self
+                .glassEffect(interactive ? .regular.interactive() : .regular, in: Circle())
+        } else {
+            self.background(
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: Color.white.opacity(0.18), location: 0.0),
+                                    .init(color: Color.white.opacity(0.04), location: 1.0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                }
+                .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+            )
+        }
+        #else
+        self.background(
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.18), location: 0.0),
+                                .init(color: Color.white.opacity(0.04), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
+            }
+            .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
+        )
+        #endif
+    }
+
+    @ViewBuilder
+    func portGlassEffectID<ID: Hashable & Sendable>(_ id: ID, in namespace: Namespace.ID, enabled: Bool = true) -> some View {
+        #if compiler(>=6.2)
+        if enabled, #available(iOS 26.0, *) {
+            self.glassEffectID(id, in: namespace)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}

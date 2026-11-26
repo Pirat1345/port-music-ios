@@ -163,7 +163,7 @@ async function runTier1Tests() {
   tests.push(await executeTest('T1_F03_4', 'Bottom bar uses dark glass background and respects safe area insets', 'F03', () => {
     const file = path.join(PORT_MUSIC_DIR, 'Features', 'Main', 'MainTabView.swift');
     const parsed = parseFile(file);
-    assert(parsed.contains('.ultraThinMaterial') || parsed.contains('UltraThinMaterial') || parsed.contains('surfaceGlass'), 'Must use glass material');
+    assert(parsed.contains('.ultraThinMaterial') || parsed.contains('UltraThinMaterial') || parsed.contains('surfaceGlass') || parsed.contains('portLiquidGlass') || parsed.contains('.glassEffect'), 'Must use glass material');
     assert(parsed.contains('safeArea') || parsed.contains('ignoresSafeArea') || parsed.contains('bottom'), 'Must handle bottom safe area');
   }));
 

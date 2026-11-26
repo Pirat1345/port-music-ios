@@ -6,6 +6,7 @@ public struct PlayerBarView: View {
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     public let serverURL: String
     public let isInline: Bool
+    public let useLiquidGlass: Bool
     public let onOpenFullscreen: () -> Void
     public let onLongPress: (() -> Void)?
 
@@ -22,11 +23,13 @@ public struct PlayerBarView: View {
     public init(
         serverURL: String,
         isInline: Bool = false,
+        useLiquidGlass: Bool = true,
         onOpenFullscreen: @escaping () -> Void,
         onLongPress: (() -> Void)? = nil
     ) {
         self.serverURL = serverURL
         self.isInline = isInline
+        self.useLiquidGlass = useLiquidGlass
         self.onOpenFullscreen = onOpenFullscreen
         self.onLongPress = onLongPress
     }
@@ -80,25 +83,8 @@ public struct PlayerBarView: View {
                 }
             }
             .frame(height: isInline ? 62 : 48)
-            .background(
-                ZStack {
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-                    Capsule()
-                        .strokeBorder(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(0.18), location: 0.0),
-                                    .init(color: Color.white.opacity(0.04), location: 1.0)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
-                .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
-            )
+            .contentShape(Capsule())
+            .portLiquidGlassCapsule(interactive: true, enabled: useLiquidGlass)
             .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isInline)
         }
     }

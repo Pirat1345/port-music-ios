@@ -10,15 +10,15 @@ on:
 jobs:
   build:
     name: Build & Package Port Music IPA
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16 Version
+      - name: Select Xcode 26 Version
         run: |
-          LATEST_XCODE=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode.app 2>/dev/null | sort -V | tail -n 1)
+          LATEST_XCODE=$(ls -d /Applications/Xcode_26*.app /Applications/Xcode.app 2>/dev/null | sort -V | tail -n 1)
           echo "Selected Xcode: $LATEST_XCODE"
           if [ -n "$LATEST_XCODE" ]; then
             sudo xcode-select -s "$LATEST_XCODE"
