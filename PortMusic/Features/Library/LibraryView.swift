@@ -16,10 +16,14 @@ public struct LibraryView: View {
     @State private var isLoading: Bool = false
     @State private var selectedTab: String = "Playlists"
 
-    // Web Library Parity: Action Modals & Native Category Reorder Sheet
+    // Web Library Parity & Apple Music Inline Editing
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var showImportPlaylistSheet: Bool = false
-    @State private var showCategoryEditorSheet: Bool = false
+    @State private var showCreateFolderAlert: Bool = false
+    @State private var newFolderName: String = ""
+    @State private var showSettingsSheet: Bool = false
+    @State private var isEditingCategories: Bool = false
+    @State private var editingCategories: [LibraryCategoryConfig] = []
     @State private var categoriesConfig: [LibraryCategoryConfig] = LibraryView.defaultCategories()
 
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
@@ -75,67 +79,126 @@ public struct LibraryView: View {
         }
     }
 
+    private var activeProfileUser: UserProfile {
+        sessionManager.currentUser ?? user ?? UserProfile(id: "me", username: "Port Music")
+    }
+
+    private func enterInlineEditMode() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        editingCategories = categoriesConfig
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+            isEditingCategories = true
+        }
+    }
+
+    private func saveInlineCategoriesAndExit() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        var finalList = editingCategories
+        if !finalList.contains(where: { $0.visible }), let firstIdx = finalList.indices.first {
+            finalList[firstIdx].visible = true
+        }
+        categoriesConfig = finalList
+        persistCategories(finalList)
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+            isEditingCategories = false
+        }
+    }
+
+    private func toggleInlineCategory(_ id: String) {
+        guard let idx = editingCategories.firstIndex(where: { $0.id == id }) else { return }
+        if editingCategories[idx].visible {
+            let visibleCount = editingCategories.filter(\.visible).count
+            guard visibleCount > 1 else {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                return
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            editingCategories[idx].visible = false
+        } else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            editingCategories[idx].visible = true
+        }
+    }
+
     public var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 22) {
-                // Header + Web Action Pills (Importieren, Neu) + Offline Pill falls offline
-                headerSection
-                    .padding(.top, 12)
-                    .padding(.horizontal, 20)
-
-                if sessionManager.isOfflineMode {
-                    HStack(spacing: 10) {
-                        Image(systemName: "wifi.slash")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(PortColors.accentOrange)
-                        Text("Offline-Modus · \(offlineManager.downloadedTrackIds.count) Songs gespeichert")
-                            .font(.system(size: 12.5, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.85))
-                            .lineLimit(1)
-                        Spacer()
-                        Button("Verbinden") {
-                            Task {
-                                _ = await sessionManager.retryConnection()
-                                await loadLibraryData()
+        Group {
+            if isEditingCategories {
+                inlineCategoryEditList
+                    .transition(.opacity)
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        if sessionManager.isOfflineMode {
+                            HStack(spacing: 10) {
+                                Image(systemName: "wifi.slash")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(PortColors.accentOrange)
+                                Text("Offline-Modus · \(offlineManager.downloadedTrackIds.count) Songs gespeichert")
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .foregroundColor(Color.white.opacity(0.85))
+                                    .lineLimit(1)
+                                Spacer()
+                                Button("Verbinden") {
+                                    Task {
+                                        _ = await sessionManager.retryConnection()
+                                        await loadLibraryData()
+                                    }
+                                }
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.white.opacity(0.12))
+                                .clipShape(Capsule())
                             }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.white.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.10), lineWidth: 1))
+                            .padding(.horizontal, 20)
                         }
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.white.opacity(0.12))
-                        .clipShape(Capsule())
+
+                        // Categorized Library Rows (Apple Music style direkt auf Schwarz)
+                        categoryLinksSection
+                            .padding(.horizontal, 20)
+                            .padding(.top, 4)
+
+                        // Hero Section: Liked Songs Card & Playlists Carousel
+                        heroCarouselSection
+
+                        // Segmented Sub-Tab Navigation Bar (Quick Switcher)
+                        segmentedTabBar
+                            .padding(.horizontal, 20)
+
+                        // Dynamic Content Based on Selected Tab
+                        tabContentSection
+                            .padding(.horizontal, 20)
+
+                        Spacer(minLength: 140)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.10), lineWidth: 1))
-                    .padding(.horizontal, 20)
                 }
-
-                // Hero Section: Liked Songs Card & Playlists Carousel
-                heroCarouselSection
-
-                // Categorized Library Rows (Customizable like Web LibraryPage)
-                categoryLinksSection
-                    .padding(.horizontal, 20)
-
-                // Segmented Sub-Tab Navigation Bar (Quick Switcher)
-                segmentedTabBar
-                    .padding(.horizontal, 20)
-
-                // Dynamic Content Based on Selected Tab
-                tabContentSection
-                    .padding(.horizontal, 20)
-
-                Spacer(minLength: 140)
+                .portScrollEdgeEffectSoftTop()
+                .accessibilityHint("Deine Musiksammlung")
+                .background(Color.black.ignoresSafeArea())
+                .refreshable {
+                    await loadLibraryData()
+                }
             }
         }
         .background(Color.black.ignoresSafeArea())
-        .navigationBarHidden(true)
-        .refreshable {
-            await loadLibraryData()
+        .navigationTitle("Bibliothek")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            #if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                iOS26LibraryToolbar
+            } else {
+                legacyLibraryToolbar
+            }
+            #else
+            legacyLibraryToolbar
+            #endif
         }
         .task {
             await loadLibraryData()
@@ -156,92 +219,195 @@ public struct LibraryView: View {
         }
         .sheet(isPresented: $showCreatePlaylistSheet) {
             CreatePlaylistSheet(serverURL: serverURL) { created in
+                PlaylistActivityStore.shared.markAdded(playlistId: created.id)
                 playlists.insert(created, at: 0)
             }
         }
         .sheet(isPresented: $showImportPlaylistSheet) {
             ImportPlaylistSheet(serverURL: serverURL) { imported in
+                PlaylistActivityStore.shared.markAdded(playlistId: imported.id)
                 playlists.insert(imported, at: 0)
                 Task { await loadLibraryData() }
             }
         }
-        .sheet(isPresented: $showCategoryEditorSheet) {
-            LibraryCategoryReorderSheet(
-                initialCategories: categoriesConfig,
-                defaultCategories: Self.defaultCategories()
-            ) { updated in
-                categoriesConfig = updated
-                persistCategories(updated)
+        .sheet(isPresented: $showSettingsSheet) {
+            SettingsMainView(user: activeProfileUser, serverURL: serverURL) {
+                SessionManager.shared.logout()
+            }
+        }
+        .alert("Neuer Ordner", isPresented: $showCreateFolderAlert) {
+            TextField("Ordnername", text: $newFolderName)
+            Button("Abbrechen", role: .cancel) {}
+            Button("Erstellen") {
+                let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                Task {
+                    let token = SessionManager.shared.currentToken
+                    _ = await MusicService.shared.createFolder(
+                        name: name,
+                        parentFolderId: nil,
+                        serverURL: serverURL,
+                        token: token
+                    )
+                }
+            }
+        } message: {
+            Text("Name für den neuen Ordner eingeben.")
+        }
+    }
+
+    // MARK: - Top Toolbar (Apple Music Liquid Glass Bubble + User Avatar / Checkmark)
+    private var createPlaylistToolbarMenu: some View {
+        Menu {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showCreatePlaylistSheet = true
+            } label: {
+                Label("Neue Playlist", systemImage: "music.note.list")
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                newFolderName = ""
+                showCreateFolderAlert = true
+            } label: {
+                Label("Neuer Ordner", systemImage: "folder.badge.plus")
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showImportPlaylistSheet = true
+            } label: {
+                Label("Playlist importieren", systemImage: "square.and.arrow.down")
+            }
+        } label: {
+            Image(systemName: "text.badge.plus")
+        }
+    }
+
+    private var editCategoriesToolbarButton: some View {
+        Button {
+            enterInlineEditMode()
+        } label: {
+            Image(systemName: "checklist")
+        }
+    }
+
+    private var profileToolbarButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showSettingsSheet = true
+        } label: {
+            PortUserAvatarView(
+                rawAvatar: activeProfileUser.avatar,
+                username: activeProfileUser.username,
+                serverURL: serverURL,
+                size: 32
+            )
+            .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Benutzerprofil")
+    }
+
+    #if compiler(>=6.2)
+    @available(iOS 26.0, *)
+    @ToolbarContentBuilder
+    private var iOS26LibraryToolbar: some ToolbarContent {
+        if isEditingCategories {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    saveInlineCategoriesAndExit()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(Color(hex: "#0a84ff"))
+            }
+        } else {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                createPlaylistToolbarMenu
+                editCategoriesToolbarButton
+            }
+
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+            ToolbarItem(placement: .topBarTrailing) {
+                profileToolbarButton
+            }
+        }
+    }
+    #endif
+
+    @ToolbarContentBuilder
+    private var legacyLibraryToolbar: some ToolbarContent {
+        if isEditingCategories {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    saveInlineCategoriesAndExit()
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color(hex: "#0a84ff"))
+                        .clipShape(Circle())
+                }
+            }
+        } else {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                createPlaylistToolbarMenu
+                editCategoriesToolbarButton
+                profileToolbarButton
             }
         }
     }
 
-    // MARK: - Header Section
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Bibliothek")
-                        .font(.system(size: 32, weight: .bold))
+    // MARK: - Inline Apple Music Category Edit List (Checkmarks + Drag Reorder)
+    private var inlineCategoryEditList: some View {
+        List {
+            ForEach(editingCategories) { cat in
+                HStack(spacing: 14) {
+                    Button(action: {
+                        toggleInlineCategory(cat.id)
+                    }) {
+                        Image(systemName: cat.visible ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 23))
+                            .foregroundColor(cat.visible ? .white : Color.white.opacity(0.32))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Image(systemName: cat.iconName)
+                        .font(.system(size: 19, weight: .medium))
                         .foregroundColor(.white)
-                    Text("Deine Musiksammlung")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color.white.opacity(0.45))
-                }
+                        .frame(width: 26, alignment: .center)
 
-                Spacer()
+                    Text(cat.label)
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(.white)
 
-                if isLoading {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(0.85)
+                    Spacer()
                 }
+                .padding(.vertical, 6)
+                .listRowBackground(Color.black)
+                .listRowSeparatorTint(Color.white.opacity(0.14))
+                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
             }
-
-            // Action Buttons row (Importieren, Neu)
-            HStack(spacing: 8) {
-
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showImportPlaylistSheet = true
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Importieren")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                    .overlay(
-                        Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showCreatePlaylistSheet = true
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .bold))
-                        Text("Neu")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 7)
-                    .background(Color.white)
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Spacer()
+            .onMove { indices, newOffset in
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                editingCategories.move(fromOffsets: indices, toOffset: newOffset)
             }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color.black.ignoresSafeArea())
+        .environment(\.editMode, .constant(.active))
+        .safeAreaInset(edge: .bottom) {
+            Spacer().frame(height: 120)
         }
     }
 
@@ -360,71 +526,44 @@ public struct LibraryView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Category Links Section (Opens native Apple List Sheet like NavbarSettingsSheet)
+    // MARK: - Category Links Section (Apple Music Flat Rows + Dividers)
     private var categoryLinksSection: some View {
         let visibleCats = categoriesConfig.filter { $0.visible }
 
-        return VStack(alignment: .leading, spacing: 10) {
-            // Rechts über der obersten Option ("Playlists"): Bearbeiten -> öffnet Reihenfolgen-Menü
-            HStack {
-                Spacer()
+        return VStack(spacing: 0) {
+            ForEach(visibleCats) { cat in
+                NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
+                    HStack(spacing: 16) {
+                        Image(systemName: cat.iconName)
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: 26, alignment: .center)
 
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showCategoryEditorSheet = true
-                }) {
-                    Text("Bearbeiten")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
+                        Text(cat.label)
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(.white)
+
+                        Spacer()
+
+                        if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
+                            Text(String(offlineManager.downloadedTrackIds.count))
+                                .font(.system(size: 14))
+                                .foregroundColor(Color.white.opacity(0.45))
+                        }
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color.white.opacity(0.32))
+                    }
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
+
+                Divider()
+                    .background(Color.white.opacity(0.14))
+                    .padding(.leading, 42)
             }
-            .padding(.horizontal, 4)
-
-            VStack(spacing: 0) {
-                ForEach(Array(visibleCats.enumerated()), id: \.element.id) { index, cat in
-                    NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
-                        HStack(spacing: 14) {
-                            Image(systemName: cat.iconName)
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(width: 24, alignment: .center)
-
-                            Text(cat.label)
-                                .font(.system(size: 17, weight: .regular))
-                                .foregroundColor(.white)
-
-                            Spacer()
-
-                            if cat.id == "downloaded", !offlineManager.downloadedTrackIds.isEmpty {
-                                Text(String(offlineManager.downloadedTrackIds.count))
-                                    .font(.system(size: 13))
-                                    .foregroundColor(Color.white.opacity(0.45))
-                            }
-
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Color.white.opacity(0.32))
-                        }
-                        .padding(.vertical, 13)
-                        .padding(.horizontal, 14)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    if index < visibleCats.count - 1 {
-                        Divider()
-                            .background(Color.white.opacity(0.08))
-                            .padding(.leading, 52)
-                    }
-                }
-            }
-            .background(Color.white.opacity(0.04))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
         }
     }
 
