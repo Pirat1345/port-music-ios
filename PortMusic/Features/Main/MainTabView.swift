@@ -142,7 +142,6 @@ public struct MainTabView: View {
                             }
                         }
                         .tag(tab)
-                        .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
                 }
             }
             .id("main_tabview_\(customTabsRaw)_\(iconsOnly)")
@@ -156,10 +155,9 @@ public struct MainTabView: View {
                 }
                 .id("tabbar_long_press_\(customTabsRaw)_\(iconsOnly)")
             )
-            .animation(.spring(response: 0.36, dampingFraction: 0.84), value: isMinimized)
-            // Detektiert vertikale Scroll-Bewegungen ohne Redraw-Spam bei schnellem Scrollen
+            // Detektiert vertikale Scroll-Bewegungen ohne Redraw-Spam und ohne TabView-Layout-Bremse
             .simultaneousGesture(
-                DragGesture(minimumDistance: 28)
+                DragGesture(minimumDistance: 36)
                     .onChanged { val in
                         guard scrollMinimizeEnabled else { return }
                         let dy = val.translation.height
@@ -167,19 +165,15 @@ public struct MainTabView: View {
                         let absDx = abs(val.translation.width)
 
                         // Reagiere selektiv auf eindeutige vertikale Scrollbewegungen
-                        guard absDy > absDx * 1.6 else { return }
+                        guard absDy > absDx * 1.9 else { return }
 
                         let delta = dy - scrollDragTracker.anchorY
-                        if delta < -35 && !isMinimized {
+                        if delta < -48 && !isMinimized {
                             scrollDragTracker.anchorY = dy
-                            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                                isMinimized = true
-                            }
-                        } else if delta > 35 && isMinimized {
+                            isMinimized = true
+                        } else if delta > 48 && isMinimized {
                             scrollDragTracker.anchorY = dy
-                            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                                isMinimized = false
-                            }
+                            isMinimized = false
                         }
                     }
                     .onEnded { _ in
@@ -316,6 +310,7 @@ public struct MainTabView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, isMinimized ? minimizedBarBottomPadding : miniPlayerBottomPadding)
+                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: isMinimized)
             }
 
             // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
@@ -555,7 +550,7 @@ public struct MainTabView: View {
             }
         case .search:
             NavigationStack(path: $searchPath) {
-                SearchView(serverURL: serverURL, navigationPath: $searchPath)
+                SearchView(serverURL: serverURL, user: session.currentUser ?? user, navigationPath: $searchPath)
                     .navigationDestination(for: AppRoute.self) { route in
                         destinationForRoute(route)
                     }

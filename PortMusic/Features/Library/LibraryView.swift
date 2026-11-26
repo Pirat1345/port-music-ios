@@ -234,6 +234,7 @@ public struct LibraryView: View {
         .refreshable {
             await loadLibraryData()
         }
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private var offlineModeBanner: some View {
@@ -853,63 +854,72 @@ public struct LibraryView: View {
     private func trackRowItem(track: Track, queue: [Track], isFav: Bool) -> some View {
         let isPlayingThis = player.currentTrack?.id == track.id
         return HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(hex: "#18181b"))
-                    .frame(width: 48, height: 48)
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                player.play(track: track, from: queue, serverURL: serverURL)
+            }) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(hex: "#18181b"))
+                            .frame(width: 48, height: 48)
 
-                let offlineCover = offlineManager.localCoverFileURL(for: track.id)
-                let resolvedCover = offlineCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
-                PortCachedAsyncImage(url: resolvedCover) { img in
-                    img
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                } placeholder: {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.white.opacity(0.25))
-                }
+                        let offlineCover = offlineManager.localCoverFileURL(for: track.id)
+                        let resolvedCover = offlineCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                        PortCachedAsyncImage(url: resolvedCover) { img in
+                            img
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 48, height: 48)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        } placeholder: {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color.white.opacity(0.25))
+                        }
 
-                if isPlayingThis && player.isPlaying {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.black.opacity(0.45))
-                        .frame(width: 48, height: 48)
-                    Image(systemName: "waveform")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                }
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-            )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-
-                HStack(spacing: 4) {
-                    if offlineManager.isDownloaded(trackId: track.id) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 10.5))
-                            .foregroundColor(Color(hex: "#10b981"))
+                        if isPlayingThis && player.isPlaying {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.black.opacity(0.45))
+                                .frame(width: 48, height: 48)
+                            Image(systemName: "waveform")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                        }
                     }
-                    Text(track.artist)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "#a0a0a0"))
-                        .lineLimit(1)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                    )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.title)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        HStack(spacing: 4) {
+                            if offlineManager.isDownloaded(trackId: track.id) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(Color(hex: "#10b981"))
+                            }
+                            Text(track.artist)
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: "#a0a0a0"))
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer()
+
+                    Text(track.duration)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.40))
                 }
+                .contentShape(Rectangle())
             }
-
-            Spacer()
-
-            Text(track.duration)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(Color.white.opacity(0.40))
+            .buttonStyle(PlainButtonStyle())
 
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -926,11 +936,6 @@ public struct LibraryView: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            player.play(track: track, from: queue, serverURL: serverURL)
-        }
     }
 
     private func emptyPlaceholder(icon: String, message: String) -> some View {
