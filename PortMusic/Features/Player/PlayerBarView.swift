@@ -82,7 +82,7 @@ public struct PlayerBarView: View {
                         .transition(AnyTransition.opacity)
                 }
             }
-            .frame(height: isInline ? 62 : 48)
+            .frame(height: isInline ? 62 : 50)
             .contentShape(Capsule())
             .portLiquidGlassCapsule(interactive: true, enabled: useLiquidGlass)
             .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isInline)
@@ -344,196 +344,125 @@ public struct PlayerBarView: View {
     private func expandedContentView(track: Track) -> some View {
         let isOfflineTrack = player.isPlayingOffline || offlineManager.isDownloaded(trackId: track.id)
 
-        ZStack(alignment: .bottom) {
+        HStack(spacing: 10) {
+            // Linker Bereich: Cover + Titel + Interpret (Cover bleibt fest, nur Text gleitet)
             HStack(spacing: 10) {
-                // Linker Bereich: Cover + Titel + Interpret (Cover bleibt fest, nur Text gleitet)
-                HStack(spacing: 10) {
-                    // Cover-Artwork (44x44 Standard) - Prefer geladenes Artwork oder lokales Offline-Cover
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.08))
-                            .frame(width: 44, height: 44)
+                // Kompaktes Cover-Artwork (34x34 wie in Apple Music für sauberen Kapsel-Abstand)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 34, height: 34)
 
-                        if let artwork = player.nowPlayingArtwork {
-                            Image(uiImage: artwork)
+                    if let artwork = player.nowPlayingArtwork {
+                        Image(uiImage: artwork)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 34, height: 34)
+                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    } else {
+                        let offlineCover = offlineManager.localCoverFileURL(for: track.id)
+                        let resolved = offlineCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
+                        PortCachedAsyncImage(url: resolved) { image in
+                            image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 44, height: 44)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        } else {
-                            let offlineCover = offlineManager.localCoverFileURL(for: track.id)
-                            let resolved = offlineCover ?? resolveCoverURL(track.coverUrl, serverURL: serverURL)
-                            PortCachedAsyncImage(url: resolved) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 44, height: 44)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                            } placeholder: {
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(Color.white.opacity(0.5))
-                            }
+                                .frame(width: 34, height: 34)
+                                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        } placeholder: {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color.white.opacity(0.5))
                         }
                     }
-                    .frame(width: 44, height: 44)
-                    .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
+                }
+                .frame(width: 34, height: 34)
+                .shadow(color: Color.black.opacity(0.25), radius: 3, y: 1.5)
 
-                    // Titel und Interpret - Nur dieser Textblock gleitet beim Wischen mit dynamischem Rand-Fade!
-                    let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
-                    let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
+                // Titel und Interpret - Nur dieser Textblock gleitet beim Wischen mit dynamischem Rand-Fade!
+                let displayTitle = track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Titel" : track.title
+                let displayArtist = track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unbekannter Interpret" : track.artist
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(displayTitle)
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(displayTitle)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    HStack(spacing: 4) {
+                        if track.isLive {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color(hex: "#ff3b30"))
+                                    .frame(width: 6, height: 6)
+                                Text("LIVE")
+                                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                    .tracking(0.8)
+                                    .foregroundColor(Color(hex: "#ff453a"))
+                            }
+                        } else if isOfflineTrack {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(Color(hex: "#10b981"))
+                        }
+
+                        Text(track.isLive && displayArtist == "Radio" ? "Live-Übertragung" : displayArtist)
+                            .font(.system(size: 11.5, weight: .regular))
+                            .foregroundColor(Color.white.opacity(0.65))
                             .lineLimit(1)
-
-                        HStack(spacing: 4) {
-                            if track.isLive {
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(Color(hex: "#ff3b30"))
-                                        .frame(width: 6, height: 6)
-                                    Text("LIVE")
-                                        .font(.system(size: 10, weight: .heavy, design: .rounded))
-                                        .tracking(0.8)
-                                        .foregroundColor(Color(hex: "#ff453a"))
-                                }
-                            } else if isOfflineTrack {
-                                Image(systemName: "arrow.down.circle.fill")
-                                    .font(.system(size: 10.5))
-                                    .foregroundColor(Color(hex: "#10b981"))
-                            }
-
-                            Text(track.isLive && displayArtist == "Radio" ? "Live-Übertragung" : displayArtist)
-                                .font(.system(size: 11.5, weight: .regular))
-                                .foregroundColor(Color.white.opacity(0.65))
-                                .lineLimit(1)
-                        }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(x: horizontalDragOffset)
-                    .opacity(textOpacity)
-                    .mask(dynamicEdgeFadeMask)
-                    .animation(nil, value: horizontalDragOffset)
-
-                    Spacer(minLength: 4)
                 }
-                .contentShape(Rectangle())
-                .gesture(swipeAndTapGesture)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .offset(x: horizontalDragOffset)
+                .opacity(textOpacity)
+                .mask(dynamicEdgeFadeMask)
+                .animation(nil, value: horizontalDragOffset)
 
-                // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
-                HStack(spacing: 6) {
-                    // Play/Pause Button mit isoliertem, zuverlässigem Touch-Target
-                    Button(action: {
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
-                        player.togglePlayPause()
-                    }) {
-                        ZStack {
-                            if player.isBuffering {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.80)
-                            } else {
-                                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    // Nächster Titel (forward.fill) mit isoliertem Touch-Target
-                    Button(action: {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.impactOccurred()
-                        player.next(serverURL: serverURL)
-                    }) {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(Color.white.opacity(0.90))
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 48)
-
-            // 2px filigrane Fortschrittslinie direkt am unteren Rand der Kapsel (nicht bei Live-Radio!)
-            if !track.isLive {
-                timelineScrubberSection
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 2)
-            }
-        }
-    }
-
-    // MARK: - Timeline Scrubber Section
-    private var timelineScrubberSection: some View {
-        PlayerBarScrubberView(
-            duration: player.duration,
-            onSeek: { target in
-                player.seek(to: target)
-            }
-        )
-    }
-}
-
-// MARK: - Isolated Scrubber Subview (Isoliert Re-Rendering auf 2.5pt Progressbar)
-struct PlayerBarScrubberView: View {
-    @ObservedObject private var progress = AudioPlayerProgress.shared
-    let duration: Double
-    let onSeek: (Double) -> Void
-
-    @State private var dragProgress: Double? = nil
-
-    private var activeProgress: Double {
-        if let drag = dragProgress {
-            return drag
-        }
-        guard duration > 0, !progress.currentTime.isNaN && progress.currentTime.isFinite else {
-            return 0.0
-        }
-        return max(0.0, min(1.0, progress.currentTime / duration))
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let ratio = max(0.0, min(1.0, activeProgress))
-
-            ZStack(alignment: .leading) {
-                // Hintergrund-Leiste
-                Capsule()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(height: 2.5)
-
-                // Aktiver Fortschritt
-                Capsule()
-                    .fill(Color.white.opacity(0.90))
-                    .frame(width: max(0, w * CGFloat(ratio)), height: 2.5)
+                Spacer(minLength: 4)
             }
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { val in
-                        let r = max(0.0, min(1.0, Double(val.location.x / w)))
-                        dragProgress = r
+            .gesture(swipeAndTapGesture)
+
+            // Rechter Bereich: Apple Music Transport-Buttons (Play/Pause, Weiter)
+            HStack(spacing: 6) {
+                // Play/Pause Button mit isoliertem, zuverlässigem Touch-Target
+                Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    player.togglePlayPause()
+                }) {
+                    ZStack {
+                        if player.isBuffering {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.80)
+                        } else {
+                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                        }
                     }
-                    .onEnded { val in
-                        let r = max(0.0, min(1.0, Double(val.location.x / w)))
-                        let target = r * duration
-                        onSeek(target)
-                        dragProgress = nil
-                    }
-            )
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Nächster Titel (forward.fill) mit isoliertem Touch-Target
+                Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                    player.next(serverURL: serverURL)
+                }) {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.90))
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
-        .frame(height: 2.5)
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
+        .frame(height: 50)
     }
 }

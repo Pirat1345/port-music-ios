@@ -5,10 +5,17 @@ public struct LibraryCategoryDetailView: View {
     public let category: String
     public let serverURL: String
 
+    private enum PlaylistViewMode: String, CaseIterable {
+        case grid = "Raster"
+        case list = "Liste"
+    }
+
     private enum PlaylistSort: String, CaseIterable {
-        case recents = "Zuletzt"
-        case alphabetical = "Alphabetisch"
-        case creator = "Ersteller"
+        case title = "Titel"
+        case dateAdded = "Hinzugefügt am"
+        case lastPlayed = "Letztes Abspieldatum"
+        case newestDate = "Aktuellstes Datum"
+        case playlistType = "Art der Playlist"
     }
 
     private enum HistoryFilter: String, CaseIterable {
@@ -38,9 +45,38 @@ public struct LibraryCategoryDetailView: View {
     @State private var isLoading: Bool = true
     @State private var searchQuery: String = ""
 
-    @State private var playlistSort: PlaylistSort = .recents
+    @AppStorage("library_playlists_view_mode") private var playlistViewModeRaw: String = PlaylistViewMode.grid.rawValue
+    @AppStorage("library_playlists_sort") private var playlistSortRaw: String = PlaylistSort.newestDate.rawValue
     @State private var historyFilter: HistoryFilter = .all
     @State private var trackSort: TrackSort = .recent
+
+    private var playlistViewMode: PlaylistViewMode {
+        PlaylistViewMode(rawValue: playlistViewModeRaw) ?? .grid
+    }
+
+    private var playlistSort: PlaylistSort {
+        PlaylistSort(rawValue: playlistSortRaw) ?? .newestDate
+    }
+
+    private var playlistViewModeBinding: Binding<PlaylistViewMode> {
+        Binding(
+            get: { playlistViewMode },
+            set: { newValue in
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                playlistViewModeRaw = newValue.rawValue
+            }
+        )
+    }
+
+    private var playlistSortBinding: Binding<PlaylistSort> {
+        Binding(
+            get: { playlistSort },
+            set: { newValue in
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                playlistSortRaw = newValue.rawValue
+            }
+        )
+    }
 
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var showImportPlaylistSheet: Bool = false
@@ -104,7 +140,7 @@ public struct LibraryCategoryDetailView: View {
                         if normalizedCategory != "albums" {
                             searchBarSection
                                 .padding(.horizontal, 20)
-                                .padding(.top, 14)
+                                .padding(.top, normalizedCategory == "playlists" ? 4 : 14)
                         } else {
                             Spacer().frame(height: 6)
                         }
@@ -115,15 +151,75 @@ public struct LibraryCategoryDetailView: View {
                         Spacer(minLength: 120)
                     }
                 }
+                .portScrollEdgeEffectSoftTop()
                 .refreshable {
                     await loadCategoryData()
                 }
             }
         }
         .navigationTitle(viewTitle)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(normalizedCategory == "playlists" ? .large : .inline)
         .preferredColorScheme(.dark)
         .tint(.white)
+        .toolbar {
+            if normalizedCategory == "playlists" {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showCreatePlaylistSheet = true
+                        } label: {
+                            Label("Neue Playlist", systemImage: "music.note.list")
+                        }
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            newFolderName = ""
+                            showCreateFolderAlert = true
+                        } label: {
+                            Label("Neuer Ordner", systemImage: "folder.badge.plus")
+                        }
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showImportPlaylistSheet = true
+                        } label: {
+                            Label("Playlist importieren", systemImage: "square.and.arrow.down")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+
+                    Menu {
+                        Picker("Ansicht", selection: playlistViewModeBinding) {
+                            Label("Raster", systemImage: "square.grid.2x2")
+                                .tag(PlaylistViewMode.grid)
+                            Label("Liste", systemImage: "list.bullet")
+                                .tag(PlaylistViewMode.list)
+                        }
+                        .pickerStyle(.inline)
+
+                        Divider()
+
+                        Picker("Sortieren nach", selection: playlistSortBinding) {
+                            Text("Titel")
+                                .tag(PlaylistSort.title)
+                            Text("Hinzugefügt am")
+                                .tag(PlaylistSort.dateAdded)
+                            Text("Letztes Abspieldatum")
+                                .tag(PlaylistSort.lastPlayed)
+                            Text("Aktuellstes Datum")
+                                .tag(PlaylistSort.newestDate)
+                            Text("Art der Playlist")
+                                .tag(PlaylistSort.playlistType)
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                }
+            }
+        }
         .task {
             await loadCategoryData()
         }
@@ -134,11 +230,13 @@ public struct LibraryCategoryDetailView: View {
         }
         .sheet(isPresented: $showCreatePlaylistSheet) {
             CreatePlaylistSheet(serverURL: serverURL) { created in
+                PlaylistActivityStore.shared.markAdded(playlistId: created.id)
                 playlists.insert(created, at: 0)
             }
         }
         .sheet(isPresented: $showImportPlaylistSheet) {
             ImportPlaylistSheet(serverURL: serverURL) { imported in
+                PlaylistActivityStore.shared.markAdded(playlistId: imported.id)
                 playlists.insert(imported, at: 0)
             }
         }
@@ -148,29 +246,29 @@ public struct LibraryCategoryDetailView: View {
     private var searchBarSection: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 14))
-                .foregroundColor(Color.white.opacity(0.40))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.45))
 
-            TextField("\(viewTitle) durchsuchen...", text: $searchQuery)
-                .font(.system(size: 13))
+            TextField(normalizedCategory == "playlists" ? "Suchen" : "\(viewTitle) durchsuchen...", text: $searchQuery)
+                .font(.system(size: 15))
                 .foregroundColor(.white)
                 .autocorrectionDisabled()
 
             if !searchQuery.isEmpty {
                 Button(action: { searchQuery = "" }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color.white.opacity(0.40))
+                        .font(.system(size: 15))
+                        .foregroundColor(Color.white.opacity(0.45))
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.white.opacity(0.09))
+        .clipShape(Capsule())
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            Capsule()
+                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
         )
     }
 
@@ -223,6 +321,17 @@ public struct LibraryCategoryDetailView: View {
         }
     }
 
+    private func playlistTypeRank(_ pl: DiscoveryPlaylist) -> Int {
+        let lowerId = pl.id.lowercased()
+        if lowerId.hasPrefix("import_") || lowerId.contains("import") {
+            return 1
+        }
+        if lowerId.hasPrefix("apple_") || lowerId.hasPrefix("deezer_") || lowerId.hasPrefix("dz_") {
+            return offlineManager.isPlaylistDownloaded(playlistId: pl.id) ? 2 : 3
+        }
+        return 0
+    }
+
     private var sortedPlaylists: [DiscoveryPlaylist] {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let base: [DiscoveryPlaylist]
@@ -238,19 +347,38 @@ public struct LibraryCategoryDetailView: View {
             }
         }
 
+        let activity = PlaylistActivityStore.shared
         return base.sorted { a, b in
             let pinA = pinnedIds.contains(a.id)
             let pinB = pinnedIds.contains(b.id)
             if pinA != pinB { return pinA }
+
             switch playlistSort {
-            case .recents:
-                return false
-            case .alphabetical:
+            case .title:
                 return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
-            case .creator:
-                let uA = a.user ?? "Port Music"
-                let uB = b.user ?? "Port Music"
-                return uA.localizedCaseInsensitiveCompare(uB) == .orderedAscending
+            case .dateAdded:
+                let tA = activity.addedTimestamp(for: a.id)
+                let tB = activity.addedTimestamp(for: b.id)
+                if tA != tB { return tA > tB }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            case .lastPlayed:
+                let pA = activity.lastPlayedTimestamp(for: a.id)
+                let pB = activity.lastPlayedTimestamp(for: b.id)
+                if pA != pB { return pA > pB }
+                let tA = activity.addedTimestamp(for: a.id)
+                let tB = activity.addedTimestamp(for: b.id)
+                if tA != tB { return tA > tB }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            case .newestDate:
+                let nA = activity.newestTimestamp(for: a.id)
+                let nB = activity.newestTimestamp(for: b.id)
+                if nA != nB { return nA > nB }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            case .playlistType:
+                let rA = playlistTypeRank(a)
+                let rB = playlistTypeRank(b)
+                if rA != rB { return rA < rB }
+                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
             }
         }
     }
@@ -320,81 +448,6 @@ public struct LibraryCategoryDetailView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                Menu {
-                    ForEach(PlaylistSort.allCases, id: \.self) { mode in
-                        Button(action: { playlistSort = mode }) {
-                            Label(mode.rawValue, systemImage: playlistSort == mode ? "checkmark" : "")
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(playlistSort.rawValue)
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
-                }
-
-                Spacer()
-
-                Button(action: {
-                    newFolderName = ""
-                    showCreateFolderAlert = true
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "folder.badge.plus")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Ordner")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Button(action: { showImportPlaylistSheet = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Import")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
-                }
-                .buttonStyle(PlainButtonStyle())
-
-                Button(action: { showCreatePlaylistSheet = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .bold))
-                        Text("Neu")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
-                    .background(Color.white)
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-
             if isLoading && playlists.isEmpty && folders.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -403,6 +456,171 @@ public struct LibraryCategoryDetailView: View {
                 emptyPlaceholder(icon: "folder", message: "Dieser Ordner ist leer")
             } else if visibleFolders.isEmpty && items.isEmpty && !searchQuery.isEmpty {
                 emptyPlaceholder(icon: "music.note.list", message: "Keine Playlists gefunden")
+            } else if playlistViewMode == .list {
+                LazyVStack(spacing: 0) {
+                    if selectedFolderId == nil && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        NavigationLink(value: AppRoute.likedSongs) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Color(hex: "#450af5"), Color(hex: "#6a4df0"), Color(hex: "#8e8ee5")],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: 56, height: 56)
+
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(.white)
+                                }
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Lieblingssongs")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    Text("Playlist")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color(hex: "#a0a0a0"))
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.30))
+                            }
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Divider()
+                            .background(Color.white.opacity(0.12))
+                            .padding(.leading, 68)
+                    }
+
+                    ForEach(visibleFolders) { folder in
+                        let inFolder = playlistsInFolder(folder.id)
+                        let subCount = folders.filter { $0.parentId == folder.id }.count
+                        let isPinned = pinnedFolderIds.contains(folder.id)
+                        let subText: String = {
+                            if subCount > 0 && !inFolder.isEmpty {
+                                return "\(subCount) Ordner • \(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
+                            } else if subCount > 0 {
+                                return "\(subCount) Unterordner"
+                            } else {
+                                return "\(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
+                            }
+                        }()
+
+                        Button(action: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                selectedFolderId = folder.id
+                            }
+                        }) {
+                            HStack(spacing: 12) {
+                                FolderCoverView(
+                                    folder: folder,
+                                    playlists: inFolder,
+                                    serverURL: serverURL
+                                )
+                                .frame(width: 56, height: 56)
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(folder.name)
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    Text(subText)
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color(hex: "#a0a0a0"))
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+
+                                if isPinned {
+                                    Image(systemName: "pin.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color.white.opacity(0.55))
+                                }
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.30))
+                            }
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Divider()
+                            .background(Color.white.opacity(0.12))
+                            .padding(.leading, 68)
+                    }
+
+                    ForEach(items) { pl in
+                        NavigationLink(value: AppRoute.playlist(
+                            id: pl.id,
+                            title: pl.title,
+                            coverUrl: pl.cover
+                        )) {
+                            HStack(spacing: 12) {
+                                PlaylistArtworkView(
+                                    coverUrl: pl.cover,
+                                    trackCovers: pl.trackCovers,
+                                    cornerRadius: 10,
+                                    iconSize: 20,
+                                    serverURL: serverURL
+                                )
+                                .frame(width: 56, height: 56)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                                )
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(pl.title)
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    let count = pl.nbTracks.map { "\(String($0)) Songs" } ?? "Playlist"
+                                    Text(count)
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color(hex: "#a0a0a0"))
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+
+                                if pinnedIds.contains(pl.id) {
+                                    Image(systemName: "pin.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Color.white.opacity(0.55))
+                                }
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color.white.opacity(0.30))
+                            }
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        if pl.id != items.last?.id {
+                            Divider()
+                                .background(Color.white.opacity(0.12))
+                                .padding(.leading, 68)
+                        }
+                    }
+                }
             } else {
                 LazyVGrid(
                     columns: [
@@ -824,7 +1042,9 @@ public struct LibraryCategoryDetailView: View {
             // Sofort Offline- & Cache-Playlists anzeigen
             let cachedCollections = await MusicService.shared.cachedLibraryCollections()
             let immediatePls = await MainActor.run {
-                offlineManager.mergeOfflinePlaylists(with: cachedCollections.playlists)
+                let merged = offlineManager.mergeOfflinePlaylists(with: cachedCollections.playlists)
+                PlaylistActivityStore.shared.recordDiscovered(playlistIds: merged.map(\.id))
+                return merged
             }
             if !immediatePls.isEmpty {
                 await MainActor.run {
@@ -874,7 +1094,9 @@ public struct LibraryCategoryDetailView: View {
                 rawMerged = enriched
             }
             let finalMerged = await MainActor.run {
-                offlineManager.mergeOfflinePlaylists(with: rawMerged.isEmpty ? immediatePls : rawMerged)
+                let merged = offlineManager.mergeOfflinePlaylists(with: rawMerged.isEmpty ? immediatePls : rawMerged)
+                PlaylistActivityStore.shared.recordDiscovered(playlistIds: merged.map(\.id))
+                return merged
             }
             await MainActor.run {
                 self.playlists = finalMerged

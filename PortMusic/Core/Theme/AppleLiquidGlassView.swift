@@ -249,4 +249,103 @@ public extension View {
         self
         #endif
     }
+
+    @ViewBuilder
+    func portScrollEdgeEffectSoftTop() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}
+
+// MARK: - Playlist Activity & Sort Metadata Store
+public final class PlaylistActivityStore {
+    public static let shared = PlaylistActivityStore()
+
+    private let addedKey = "port_playlist_added_at_map_v1"
+    private let playedKey = "port_playlist_played_at_map_v1"
+    private let updatedKey = "port_playlist_updated_at_map_v1"
+    private let lock = NSLock()
+
+    private var addedMap: [String: Double]
+    private var playedMap: [String: Double]
+    private var updatedMap: [String: Double]
+
+    private init() {
+        let ud = UserDefaults.standard
+        addedMap = (ud.dictionary(forKey: addedKey) as? [String: Double]) ?? [:]
+        playedMap = (ud.dictionary(forKey: playedKey) as? [String: Double]) ?? [:]
+        updatedMap = (ud.dictionary(forKey: updatedKey) as? [String: Double]) ?? [:]
+    }
+
+    public func recordDiscovered(playlistIds: [String]) {
+        lock.lock()
+        var changed = false
+        let now = Date().timeIntervalSince1970
+        for (idx, id) in playlistIds.enumerated() where !id.isEmpty {
+            if addedMap[id] == nil {
+                // Behält bei Erstentdeckung die bestehende Server-Reihenfolge bei
+                addedMap[id] = now - Double(idx)
+                changed = true
+            }
+            if updatedMap[id] == nil {
+                updatedMap[id] = addedMap[id]
+                changed = true
+            }
+        }
+        if changed {
+            UserDefaults.standard.set(addedMap, forKey: addedKey)
+            UserDefaults.standard.set(updatedMap, forKey: updatedKey)
+        }
+        lock.unlock()
+    }
+
+    public func markAdded(playlistId: String) {
+        guard !playlistId.isEmpty else { return }
+        lock.lock()
+        let now = Date().timeIntervalSince1970
+        addedMap[playlistId] = now
+        updatedMap[playlistId] = now
+        UserDefaults.standard.set(addedMap, forKey: addedKey)
+        UserDefaults.standard.set(updatedMap, forKey: updatedKey)
+        lock.unlock()
+    }
+
+    public func markPlayed(playlistId: String) {
+        guard !playlistId.isEmpty else { return }
+        lock.lock()
+        let now = Date().timeIntervalSince1970
+        playedMap[playlistId] = now
+        updatedMap[playlistId] = max(updatedMap[playlistId] ?? 0, now)
+        UserDefaults.standard.set(playedMap, forKey: playedKey)
+        UserDefaults.standard.set(updatedMap, forKey: updatedKey)
+        lock.unlock()
+    }
+
+    public func addedTimestamp(for playlistId: String) -> Double {
+        lock.lock()
+        let val = addedMap[playlistId] ?? 0
+        lock.unlock()
+        return val
+    }
+
+    public func lastPlayedTimestamp(for playlistId: String) -> Double {
+        lock.lock()
+        let val = playedMap[playlistId] ?? 0
+        lock.unlock()
+        return val
+    }
+
+    public func newestTimestamp(for playlistId: String) -> Double {
+        lock.lock()
+        let val = max(updatedMap[playlistId] ?? 0, max(addedMap[playlistId] ?? 0, playedMap[playlistId] ?? 0))
+        lock.unlock()
+        return val
+    }
 }

@@ -135,6 +135,10 @@ public struct PlaylistDetailView: View {
             loadDownloadState()
             await loadPlaylistData()
         }
+        .onChange(of: player.currentTrack?.id) { newId in
+            guard let id = newId, player.isPlaying, tracks.contains(where: { $0.id == id }) else { return }
+            PlaylistActivityStore.shared.markPlayed(playlistId: playlistId)
+        }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [
                 "Höre Playlist '\(displayTitle)' auf Port Music",
@@ -229,6 +233,7 @@ public struct PlaylistDetailView: View {
                 if isPlayingThisPlaylist {
                     player.togglePlayPause()
                 } else {
+                    PlaylistActivityStore.shared.markPlayed(playlistId: playlistId)
                     player.playAll(tracks: tracks, shuffle: false, serverURL: serverURL)
                 }
             }) {
@@ -250,6 +255,7 @@ public struct PlaylistDetailView: View {
             // Shuffle Button
             Button(action: {
                 guard !tracks.isEmpty else { return }
+                PlaylistActivityStore.shared.markPlayed(playlistId: playlistId)
                 player.playAll(tracks: tracks, shuffle: true, serverURL: serverURL)
             }) {
                 Image(systemName: "shuffle")
