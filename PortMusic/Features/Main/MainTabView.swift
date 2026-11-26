@@ -142,6 +142,7 @@ public struct MainTabView: View {
                             }
                         }
                         .tag(tab)
+                        .toolbar(isMinimized ? .hidden : .visible, for: .tabBar)
                 }
             }
             .id("main_tabview_\(customTabsRaw)_\(iconsOnly)")
@@ -170,10 +171,14 @@ public struct MainTabView: View {
                         let delta = dy - scrollDragTracker.anchorY
                         if delta < -48 && !isMinimized {
                             scrollDragTracker.anchorY = dy
-                            isMinimized = true
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+                                isMinimized = true
+                            }
                         } else if delta > 48 && isMinimized {
                             scrollDragTracker.anchorY = dy
-                            isMinimized = false
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+                                isMinimized = false
+                            }
                         }
                     }
                     .onEnded { _ in

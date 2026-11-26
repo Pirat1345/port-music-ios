@@ -174,36 +174,20 @@ public struct SearchView: View {
                         // Abstand fuer MiniPlayer & TabBar
                         Spacer(minLength: 160)
                     }
-                    .padding(.top, 14)
+                    .padding(.top, 10)
                 } header: {
                     pinnedIdleSearchBarHeader
                 }
             }
         }
+        .portScrollEdgeEffectSoftTop()
         .ignoresSafeArea(edges: .bottom)
     }
 
     private var activeSearchContainer: some View {
         let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return VStack(spacing: 0) {
-            activeSearchTopControls
-                .padding(.horizontal, 20)
-                .padding(.top, 10)
-                .padding(.bottom, 10)
-                .background(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.black, location: 0.0),
-                            .init(color: Color.black.opacity(0.95), location: 0.82),
-                            .init(color: Color.black.opacity(0.0), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea(edges: .top)
-                )
-
+        return Group {
             if trimmed.isEmpty {
                 if !recentSearches.isEmpty {
                     ScrollView(showsIndicators: false) {
@@ -213,6 +197,7 @@ public struct SearchView: View {
                         }
                         .padding(.top, 10)
                     }
+                    .portScrollEdgeEffectSoftTop()
                     .scrollDismissesKeyboard(.interactively)
                 } else {
                     emptyRecentSearchesFocusedView
@@ -238,8 +223,15 @@ public struct SearchView: View {
                         Spacer(minLength: 160)
                     }
                 }
+                .portScrollEdgeEffectSoftTop()
                 .scrollDismissesKeyboard(.interactively)
             }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            activeSearchTopControls
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
         }
         .ignoresSafeArea(edges: .bottom)
     }
@@ -318,18 +310,18 @@ public struct SearchView: View {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.55))
+                    .foregroundColor(Color.white.opacity(0.65))
 
                 Text("Künstler:innen, Titel, Songtexte...")
                     .font(.system(size: 15))
-                    .foregroundColor(Color.white.opacity(0.42))
+                    .foregroundColor(Color.white.opacity(0.55))
                     .lineLimit(1)
 
                 Spacer()
 
                 Image(systemName: "mic.fill")
                     .font(.system(size: 15))
-                    .foregroundColor(Color.white.opacity(0.45))
+                    .foregroundColor(Color.white.opacity(0.60))
             }
             .padding(.horizontal, 14)
             .frame(height: 44)
@@ -338,20 +330,8 @@ public struct SearchView: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 20)
-        .padding(.top, 4)
-        .padding(.bottom, 8)
-        .background(
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black, location: 0.0),
-                    .init(color: Color.black.opacity(0.92), location: 0.78),
-                    .init(color: Color.black.opacity(0.0), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .top)
-        )
+        .padding(.top, 6)
+        .padding(.bottom, 10)
     }
 
     private var activeSearchTopControls: some View {
