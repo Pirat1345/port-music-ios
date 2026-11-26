@@ -233,12 +233,14 @@ public struct SearchView: View {
                 .padding(.top, 6)
                 .padding(.bottom, 10)
         }
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     private var emptyRecentSearchesFocusedView: some View {
         VStack(spacing: 12) {
-            Spacer(minLength: 48)
+            Spacer()
+                .frame(maxHeight: 90)
+
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 42, weight: .regular))
                 .foregroundColor(Color.white.opacity(0.32))
@@ -252,10 +254,10 @@ public struct SearchView: View {
                 .foregroundColor(Color.white.opacity(0.50))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
-            Spacer()
+
+            Spacer(minLength: 88)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 120)
         .contentShape(Rectangle())
         .onTapGesture {
             isSearchFieldFocused = false

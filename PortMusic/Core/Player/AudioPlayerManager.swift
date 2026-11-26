@@ -797,6 +797,19 @@ public final class AudioPlayerManager: ObservableObject {
         queue.append(track)
     }
 
+    public func moveUpcomingQueueItem(fromOffsets: IndexSet, toOffset: Int) {
+        let startIdx = queueIndex + 1
+        guard startIdx < queue.count else { return }
+        var upcoming = Array(queue[startIdx...])
+        upcoming.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        queue.replaceSubrange(startIdx..<queue.count, with: upcoming)
+    }
+
+    public func removeUpcomingQueueItem(at queueArrayIndex: Int) {
+        guard queueArrayIndex > queueIndex, queueArrayIndex < queue.count else { return }
+        queue.remove(at: queueArrayIndex)
+    }
+
     public func pruneQueueToDownloadedOnly() {
         let downloader = OfflineDownloadManager.shared
         let filtered = queue.filter { downloader.isDownloaded(trackId: $0.id) }

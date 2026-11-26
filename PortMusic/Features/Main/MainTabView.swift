@@ -111,6 +111,7 @@ public struct MainTabView: View {
     }
 
     @State private var showFullscreenPlayer: Bool = false
+    @State private var playerDismissProgress: CGFloat = 1.0
     @State private var showMenuDrawer: Bool = false
     @State private var showUserProfileSheet: Bool = false
     @State private var showSettingsSheet: Bool = false
@@ -246,7 +247,8 @@ public struct MainTabView: View {
                             serverURL: serverURL,
                             isInline: isMinimized,
                             onOpenFullscreen: {
-                                withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
+                                playerDismissProgress = 0.0
+                                withAnimation(.spring(response: 0.40, dampingFraction: 0.86)) {
                                     showFullscreenPlayer = true
                                 }
                             },
@@ -315,29 +317,41 @@ public struct MainTabView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, isMinimized ? minimizedBarBottomPadding : miniPlayerBottomPadding)
+                .scaleEffect(showFullscreenPlayer ? (0.90 + 0.10 * playerDismissProgress) : 1.0, anchor: .bottom)
+                .offset(y: showFullscreenPlayer ? (38.0 * (1.0 - playerDismissProgress)) : 0.0)
+                .opacity(showFullscreenPlayer ? Double(min(1.0, max(0.0, playerDismissProgress * 1.45))) : 1.0)
+                .allowsHitTesting(!showFullscreenPlayer)
                 .animation(.spring(response: 0.34, dampingFraction: 0.84), value: isMinimized)
             }
 
-            // ── Fullscreen Player Modal (Overlay direkt über der Seite) ──
+            // ── Fullscreen Player Modal (Apple-Music-Morph-Übergang zur Now Playing Bar) ──
             if showFullscreenPlayer {
-                Color.black.opacity(0.40)
+                Color.black.opacity(0.45 * Double(max(0.0, 1.0 - playerDismissProgress)))
                     .ignoresSafeArea()
+                    .allowsHitTesting(false)
                     .transition(.opacity)
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+
+                FullscreenPlayerView(
+                    serverURL: serverURL,
+                    onDragProgressChanged: { progress in
+                        playerDismissProgress = progress
+                    },
+                    onClose: {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            playerDismissProgress = 1.0
                             showFullscreenPlayer = false
                         }
                     }
-
-                FullscreenPlayerView(serverURL: serverURL) {
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        showFullscreenPlayer = false
-                    }
-                }
+                )
                 .ignoresSafeArea()
-                .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .identity))
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .bottom)
+                            .combined(with: .scale(scale: 0.92, anchor: .bottom))
+                            .combined(with: .opacity),
+                        removal: .opacity
+                    )
+                )
                 .zIndex(999)
             }
 
