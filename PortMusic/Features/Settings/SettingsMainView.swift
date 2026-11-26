@@ -14,7 +14,6 @@ public struct SettingsMainView: View {
     @AppStorage("ui_keep_screen_awake") private var keepScreenAwake: Bool = false
     @AppStorage("navbar_icons_only") private var iconsOnly: Bool = false
     @AppStorage("navbar_scroll_minimize") private var scrollMinimize: Bool = true
-    @AppStorage("navbar_liquid_glass") private var useLiquidGlass: Bool = true
     @AppStorage("navbar_custom_tabs") private var customTabsRaw: String = "home,library,radio,search"
 
     @State private var searchQuery: String = ""
@@ -304,7 +303,6 @@ public struct SettingsMainView: View {
                 NavbarSettingsSheet(
                     iconsOnly: $iconsOnly,
                     scrollMinimize: $scrollMinimize,
-                    useLiquidGlass: $useLiquidGlass,
                     customTabsRaw: $customTabsRaw
                 )
             }

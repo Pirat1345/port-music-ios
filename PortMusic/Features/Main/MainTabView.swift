@@ -85,7 +85,6 @@ public struct MainTabView: View {
     // Persistent Navbar Variants & Settings (NavbarSettings.m)
     @AppStorage("navbar_icons_only") private var iconsOnly: Bool = false
     @AppStorage("navbar_scroll_minimize") private var scrollMinimizeEnabled: Bool = true
-    @AppStorage("navbar_liquid_glass") private var useLiquidGlassBars: Bool = true
     @AppStorage("navbar_custom_tabs") private var customTabsRaw: String = "home,library,radio,search"
     @State private var isMinimized: Bool = false
     @State private var showNavbarSettings: Bool = false
@@ -186,7 +185,7 @@ public struct MainTabView: View {
 
             // ── Dynamische Steuerelement-Leiste (Organischer, fließender Übergang zwischen Vollmodus & Minimiertem Modus) ──
             if isMinimized || player.currentTrack != nil {
-                PortBottomGlassContainer(spacing: 12, useLiquidGlass: useLiquidGlassBars) {
+                PortBottomGlassContainer(spacing: 12) {
                     // 1. Linker 62x62 Kreis: Aktiver Tab (Gleitet beim Scrollen nach unten von links herein)
                     if isMinimized {
                         let isSearch = (activeLiquidTab == .search)
@@ -207,10 +206,10 @@ public struct MainTabView: View {
                                 .foregroundColor(.white)
                                 .frame(width: 62, height: 62)
                                 .contentShape(Circle())
-                                .portLiquidGlassCircle(interactive: true, enabled: useLiquidGlassBars)
+                                .portLiquidGlassCircle(interactive: true)
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .portGlassEffectID("bottom_active_tab", in: bottomGlassNamespace, enabled: useLiquidGlassBars)
+                        .portGlassEffectID("bottom_active_tab", in: bottomGlassNamespace)
                         .simultaneousGesture(
                             LongPressGesture(minimumDuration: 0.45)
                                 .onEnded { _ in
@@ -243,7 +242,6 @@ public struct MainTabView: View {
                         PlayerBarView(
                             serverURL: serverURL,
                             isInline: isMinimized,
-                            useLiquidGlass: useLiquidGlassBars,
                             onOpenFullscreen: {
                                 withAnimation(.spring(response: 0.38, dampingFraction: 0.70)) {
                                     showFullscreenPlayer = true
@@ -255,7 +253,7 @@ public struct MainTabView: View {
                             }
                         )
                         .frame(maxWidth: .infinity)
-                        .portGlassEffectID("bottom_mini_player", in: bottomGlassNamespace, enabled: useLiquidGlassBars)
+                        .portGlassEffectID("bottom_mini_player", in: bottomGlassNamespace)
                         .simultaneousGesture(
                             LongPressGesture(minimumDuration: 0.40)
                                 .onEnded { _ in
@@ -287,14 +285,13 @@ public struct MainTabView: View {
                     if isMinimized {
                         SearchApartCircle(
                             isSelected: activeLiquidTab == .search,
-                            useLiquidGlass: useLiquidGlassBars,
                             onTap: {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.impactOccurred()
                                 selectLiquidTab(.search)
                             }
                         )
-                        .portGlassEffectID("bottom_search_circle", in: bottomGlassNamespace, enabled: useLiquidGlassBars)
+                        .portGlassEffectID("bottom_search_circle", in: bottomGlassNamespace)
                         .simultaneousGesture(
                             LongPressGesture(minimumDuration: 0.45)
                                 .onEnded { _ in
@@ -381,7 +378,6 @@ public struct MainTabView: View {
             NavbarSettingsSheet(
                 iconsOnly: $iconsOnly,
                 scrollMinimize: $scrollMinimizeEnabled,
-                useLiquidGlass: $useLiquidGlassBars,
                 customTabsRaw: $customTabsRaw
             )
         }
@@ -727,7 +723,6 @@ private class TabBarCustomLongPressRecognizer: UILongPressGestureRecognizer {
 // MARK: - Apart Search Circular Platter (Right 62pt Circle)
 private struct SearchApartCircle: View {
     let isSelected: Bool
-    let useLiquidGlass: Bool
     let onTap: () -> Void
 
     var body: some View {
@@ -737,7 +732,7 @@ private struct SearchApartCircle: View {
                 .foregroundColor(.white)
                 .frame(width: 62, height: 62)
                 .contentShape(Circle())
-                .portLiquidGlassCircle(interactive: true, enabled: useLiquidGlass)
+                .portLiquidGlassCircle(interactive: true)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -747,14 +742,12 @@ private struct SearchApartCircle: View {
 struct NavbarSettingsSheet: View {
     @Binding var iconsOnly: Bool
     @Binding var scrollMinimize: Bool
-    @Binding var useLiquidGlass: Bool
     @Binding var customTabsRaw: String
     @Environment(\.dismiss) private var dismiss
 
     // Lokaler Zustand: Änderungen werden erst beim Schließen des Menüs ("Fertig") übernommen
     @State private var localIconsOnly: Bool = false
     @State private var localScrollMinimize: Bool = false
-    @State private var localLiquidGlass: Bool = true
     @State private var localTabs: [LiquidTabID] = []
     @State private var editMode: EditMode = .inactive
 
@@ -783,9 +776,6 @@ struct NavbarSettingsSheet: View {
         }
         if scrollMinimize != localScrollMinimize {
             scrollMinimize = localScrollMinimize
-        }
-        if useLiquidGlass != localLiquidGlass {
-            useLiquidGlass = localLiquidGlass
         }
     }
 
@@ -823,14 +813,12 @@ struct NavbarSettingsSheet: View {
             List {
                 Section(header: Text("Anzeigevariante").foregroundColor(.white.opacity(0.60))) {
                     Toggle("Nur Icons anzeigen (ohne Text)", isOn: $localIconsOnly)
-                        .tint(.white)
-                    Toggle("Echtes Apple Liquid Glass (iOS 26)", isOn: $localLiquidGlass)
-                        .tint(.white)
+                        .tint(Color(hex: "#30d158"))
                 }
 
                 Section(header: Text("Scroll-Verhalten").foregroundColor(.white.opacity(0.60))) {
                     Toggle("Beim Scrollen minimieren", isOn: $localScrollMinimize)
-                        .tint(.white)
+                        .tint(Color(hex: "#30d158"))
                     Text("Schrumpft die Leiste beim Scrollen nach unten wie in Octave in zwei Kreise und dockt die Minibar direkt dazwischen ein.")
                         .font(.system(size: 12))
                         .foregroundColor(Color.white.opacity(0.50))
@@ -966,7 +954,6 @@ struct NavbarSettingsSheet: View {
             .onAppear {
                 localIconsOnly = iconsOnly
                 localScrollMinimize = scrollMinimize
-                localLiquidGlass = useLiquidGlass
                 let rawIds = customTabsRaw.split(separator: ",").map(String.init)
                 let parsed = rawIds.compactMap { id -> LiquidTabID? in
                     if id == "new" { return .podcasts }
