@@ -8,5 +8,6 @@ public enum AppRoute: Hashable {
     case podcastCategory(genreId: Int, title: String, subtitle: String)
     case likedSongs
     case libraryCategory(category: String)
+    case playlistFolder(folderId: String, title: String, parentTrail: [String] = [])
     case appleCategory(id: String, title: String, artworkUrl: String? = nil, bgColor: String? = nil)
 }

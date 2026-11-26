@@ -4,6 +4,9 @@ import SwiftUI
 public struct LibraryCategoryDetailView: View {
     public let category: String
     public let serverURL: String
+    public let folderId: String?
+    public let folderTitle: String?
+    public let parentTrail: [String]
 
     private enum PlaylistViewMode: String, CaseIterable {
         case grid = "Raster"
@@ -38,7 +41,6 @@ public struct LibraryCategoryDetailView: View {
     @State private var folders: [LibraryFolder] = []
     @State private var pinnedIds: Set<String> = []
     @State private var pinnedFolderIds: Set<String> = []
-    @State private var selectedFolderId: String? = nil
     @State private var artists: [DiscoveryArtist] = []
     @State private var tracks: [Track] = []
     @State private var favoriteIds: Set<String> = []
@@ -83,9 +85,18 @@ public struct LibraryCategoryDetailView: View {
     @State private var showCreateFolderAlert: Bool = false
     @State private var newFolderName: String = ""
 
-    public init(category: String, serverURL: String) {
+    public init(
+        category: String,
+        serverURL: String,
+        folderId: String? = nil,
+        folderTitle: String? = nil,
+        parentTrail: [String] = []
+    ) {
         self.category = category
         self.serverURL = serverURL
+        self.folderId = folderId
+        self.folderTitle = folderTitle
+        self.parentTrail = parentTrail
     }
 
     private var normalizedCategory: String {
@@ -122,11 +133,32 @@ public struct LibraryCategoryDetailView: View {
         withPlaylistSearchBar {
             categoryRootView
         }
-        .navigationTitle(viewTitle)
-        .navigationBarTitleDisplayMode(normalizedCategory == "playlists" ? .large : .inline)
+        .navigationTitle(folderTitle ?? viewTitle)
+        .navigationBarTitleDisplayMode(normalizedCategory == "playlists" && folderId == nil ? .large : .inline)
         .preferredColorScheme(.dark)
         .tint(.white)
         .toolbar {
+            if normalizedCategory == "playlists", let currentFolderTitle = folderTitle {
+                ToolbarItem(placement: .principal) {
+                    let trail = parentTrail.isEmpty ? ["Playlists"] : parentTrail
+                    HStack(spacing: 4) {
+                        ForEach(Array(trail.enumerated()), id: \.offset) { _, segment in
+                            Text(segment)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color.white.opacity(0.60))
+                                .lineLimit(1)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color.white.opacity(0.40))
+                        }
+                        Text(currentFolderTitle)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+            }
             if normalizedCategory == "playlists" {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Menu {
@@ -313,18 +345,22 @@ public struct LibraryCategoryDetailView: View {
         }
     }
 
-    // MARK: - Playlists View (With Mac-Style FolderCover & Nested Navigation)
-    private var folderBreadcrumbs: [LibraryFolder] {
-        var trail: [LibraryFolder] = []
-        var currentId = selectedFolderId
-        var guardSet = Set<String>()
-        while let cid = currentId, !guardSet.contains(cid),
-              let folder = folders.first(where: { $0.id == cid }) {
-            guardSet.insert(cid)
-            trail.insert(folder, at: 0)
-            currentId = folder.parentId
+    // MARK: - Playlists View (With Mac-Style FolderCover & Nested Stack Navigation)
+    private var nextParentTrail: [String] {
+        guard folderId != nil else { return ["Playlists"] }
+        let base = parentTrail.isEmpty ? ["Playlists"] : parentTrail
+        return base + [folderTitle ?? "Ordner"]
+    }
+
+    private func folderSubText(folder: LibraryFolder, inFolder: [DiscoveryPlaylist]) -> String {
+        let subCount = folders.filter { $0.parentId == folder.id }.count
+        if subCount > 0 && !inFolder.isEmpty {
+            return "\(subCount) Ordner • \(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
+        } else if subCount > 0 {
+            return "\(subCount) Unterordner"
+        } else {
+            return "\(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
         }
-        return trail
     }
 
     private var displayFolders: [LibraryFolder] {
@@ -332,7 +368,7 @@ public struct LibraryCategoryDetailView: View {
         let filtered: [LibraryFolder]
         if !q.isEmpty {
             filtered = folders.filter { $0.name.lowercased().contains(q) }
-        } else if let currentId = selectedFolderId {
+        } else if let currentId = folderId {
             filtered = folders.filter { $0.parentId == currentId }
         } else {
             filtered = folders.filter { ($0.parentId ?? "").isEmpty }
@@ -362,7 +398,7 @@ public struct LibraryCategoryDetailView: View {
         let base: [DiscoveryPlaylist]
         if !q.isEmpty {
             base = playlists.filter { $0.title.lowercased().contains(q) }
-        } else if let currentId = selectedFolderId {
+        } else if let currentId = folderId {
             base = playlists.filter { $0.folderId == currentId }
         } else {
             let folderIds = Set(folders.map { $0.id })
@@ -417,73 +453,17 @@ public struct LibraryCategoryDetailView: View {
         let visibleFolders = displayFolders
 
         return VStack(alignment: .leading, spacing: 14) {
-            if selectedFolderId != nil {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        Button(action: {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                selectedFolderId = nil
-                            }
-                        }) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "music.note.list")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(.white)
-                                Text("Playlists")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(Color.white.opacity(0.75))
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        ForEach(Array(folderBreadcrumbs.enumerated()), id: \.element.id) { idx, crumb in
-                            let isLast = idx == folderBreadcrumbs.count - 1
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color.white.opacity(0.35))
-
-                            Button(action: {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                    selectedFolderId = crumb.id
-                                }
-                            }) {
-                                HStack(spacing: 5) {
-                                    Image(systemName: isLast ? "folder.fill" : "folder")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(.white)
-                                    Text(crumb.name)
-                                        .font(.system(size: 13, weight: isLast ? .bold : .medium))
-                                        .foregroundColor(isLast ? .white : Color.white.opacity(0.75))
-                                        .lineLimit(1)
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(isLast ? Color.white.opacity(0.14) : Color.white.opacity(0.07))
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                }
-            }
-
             if isLoading && playlists.isEmpty && folders.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 50)
-            } else if visibleFolders.isEmpty && items.isEmpty && selectedFolderId != nil {
+            } else if visibleFolders.isEmpty && items.isEmpty && folderId != nil {
                 emptyPlaceholder(icon: "folder", message: "Dieser Ordner ist leer")
             } else if visibleFolders.isEmpty && items.isEmpty && !searchQuery.isEmpty {
                 emptyPlaceholder(icon: "music.note.list", message: "Keine Playlists gefunden")
             } else if playlistViewMode == .list {
                 LazyVStack(spacing: 0) {
-                    if selectedFolderId == nil && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if folderId == nil && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         NavigationLink(value: AppRoute.likedSongs) {
                             HStack(spacing: 12) {
                                 ZStack {
@@ -531,24 +511,14 @@ public struct LibraryCategoryDetailView: View {
 
                     ForEach(visibleFolders) { folder in
                         let inFolder = playlistsInFolder(folder.id)
-                        let subCount = folders.filter { $0.parentId == folder.id }.count
                         let isPinned = pinnedFolderIds.contains(folder.id)
-                        let subText: String = {
-                            if subCount > 0 && !inFolder.isEmpty {
-                                return "\(subCount) Ordner • \(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
-                            } else if subCount > 0 {
-                                return "\(subCount) Unterordner"
-                            } else {
-                                return "\(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
-                            }
-                        }()
+                        let subText = folderSubText(folder: folder, inFolder: inFolder)
 
-                        Button(action: {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                                selectedFolderId = folder.id
-                            }
-                        }) {
+                        NavigationLink(value: AppRoute.playlistFolder(
+                            folderId: folder.id,
+                            title: folder.name,
+                            parentTrail: nextParentTrail
+                        )) {
                             HStack(spacing: 12) {
                                 FolderCoverView(
                                     folder: folder,
@@ -655,7 +625,7 @@ public struct LibraryCategoryDetailView: View {
                     spacing: 16
                 ) {
                     // Lieblingssongs Kachel auf Hauptebene (analog Web LibraryPlaylistsPage)
-                    if selectedFolderId == nil && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if folderId == nil && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         NavigationLink(value: AppRoute.likedSongs) {
                             VStack(alignment: .leading, spacing: 6) {
                                 ZStack {
@@ -699,15 +669,14 @@ public struct LibraryCategoryDetailView: View {
                     // MacBook / macOS Folder Tiles
                     ForEach(visibleFolders) { folder in
                         let inFolder = playlistsInFolder(folder.id)
-                        let subCount = folders.filter { $0.parentId == folder.id }.count
                         let isPinned = pinnedFolderIds.contains(folder.id)
+                        let subText = folderSubText(folder: folder, inFolder: inFolder)
 
-                        Button(action: {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                                selectedFolderId = folder.id
-                            }
-                        }) {
+                        NavigationLink(value: AppRoute.playlistFolder(
+                            folderId: folder.id,
+                            title: folder.name,
+                            parentTrail: nextParentTrail
+                        )) {
                             VStack(alignment: .leading, spacing: 6) {
                                 ZStack(alignment: .topTrailing) {
                                     FolderCoverView(
@@ -732,15 +701,6 @@ public struct LibraryCategoryDetailView: View {
                                     .foregroundColor(.white)
                                     .lineLimit(1)
 
-                                let subText: String = {
-                                    if subCount > 0 && !inFolder.isEmpty {
-                                        return "\(subCount) Ordner • \(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
-                                    } else if subCount > 0 {
-                                        return "\(subCount) Unterordner"
-                                    } else {
-                                        return "\(inFolder.count) \(inFolder.count == 1 ? "Playlist" : "Playlists")"
-                                    }
-                                }()
                                 Text(subText)
                                     .font(.system(size: 12))
                                     .foregroundColor(Color(hex: "#a0a0a0"))
@@ -806,7 +766,7 @@ public struct LibraryCategoryDetailView: View {
             Button("Erstellen") {
                 let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !name.isEmpty else { return }
-                let parentId = selectedFolderId
+                let parentId = folderId
                 Task {
                     let token = SessionManager.shared.currentToken
                     if let created = await MusicService.shared.createFolder(
@@ -822,7 +782,7 @@ public struct LibraryCategoryDetailView: View {
                 }
             }
         } message: {
-            Text(selectedFolderId == nil ? "Name für den neuen Ordner eingeben." : "Name für den neuen Unterordner eingeben.")
+            Text(folderId == nil ? "Name für den neuen Ordner eingeben." : "Name für den neuen Unterordner eingeben.")
         }
     }
 

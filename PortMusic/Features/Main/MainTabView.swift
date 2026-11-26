@@ -509,6 +509,14 @@ public struct MainTabView: View {
             LikedSongsView(serverURL: serverURL)
         case .libraryCategory(let category):
             LibraryCategoryDetailView(category: category, serverURL: serverURL)
+        case .playlistFolder(let folderId, let title, let parentTrail):
+            LibraryCategoryDetailView(
+                category: "playlists",
+                serverURL: serverURL,
+                folderId: folderId,
+                folderTitle: title,
+                parentTrail: parentTrail
+            )
         case .appleCategory(let id, let title, let artworkUrl, let bgColor):
             AppleCategoryDetailView(id: id, title: title, artworkUrl: artworkUrl, bgColor: bgColor, serverURL: serverURL)
         }
