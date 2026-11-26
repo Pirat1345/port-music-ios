@@ -8,15 +8,14 @@ public struct PlaylistDetailView: View {
     public let serverURL: String
 
     @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+    @ObservedObject private var sessionManager = SessionManager.shared
     @State private var playlistData: DiscoveryPlaylistDetailData? = nil
     @State private var tracks: [Track] = []
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
     @State private var searchQuery: String = ""
-    @State private var isDownloaded: Bool = false
     @State private var showShareSheet: Bool = false
-
-    private let downloadedStorageKeyPrefix = "port_playlist_downloaded_"
 
     public init(
         playlistId: String,
@@ -28,6 +27,27 @@ public struct PlaylistDetailView: View {
         self.initialTitle = initialTitle
         self.initialCover = initialCover
         self.serverURL = serverURL
+    }
+
+    private var isPlaylistSyncMarked: Bool {
+        offlineManager.markedOfflinePlaylistIds.contains(playlistId)
+            || offlineManager.isPlaylistMarkedForOffline(playlistId)
+    }
+
+    private var isPlaylistDownloading: Bool {
+        offlineManager.isPlaylistDownloading(playlistId, tracks: tracks)
+    }
+
+    private var downloadedTrackCount: Int {
+        offlineManager.downloadedCount(forPlaylistTracks: tracks)
+    }
+
+    private var isAllTracksDownloaded: Bool {
+        offlineManager.areAllTracksDownloaded(tracks)
+    }
+
+    private var hasMissingOfflineTracks: Bool {
+        isPlaylistSyncMarked && !tracks.isEmpty && downloadedTrackCount < tracks.count
     }
 
     private var displayTitle: String {
@@ -110,6 +130,11 @@ public struct PlaylistDetailView: View {
                     actionButtonsRow
                         .padding(.horizontal, 20)
 
+                    if isPlaylistDownloading || hasMissingOfflineTracks {
+                        offlineSyncStatusBanner
+                            .padding(.horizontal, 20)
+                    }
+
                     // ── INLINE SEARCH (wenn Tracks vorhanden) ──
                     if tracks.count > 5 {
                         searchBarSection
@@ -132,8 +157,12 @@ public struct PlaylistDetailView: View {
         .preferredColorScheme(.dark)
         .tint(.white)
         .task {
-            loadDownloadState()
             await loadPlaylistData()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .portMusicDidReconnect)) { _ in
+            Task {
+                await loadPlaylistData()
+            }
         }
         .onChange(of: player.currentTrack?.id) { newId in
             guard let id = newId, player.isPlaying, tracks.contains(where: { $0.id == id }) else { return }
@@ -271,18 +300,35 @@ public struct PlaylistDetailView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            // Download Toggle Button
+            // Download Toggle Button (echter Download-Status: laufend / alle geladen / unvollstaendig / aus)
             Button(action: toggleDownload) {
-                Image(systemName: isDownloaded ? "arrow.down.circle.fill" : "arrow.down.circle")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(isDownloaded ? Color(hex: "#10b981") : .white)
-                    .padding(12)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
+                Group {
+                    if isPlaylistDownloading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.85)
+                    } else if isAllTracksDownloaded {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Color(hex: "#10b981"))
+                    } else if hasMissingOfflineTracks {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Color(hex: "#f59e0b"))
+                    } else {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(width: 20, height: 20)
+                .padding(11)
+                .background(Color.white.opacity(0.12))
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                )
             }
             .buttonStyle(PlainButtonStyle())
 
@@ -319,11 +365,37 @@ public struct PlaylistDetailView: View {
                     Label("Alle zur Warteschlange hinzufügen", systemImage: "text.append")
                 }
 
-                Button(action: toggleDownload) {
-                    Label(
-                        isDownloaded ? "Download entfernen" : "Playlist herunterladen",
-                        systemImage: isDownloaded ? "trash" : "arrow.down.circle"
-                    )
+                if isPlaylistDownloading {
+                    Button(action: {
+                        offlineManager.cancelPlaylistDownload(playlistId)
+                    }) {
+                        Label("Download abbrechen", systemImage: "xmark.circle")
+                    }
+                } else if hasMissingOfflineTracks && !sessionManager.isOfflineMode {
+                    Button(action: {
+                        offlineManager.downloadPlaylist(
+                            playlistId: playlistId,
+                            name: displayTitle,
+                            coverUrl: displayCover,
+                            tracks: tracks,
+                            serverURL: serverURL,
+                            token: SessionManager.shared.currentToken
+                        )
+                    }) {
+                        Label("Fehlende Songs laden (\(tracks.count - downloadedTrackCount))", systemImage: "arrow.down.circle")
+                    }
+                }
+
+                if isAllTracksDownloaded || isPlaylistSyncMarked || downloadedTrackCount > 0 {
+                    Button(role: .destructive, action: {
+                        offlineManager.removePlaylistDownload(playlistId: playlistId)
+                    }) {
+                        Label("Offline-Download entfernen", systemImage: "trash")
+                    }
+                } else {
+                    Button(action: toggleDownload) {
+                        Label("Playlist herunterladen", systemImage: "arrow.down.circle")
+                    }
                 }
 
                 Divider()
@@ -347,6 +419,50 @@ public struct PlaylistDetailView: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
+    }
+
+    private var offlineSyncStatusBanner: some View {
+        HStack(spacing: 10) {
+            if isPlaylistDownloading {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.8)
+                Text("Lädt herunter · \(downloadedTrackCount) von \(tracks.count) Songs gespeichert")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.85))
+                Spacer()
+            } else if hasMissingOfflineTracks {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(hex: "#f59e0b"))
+                Text("\(downloadedTrackCount) von \(tracks.count) Songs offline geladen")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.85))
+                Spacer()
+                if !sessionManager.isOfflineMode {
+                    Button("Nachladen") {
+                        offlineManager.downloadPlaylist(
+                            playlistId: playlistId,
+                            name: displayTitle,
+                            coverUrl: displayCover,
+                            tracks: tracks,
+                            serverURL: serverURL,
+                            token: SessionManager.shared.currentToken
+                        )
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Search Bar Section
@@ -416,7 +532,7 @@ public struct PlaylistDetailView: View {
                             contextQueue: currentList,
                             serverURL: serverURL,
                             isLiked: false,
-                            isDownloaded: isDownloaded,
+                            isDownloaded: offlineManager.isDownloaded(trackId: track.id),
                             showCover: true,
                             showTrackNumber: false
                         )
@@ -464,7 +580,26 @@ public struct PlaylistDetailView: View {
 
         // 0. Sofort offline geladene Tracks anzeigen (0 ms ohne Netzwerk-Wartezeit)
         let offlineTracks = OfflineDownloadManager.shared.downloadedTracks(forPlaylistId: playlistId)
-        if !offlineTracks.isEmpty {
+        let cachedCollections = await MusicService.shared.cachedLibraryCollections()
+        let cachedPlaylistTracks = cachedCollections.playlistTracksMap[playlistId] ?? []
+        let offlineById = Dictionary(uniqueKeysWithValues: offlineTracks.map { ($0.id, $0) })
+
+        let mergedCachedTracks: [Track]
+        if !cachedPlaylistTracks.isEmpty {
+            var seen = Set<String>()
+            var combined: [Track] = cachedPlaylistTracks.map { t in
+                seen.insert(t.id)
+                return offlineById[t.id] ?? t
+            }
+            for off in offlineTracks where seen.insert(off.id).inserted {
+                combined.append(off)
+            }
+            mergedCachedTracks = combined
+        } else {
+            mergedCachedTracks = offlineTracks
+        }
+
+        if !mergedCachedTracks.isEmpty {
             let meta = OfflineDownloadManager.shared.downloadedPlaylistMeta(forPlaylistId: playlistId)
             await MainActor.run {
                 self.playlistData = DiscoveryPlaylistDetailData(
@@ -475,11 +610,10 @@ public struct PlaylistDetailView: View {
                     heroArtwork: nil,
                     motionVideo: nil,
                     user: "Offline",
-                    nbTracks: offlineTracks.count,
+                    nbTracks: mergedCachedTracks.count,
                     tracks: []
                 )
-                self.tracks = offlineTracks
-                self.isDownloaded = true
+                self.tracks = mergedCachedTracks
                 self.isLoading = false
             }
             if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
@@ -500,13 +634,23 @@ public struct PlaylistDetailView: View {
 
         // 1. Try Discovery Playlist (/api/discovery/playlist/:id)
         if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: playlistId, serverURL: serverURL, token: token) {
+            let netTracks = detail.tracks.map { $0.toTrack() }
             await MainActor.run {
                 self.playlistData = detail
-                let netTracks = detail.tracks.map { $0.toTrack() }
                 if !netTracks.isEmpty || self.tracks.isEmpty {
                     self.tracks = netTracks
                 }
                 self.isLoading = false
+                if OfflineDownloadManager.shared.isPlaylistMarkedForOffline(playlistId) {
+                    OfflineDownloadManager.shared.syncPlaylistIfMarked(
+                        playlistId: playlistId,
+                        name: detail.title,
+                        coverUrl: detail.cover,
+                        latestTracks: netTracks,
+                        serverURL: serverURL,
+                        token: token
+                    )
+                }
             }
             return
         }
@@ -514,13 +658,23 @@ public struct PlaylistDetailView: View {
         // 2. Try User State (/api/state)
         let (statePlaylists, _) = await MusicService.shared.fetchUserState(serverURL: serverURL, token: token)
         if let found = statePlaylists.first(where: { $0.id == playlistId }) {
+            let netTracks = found.tracks.map { $0.toTrack() }
             await MainActor.run {
                 self.playlistData = found
-                let netTracks = found.tracks.map { $0.toTrack() }
                 if !netTracks.isEmpty || self.tracks.isEmpty {
                     self.tracks = netTracks
                 }
                 self.isLoading = false
+                if OfflineDownloadManager.shared.isPlaylistMarkedForOffline(playlistId) {
+                    OfflineDownloadManager.shared.syncPlaylistIfMarked(
+                        playlistId: playlistId,
+                        name: found.title,
+                        coverUrl: found.cover,
+                        latestTracks: netTracks,
+                        serverURL: serverURL,
+                        token: token
+                    )
+                }
             }
             return
         }
@@ -533,17 +687,19 @@ public struct PlaylistDetailView: View {
         }
     }
 
-    private func loadDownloadState() {
-        self.isDownloaded = UserDefaults.standard.bool(forKey: "\(downloadedStorageKeyPrefix)\(playlistId)")
-    }
-
     private func toggleDownload() {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
-        isDownloaded.toggle()
-        UserDefaults.standard.set(isDownloaded, forKey: "\(downloadedStorageKeyPrefix)\(playlistId)")
 
-        if isDownloaded {
+        if isPlaylistDownloading {
+            OfflineDownloadManager.shared.cancelPlaylistDownload(playlistId)
+        } else if isAllTracksDownloaded {
+            OfflineDownloadManager.shared.removePlaylistDownload(playlistId: playlistId)
+        } else if sessionManager.isOfflineMode {
+            if isPlaylistSyncMarked || downloadedTrackCount > 0 {
+                OfflineDownloadManager.shared.removePlaylistDownload(playlistId: playlistId)
+            }
+        } else {
             OfflineDownloadManager.shared.downloadPlaylist(
                 playlistId: playlistId,
                 name: displayTitle,
@@ -552,10 +708,6 @@ public struct PlaylistDetailView: View {
                 serverURL: serverURL,
                 token: SessionManager.shared.currentToken
             )
-        } else {
-            for t in tracks {
-                OfflineDownloadManager.shared.removeDownload(trackId: t.id)
-            }
         }
     }
 }

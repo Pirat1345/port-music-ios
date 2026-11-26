@@ -1342,10 +1342,8 @@ public struct LibraryCategoryDetailView: View {
     }
 
     private func isPlaylistOfflineDownloaded(_ playlistId: String) -> Bool {
-        if UserDefaults.standard.bool(forKey: "port_playlist_downloaded_\(playlistId)") {
-            return true
-        }
-        return !offlineManager.downloadedTracks(forPlaylistId: playlistId).isEmpty
+        offlineManager.isPlaylistMarkedForOffline(playlistId)
+            || !offlineManager.downloadedTracks(forPlaylistId: playlistId).isEmpty
             || offlineManager.downloadedPlaylistMeta(forPlaylistId: playlistId) != nil
     }
 

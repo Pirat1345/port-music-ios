@@ -34,9 +34,41 @@ public struct OfflineTrackRecord: Codable, Identifiable, Equatable {
 
 public struct OfflinePlaylistMeta: Codable, Identifiable, Equatable {
     public let id: String
-    public let name: String
-    public let coverUrl: String?
-    public let downloadedAt: Date
+    public var name: String
+    public var coverUrl: String?
+    public var downloadedAt: Date
+    public var orderedTrackIds: [String]
+    public var autoSync: Bool
+
+    public init(
+        id: String,
+        name: String,
+        coverUrl: String? = nil,
+        downloadedAt: Date = Date(),
+        orderedTrackIds: [String] = [],
+        autoSync: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.coverUrl = coverUrl
+        self.downloadedAt = downloadedAt
+        self.orderedTrackIds = orderedTrackIds
+        self.autoSync = autoSync
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, coverUrl, downloadedAt, orderedTrackIds, autoSync
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        coverUrl = try container.decodeIfPresent(String.self, forKey: .coverUrl)
+        downloadedAt = try container.decodeIfPresent(Date.self, forKey: .downloadedAt) ?? Date()
+        orderedTrackIds = try container.decodeIfPresent([String].self, forKey: .orderedTrackIds) ?? []
+        autoSync = try container.decodeIfPresent(Bool.self, forKey: .autoSync) ?? true
+    }
 }
 
 @MainActor
@@ -46,9 +78,13 @@ public final class OfflineDownloadManager: ObservableObject {
     @Published public private(set) var downloadedTrackIds: Set<String> = []
     @Published public private(set) var downloadingTrackIds: Set<String> = []
     @Published public private(set) var downloadProgressMap: [String: Double] = [:]
+    @Published public private(set) var downloadingPlaylistIds: Set<String> = []
+    @Published public private(set) var markedOfflinePlaylistIds: Set<String> = []
 
     private var records: [String: OfflineTrackRecord] = [:]
     private var playlistMetas: [String: OfflinePlaylistMeta] = [:]
+    private var playlistDownloadTasks: [String: Task<Void, Never>] = [:]
+    private static let singleManualMarker = "_single_"
     private let manifestFileName = "offline_manifest.json"
     private let playlistsMetaFileName = "offline_playlists.json"
     private let tracksSubdir = "OfflineTracks"
@@ -182,12 +218,15 @@ public final class OfflineDownloadManager: ObservableObject {
               let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode([String: OfflinePlaylistMeta].self, from: data) else {
             self.playlistMetas = [:]
+            self.markedOfflinePlaylistIds = []
             return
         }
         self.playlistMetas = decoded
+        self.markedOfflinePlaylistIds = Set(decoded.values.filter(\.autoSync).map(\.id))
     }
 
     private func savePlaylistMetas() {
+        self.markedOfflinePlaylistIds = Set(playlistMetas.values.filter(\.autoSync).map(\.id))
         guard let data = try? JSONEncoder().encode(playlistMetas) else { return }
         try? data.write(to: playlistsMetaFileURL, options: .atomic)
     }
@@ -195,7 +234,11 @@ public final class OfflineDownloadManager: ObservableObject {
     // MARK: - Public Query Methods
 
     public func isDownloaded(trackId: String) -> Bool {
-        downloadedTrackIds.contains(trackId)
+        guard downloadedTrackIds.contains(trackId), let record = records[trackId] else {
+            return false
+        }
+        let fileURL = tracksDirectoryURL.appendingPathComponent(record.localFileName)
+        return FileManager.default.fileExists(atPath: fileURL.path)
     }
 
     public func isDownloading(trackId: String) -> Bool {
@@ -204,6 +247,31 @@ public final class OfflineDownloadManager: ObservableObject {
 
     public func downloadProgress(trackId: String) -> Double {
         downloadProgressMap[trackId] ?? 0.0
+    }
+
+    public func isPlaylistMarkedForOffline(_ playlistId: String) -> Bool {
+        playlistMetas[playlistId]?.autoSync == true
+    }
+
+    public func isPlaylistDownloading(_ playlistId: String, tracks: [Track] = []) -> Bool {
+        if downloadingPlaylistIds.contains(playlistId) {
+            return true
+        }
+        return tracks.contains { downloadingTrackIds.contains($0.id) }
+    }
+
+    public func downloadedCount(forPlaylistTracks tracks: [Track]) -> Int {
+        tracks.filter { isDownloaded(trackId: $0.id) }.count
+    }
+
+    public func areAllTracksDownloaded(_ tracks: [Track]) -> Bool {
+        !tracks.isEmpty && tracks.allSatisfy { isDownloaded(trackId: $0.id) }
+    }
+
+    public func cancelPlaylistDownload(_ playlistId: String) {
+        playlistDownloadTasks[playlistId]?.cancel()
+        playlistDownloadTasks.removeValue(forKey: playlistId)
+        downloadingPlaylistIds.remove(playlistId)
     }
 
     public func localAudioFileURL(for trackId: String) -> URL? {
@@ -288,8 +356,26 @@ public final class OfflineDownloadManager: ObservableObject {
     }
 
     public func downloadedTracks(forPlaylistId playlistId: String) -> [Track] {
-        records.values
-            .filter { $0.playlistIds.contains(playlistId) }
+        let linked = records.values.filter { $0.playlistIds.contains(playlistId) }
+        guard !linked.isEmpty else { return [] }
+
+        let order = playlistMetas[playlistId]?.orderedTrackIds ?? []
+        if !order.isEmpty {
+            let byId = Dictionary(uniqueKeysWithValues: linked.map { ($0.track.id, $0) })
+            var ordered: [Track] = []
+            var seen = Set<String>()
+            for tid in order {
+                if let rec = byId[tid], seen.insert(tid).inserted {
+                    ordered.append(enrichTrackWithLocalCover(rec))
+                }
+            }
+            for rec in linked.sorted(by: { $0.downloadedAt < $1.downloadedAt }) where seen.insert(rec.track.id).inserted {
+                ordered.append(enrichTrackWithLocalCover(rec))
+            }
+            return ordered
+        }
+
+        return linked
             .sorted(by: { $0.downloadedAt < $1.downloadedAt })
             .map { enrichTrackWithLocalCover($0) }
     }
@@ -425,9 +511,10 @@ public final class OfflineDownloadManager: ObservableObject {
 
     @discardableResult
     public func downloadTrack(track: Track, serverURL: String, token: String?, playlistId: String? = nil) async -> Bool {
+        let marker = playlistId ?? Self.singleManualMarker
         if isDownloaded(trackId: track.id) {
-            if let pid = playlistId, var record = records[track.id], !record.playlistIds.contains(pid) {
-                record.playlistIds.append(pid)
+            if var record = records[track.id], !record.playlistIds.contains(marker) {
+                record.playlistIds.append(marker)
                 records[track.id] = record
                 saveManifest()
             }
@@ -531,6 +618,10 @@ public final class OfflineDownloadManager: ObservableObject {
                 downloadProgressMap[track.id] = 0.25
                 let (data, response) = try await downloadSession.data(for: req)
                 if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), data.count > 10240 {
+                    let mime = (http.mimeType ?? "").lowercased()
+                    if mime.contains("text/html") || mime.contains("application/json") || mime.contains("text/plain") {
+                        continue
+                    }
                     downloadedData = data
                     detectedMime = http.mimeType
                     break
@@ -573,8 +664,12 @@ public final class OfflineDownloadManager: ObservableObject {
             let (localCoverName, localLyricsName) = await (coverNameTask, lyricsNameTask)
 
             let size = Int64(validData.count)
-            var pIds: [String] = []
-            if let pid = playlistId { pIds.append(pid) }
+            let existingPlaylistIds = records[track.id]?.playlistIds ?? []
+            var pIds = existingPlaylistIds
+            let marker = playlistId ?? Self.singleManualMarker
+            if !pIds.contains(marker) {
+                pIds.append(marker)
+            }
 
             let record = OfflineTrackRecord(
                 track: track,
@@ -600,17 +695,174 @@ public final class OfflineDownloadManager: ObservableObject {
     }
 
     public func downloadPlaylist(playlistId: String, name: String, coverUrl: String? = nil, tracks: [Track], serverURL: String, token: String?) {
+        let trackIds = tracks.map(\.id)
+        let prevDate = playlistMetas[playlistId]?.downloadedAt ?? Date()
         playlistMetas[playlistId] = OfflinePlaylistMeta(
             id: playlistId,
             name: name,
             coverUrl: coverUrl,
-            downloadedAt: Date()
+            downloadedAt: prevDate,
+            orderedTrackIds: trackIds,
+            autoSync: true
+        )
+        savePlaylistMetas()
+        UserDefaults.standard.set(true, forKey: "port_playlist_downloaded_\(playlistId)")
+
+        // Verknüpfe bereits lokal vorhandene Songs sofort sauber mit dieser Playlist
+        var linkedExisting = false
+        for t in tracks where isDownloaded(trackId: t.id) {
+            if var rec = records[t.id], !rec.playlistIds.contains(playlistId) {
+                rec.playlistIds.append(playlistId)
+                records[t.id] = rec
+                linkedExisting = true
+            }
+        }
+        if linkedExisting {
+            saveManifest()
+        }
+
+        let missing = tracks.filter { !isDownloaded(trackId: $0.id) }
+        guard !missing.isEmpty else {
+            downloadingPlaylistIds.remove(playlistId)
+            return
+        }
+
+        playlistDownloadTasks[playlistId]?.cancel()
+        downloadingPlaylistIds.insert(playlistId)
+
+        let task = Task { [weak self] in
+            guard let self = self else { return }
+            defer {
+                self.downloadingPlaylistIds.remove(playlistId)
+                self.playlistDownloadTasks.removeValue(forKey: playlistId)
+            }
+            for track in missing {
+                if Task.isCancelled || SessionManager.shared.isOfflineMode {
+                    break
+                }
+                _ = await self.downloadTrack(track: track, serverURL: serverURL, token: token, playlistId: playlistId)
+            }
+        }
+        playlistDownloadTasks[playlistId] = task
+    }
+
+    /// Synchronisiert eine offline vorgemerkte Playlist gegen die aktuelle Server-Trackliste:
+    /// - Entfernt gelöschte Songs aus der Playlist-Zuordnung (und löscht verwaiste Dateien)
+    /// - Lädt neu hinzugekommene oder bisher unvollständige Songs automatisch herunter
+    public func syncPlaylistIfMarked(
+        playlistId: String,
+        name: String,
+        coverUrl: String? = nil,
+        latestTracks: [Track],
+        serverURL: String,
+        token: String?
+    ) {
+        guard isPlaylistMarkedForOffline(playlistId) else { return }
+
+        let latestIds = latestTracks.map(\.id)
+        let latestIdSet = Set(latestIds)
+        let prevDate = playlistMetas[playlistId]?.downloadedAt ?? Date()
+        playlistMetas[playlistId] = OfflinePlaylistMeta(
+            id: playlistId,
+            name: name.isEmpty ? (playlistMetas[playlistId]?.name ?? "Playlist") : name,
+            coverUrl: (coverUrl?.isEmpty == false) ? coverUrl : playlistMetas[playlistId]?.coverUrl,
+            downloadedAt: prevDate,
+            orderedTrackIds: latestIds,
+            autoSync: true
         )
         savePlaylistMetas()
 
-        Task {
-            for track in tracks {
-                _ = await downloadTrack(track: track, serverURL: serverURL, token: token, playlistId: playlistId)
+        // 1. Entfernte Songs aus dieser Playlist lösen (nur löschen, wenn nirgends sonst genutzt)
+        var manifestChanged = false
+        let previouslyLinkedIds = records.values.filter { $0.playlistIds.contains(playlistId) }.map(\.id)
+        for tid in previouslyLinkedIds where !latestIdSet.contains(tid) {
+            guard var rec = records[tid] else { continue }
+            rec.playlistIds.removeAll { $0 == playlistId }
+            if rec.playlistIds.isEmpty {
+                removeDownload(trackId: tid)
+            } else {
+                records[tid] = rec
+                manifestChanged = true
+            }
+        }
+        if manifestChanged {
+            saveManifest()
+        }
+
+        // 2. Fehlende oder neu hinzugekommene Songs herunterladen (wenn online & nicht bereits laufend)
+        if !SessionManager.shared.isOfflineMode && !isPlaylistDownloading(playlistId) {
+            let hasMissing = latestTracks.contains { !isDownloaded(trackId: $0.id) }
+            if hasMissing {
+                downloadPlaylist(
+                    playlistId: playlistId,
+                    name: playlistMetas[playlistId]?.name ?? name,
+                    coverUrl: playlistMetas[playlistId]?.coverUrl,
+                    tracks: latestTracks,
+                    serverURL: serverURL,
+                    token: token
+                )
+            }
+        }
+    }
+
+    public func syncSavedPlaylistsOnReconnect(serverURL: String, token: String?) async {
+        let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        guard !base.isEmpty, !SessionManager.shared.isOfflineMode else { return }
+
+        let markedMetas = playlistMetas.values.filter(\.autoSync)
+        guard !markedMetas.isEmpty else { return }
+
+        let (statePlaylists, _) = await MusicService.shared.fetchUserState(serverURL: base, token: token)
+        let stateById = Dictionary(uniqueKeysWithValues: statePlaylists.map { ($0.id, $0) })
+
+        for meta in markedMetas {
+            if SessionManager.shared.isOfflineMode { break }
+
+            if meta.id == "liked_songs" {
+                let favs = await MusicService.shared.fetchFavorites(serverURL: base, token: token)
+                if !favs.isEmpty {
+                    syncPlaylistIfMarked(
+                        playlistId: meta.id,
+                        name: meta.name,
+                        coverUrl: meta.coverUrl,
+                        latestTracks: favs,
+                        serverURL: base,
+                        token: token
+                    )
+                }
+                continue
+            }
+
+            if let userPl = stateById[meta.id] {
+                let latestTracks = userPl.tracks.map { $0.toTrack() }
+                syncPlaylistIfMarked(
+                    playlistId: meta.id,
+                    name: userPl.title,
+                    coverUrl: userPl.cover,
+                    latestTracks: latestTracks,
+                    serverURL: base,
+                    token: token
+                )
+            } else if let discPl = await MusicService.shared.fetchDiscoveryPlaylist(id: meta.id, serverURL: base, token: token) {
+                let latestTracks = discPl.tracks.map { $0.toTrack() }
+                syncPlaylistIfMarked(
+                    playlistId: meta.id,
+                    name: discPl.title,
+                    coverUrl: discPl.cover,
+                    latestTracks: latestTracks,
+                    serverURL: base,
+                    token: token
+                )
+            } else if let album = await MusicService.shared.fetchAlbum(id: meta.id, serverURL: base, token: token) {
+                let latestTracks = album.tracks.map { $0.toTrack(fallbackCover: album.cover, fallbackAlbum: album.title) }
+                syncPlaylistIfMarked(
+                    playlistId: meta.id,
+                    name: album.title,
+                    coverUrl: album.cover,
+                    latestTracks: latestTracks,
+                    serverURL: base,
+                    token: token
+                )
             }
         }
     }
@@ -903,6 +1155,7 @@ public final class OfflineDownloadManager: ObservableObject {
     }
 
     public func removePlaylistDownload(playlistId: String) {
+        cancelPlaylistDownload(playlistId)
         playlistMetas.removeValue(forKey: playlistId)
         savePlaylistMetas()
         UserDefaults.standard.set(false, forKey: "port_playlist_downloaded_\(playlistId)")
@@ -921,6 +1174,9 @@ public final class OfflineDownloadManager: ObservableObject {
     }
 
     public func removeAllDownloads() {
+        for pid in Array(playlistDownloadTasks.keys) {
+            cancelPlaylistDownload(pid)
+        }
         try? FileManager.default.removeItem(at: tracksDirectoryURL)
         try? FileManager.default.removeItem(at: coversDirectoryURL)
         try? FileManager.default.removeItem(at: lyricsDirectoryURL)
@@ -929,6 +1185,8 @@ public final class OfflineDownloadManager: ObservableObject {
 
         records.removeAll()
         playlistMetas.removeAll()
+        markedOfflinePlaylistIds.removeAll()
+        downloadingPlaylistIds.removeAll()
         downloadedTrackIds.removeAll()
         downloadingTrackIds.removeAll()
         downloadProgressMap.removeAll()

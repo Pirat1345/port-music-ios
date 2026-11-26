@@ -88,10 +88,17 @@ public struct TrackRowView: View {
         player.currentTrack?.id == track.id
     }
 
+    private var isActuallyDownloaded: Bool {
+        offlineManager.isDownloaded(trackId: track.id)
+    }
+
+    private var isCurrentlyDownloading: Bool {
+        offlineManager.isDownloading(trackId: track.id)
+    }
+
     private var isUnavailableOffline: Bool {
         sessionManager.isOfflineMode &&
-        !offlineManager.isDownloaded(trackId: track.id) &&
-        !isDownloaded &&
+        !isActuallyDownloaded &&
         !track.isLive
     }
 
@@ -117,9 +124,15 @@ public struct TrackRowView: View {
 
             Spacer(minLength: 6)
 
-            // Right-Side Controls: Offline-Badge, Heart-Toggle & 3-Dots Action Menu
+            // Right-Side Controls: Echter Offline-Status (ladend / gespeichert / offline nicht verfuegbar), Heart & Menu
             HStack(spacing: 4) {
-                if offlineManager.isDownloaded(trackId: track.id) || isDownloaded {
+                if isCurrentlyDownloading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(0.72)
+                        .frame(width: 18, height: 18)
+                        .padding(.trailing, 2)
+                } else if isActuallyDownloaded {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 13))
                         .foregroundColor(Color(hex: "#10b981"))
@@ -246,7 +259,7 @@ public struct TrackRowView: View {
             }
 
             HStack(spacing: 4) {
-                if offlineManager.isDownloaded(trackId: track.id) || isDownloaded {
+                if isActuallyDownloaded {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 11))
                         .foregroundColor(Color(hex: "#00d26a"))

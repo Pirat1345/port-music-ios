@@ -248,6 +248,7 @@ public final class SessionManager: ObservableObject {
     private func handleOnlineSyncAfterReconnect(serverURL: String, token: String) async {
         await FavoritesManager.shared.syncPendingWithServer(serverURL: serverURL, token: token)
         _ = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
+        await OfflineDownloadManager.shared.syncSavedPlaylistsOnReconnect(serverURL: serverURL, token: token)
         await OfflineDownloadManager.shared.repairMissingLyricsIfNeeded(serverURL: serverURL, token: token)
     }
 
