@@ -327,7 +327,8 @@ public struct LibraryCategoryDetailView: View {
             return 1
         }
         if lowerId.hasPrefix("apple_") || lowerId.hasPrefix("deezer_") || lowerId.hasPrefix("dz_") {
-            return offlineManager.isPlaylistDownloaded(playlistId: pl.id) ? 2 : 3
+            let isDownloaded = !offlineManager.downloadedTracks(forPlaylistId: pl.id).isEmpty || offlineManager.downloadedPlaylistMeta(forPlaylistId: pl.id) != nil
+            return isDownloaded ? 2 : 3
         }
         return 0
     }
