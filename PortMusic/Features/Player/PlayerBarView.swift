@@ -190,9 +190,7 @@ public struct PlayerBarView: View {
                 else if dy < -25 || velocityY < -35 {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
-                        onOpenFullscreen()
-                    }
+                    onOpenFullscreen()
                 }
                 // 3. Wischen nach links: Nächster Titel (Cover bleibt fest, alter Name gleitet nach links raus, neuer kommt von rechts)
                 else if dx < -16 || velocityX < -40 {

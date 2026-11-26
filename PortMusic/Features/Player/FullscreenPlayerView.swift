@@ -179,14 +179,16 @@ public struct FullscreenPlayerView: View {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
             }
             .task(id: player.currentTrack?.id) {
-                await loadTrackExtras()
+                try? await Task.sleep(nanoseconds: 160_000_000)
+                if !Task.isCancelled {
+                    await loadTrackExtras()
+                }
             }
         }
         .preferredColorScheme(.dark)
         .onAppear {
             dragOffset = 0
             isDismissing = false
-            onDragProgressChanged?(0.0)
             volumeManager.syncVolume()
             self.volume = volumeManager.volume
             if let track = player.currentTrack {
@@ -195,37 +197,42 @@ public struct FullscreenPlayerView: View {
         }
     }
 
-    // MARK: - Weichgezeichneter Album-Hintergrund (Ambient Glow)
+    // MARK: - Weichgezeichneter Album-Hintergrund (1/4-Res Blur + GPU RasterCache für 120fps)
     public func backgroundLayer(width: CGFloat, height: CGFloat) -> some View {
-        ZStack {
+        let lowW = max(1, width * 0.25)
+        let lowH = max(1, height * 0.25)
+
+        return ZStack {
             Color(hex: "#121215")
                 .frame(width: width, height: height)
 
-            if let artwork = player.nowPlayingArtwork {
-                Image(uiImage: artwork)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: width, height: height)
-                    .blur(radius: 64)
-                    .opacity(0.56)
-                    .scaleEffect(1.28)
-                    .clipped()
-            } else {
-                let offlineCover = player.currentTrack.flatMap { offlineManager.localCoverFileURL(for: $0.id) }
-                let resolved = offlineCover ?? resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
-                PortCachedAsyncImage(url: resolved) { image in
-                    image
+            Group {
+                if let artwork = player.nowPlayingArtwork {
+                    Image(uiImage: artwork)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: width, height: height)
-                        .blur(radius: 64)
+                        .frame(width: lowW, height: lowH)
+                        .blur(radius: 16)
                         .opacity(0.56)
-                        .scaleEffect(1.28)
-                        .clipped()
-                } placeholder: {
-                    Color.clear
+                        .scaleEffect(4.6)
+                } else {
+                    let offlineCover = player.currentTrack.flatMap { offlineManager.localCoverFileURL(for: $0.id) }
+                    let resolved = offlineCover ?? resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+                    PortCachedAsyncImage(url: resolved) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: lowW, height: lowH)
+                            .blur(radius: 16)
+                            .opacity(0.56)
+                            .scaleEffect(4.6)
+                    } placeholder: {
+                        Color.clear
+                    }
                 }
             }
+            .frame(width: width, height: height)
+            .clipped()
 
             LinearGradient(
                 stops: [
@@ -239,6 +246,7 @@ public struct FullscreenPlayerView: View {
             .frame(width: width, height: height)
         }
         .frame(width: width, height: height)
+        .drawingGroup(opaque: true)
         .clipped()
     }
 
@@ -594,20 +602,6 @@ public struct FullscreenPlayerView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .disabled(isLive)
-
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showQueueSheet = true
-            } label: {
-                Image(systemName: "list.bullet.indent")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 36)
-                    .background(Color.white.opacity(0.14))
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(PlainButtonStyle())
         }
     }
 

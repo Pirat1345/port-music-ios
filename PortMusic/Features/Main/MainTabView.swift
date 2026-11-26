@@ -247,9 +247,10 @@ public struct MainTabView: View {
                             serverURL: serverURL,
                             isInline: isMinimized,
                             onOpenFullscreen: {
-                                playerDismissProgress = 0.0
-                                withAnimation(.spring(response: 0.40, dampingFraction: 0.86)) {
+                                playerDismissProgress = 1.0
+                                withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
                                     showFullscreenPlayer = true
+                                    playerDismissProgress = 0.0
                                 }
                             },
                             onLongPress: {
@@ -346,9 +347,7 @@ public struct MainTabView: View {
                 .ignoresSafeArea()
                 .transition(
                     .asymmetric(
-                        insertion: .move(edge: .bottom)
-                            .combined(with: .scale(scale: 0.92, anchor: .bottom))
-                            .combined(with: .opacity),
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
                         removal: .opacity
                     )
                 )
