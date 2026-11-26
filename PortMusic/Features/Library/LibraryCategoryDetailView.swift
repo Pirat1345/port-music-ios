@@ -1360,7 +1360,7 @@ public struct LibraryCategoryDetailView: View {
         let token = SessionManager.shared.currentToken
         if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: pl.id, serverURL: serverURL, token: token),
            !detail.tracks.isEmpty {
-            return detail.tracks.map { $0.toTrack(serverURL: serverURL) }
+            return detail.tracks.map { $0.toTrack() }
         }
         let collections = await MusicService.shared.cachedLibraryCollections()
         if let cached = collections.playlistTracksMap[pl.id], !cached.isEmpty {
