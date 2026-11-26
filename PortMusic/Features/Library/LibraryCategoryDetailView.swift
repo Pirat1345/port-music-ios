@@ -119,43 +119,8 @@ public struct LibraryCategoryDetailView: View {
     }
 
     public var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            if normalizedCategory == "radio" {
-                LibraryRadioView(serverURL: serverURL)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-            } else if normalizedCategory == "podcasts" {
-                LibraryPodcastsView(serverURL: serverURL)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-            } else if normalizedCategory == "local-files" {
-                LibraryLocalFilesView(serverURL: serverURL)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-            } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        if normalizedCategory != "albums" {
-                            searchBarSection
-                                .padding(.horizontal, 20)
-                                .padding(.top, normalizedCategory == "playlists" ? 4 : 14)
-                        } else {
-                            Spacer().frame(height: 6)
-                        }
-
-                        categoryContentSection
-                            .padding(.horizontal, 20)
-
-                        Spacer(minLength: 120)
-                    }
-                }
-                .portScrollEdgeEffectSoftTop()
-                .refreshable {
-                    await loadCategoryData()
-                }
-            }
+        withPlaylistSearchBar {
+            categoryRootView
         }
         .navigationTitle(viewTitle)
         .navigationBarTitleDisplayMode(normalizedCategory == "playlists" ? .large : .inline)
@@ -238,6 +203,65 @@ public struct LibraryCategoryDetailView: View {
             ImportPlaylistSheet(serverURL: serverURL) { imported in
                 PlaylistActivityStore.shared.markAdded(playlistId: imported.id)
                 playlists.insert(imported, at: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func withPlaylistSearchBar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        if normalizedCategory == "playlists" {
+            content()
+                .searchable(
+                    text: $searchQuery,
+                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    prompt: "Suchen"
+                )
+        } else {
+            content()
+        }
+    }
+
+    @ViewBuilder
+    private var categoryRootView: some View {
+        if normalizedCategory == "radio" {
+            LibraryRadioView(serverURL: serverURL)
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.ignoresSafeArea())
+        } else if normalizedCategory == "podcasts" {
+            LibraryPodcastsView(serverURL: serverURL)
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.ignoresSafeArea())
+        } else if normalizedCategory == "local-files" {
+            LibraryLocalFilesView(serverURL: serverURL)
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.ignoresSafeArea())
+        } else {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    if normalizedCategory != "albums" && normalizedCategory != "playlists" {
+                        searchBarSection
+                            .padding(.horizontal, 20)
+                            .padding(.top, 14)
+                    } else {
+                        Spacer().frame(height: 6)
+                    }
+
+                    categoryContentSection
+                        .padding(.horizontal, 20)
+
+                    Spacer(minLength: 120)
+                }
+            }
+            .portScrollEdgeEffectSoftTop()
+            .background(Color.black.ignoresSafeArea())
+            .refreshable {
+                await loadCategoryData()
             }
         }
     }
@@ -1035,7 +1059,13 @@ public struct LibraryCategoryDetailView: View {
 
     // MARK: - Load Category Data
     private func loadCategoryData() async {
-        isLoading = true
+        if normalizedCategory == "playlists" {
+            if playlists.isEmpty && folders.isEmpty {
+                isLoading = true
+            }
+        } else {
+            isLoading = true
+        }
         let token = SessionManager.shared.currentToken
 
         switch normalizedCategory {

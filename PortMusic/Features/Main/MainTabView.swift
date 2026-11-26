@@ -71,6 +71,10 @@ public enum LiquidTabID: String, CaseIterable, Identifiable {
     }
 }
 
+private final class ScrollDragTracker {
+    var anchorY: CGFloat = 0
+}
+
 public struct MainTabView: View {
     public let user: UserProfile
     public let serverURL: String
@@ -88,7 +92,7 @@ public struct MainTabView: View {
     @AppStorage("navbar_custom_tabs") private var customTabsRaw: String = "home,library,radio,search"
     @State private var isMinimized: Bool = false
     @State private var showNavbarSettings: Bool = false
-    @State private var dragAccumulator: CGFloat = 0
+    private let scrollDragTracker = ScrollDragTracker()
     @Namespace private var bottomGlassNamespace
 
     private var currentTabsList: [LiquidTabID] {
@@ -153,33 +157,33 @@ public struct MainTabView: View {
                 .id("tabbar_long_press_\(customTabsRaw)_\(iconsOnly)")
             )
             .animation(.spring(response: 0.36, dampingFraction: 0.84), value: isMinimized)
-            // Detektiert vertikale Scroll-Bewegungen für die flüssige Octave-Leistenminimierung
+            // Detektiert vertikale Scroll-Bewegungen ohne Redraw-Spam bei schnellem Scrollen
             .simultaneousGesture(
-                DragGesture(minimumDistance: 10)
+                DragGesture(minimumDistance: 28)
                     .onChanged { val in
                         guard scrollMinimizeEnabled else { return }
                         let dy = val.translation.height
                         let absDy = abs(dy)
                         let absDx = abs(val.translation.width)
 
-                        // Reagiere selektiv auf vertikale Scrollbewegungen (verhindert Fehlauslösung bei horizontalem Swipen)
-                        guard absDy > absDx * 1.3 else { return }
+                        // Reagiere selektiv auf eindeutige vertikale Scrollbewegungen
+                        guard absDy > absDx * 1.6 else { return }
 
-                        let delta = dy - dragAccumulator
-                        if delta < -20 && !isMinimized {
-                            dragAccumulator = dy
+                        let delta = dy - scrollDragTracker.anchorY
+                        if delta < -35 && !isMinimized {
+                            scrollDragTracker.anchorY = dy
                             withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                                 isMinimized = true
                             }
-                        } else if delta > 20 && isMinimized {
-                            dragAccumulator = dy
+                        } else if delta > 35 && isMinimized {
+                            scrollDragTracker.anchorY = dy
                             withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
                                 isMinimized = false
                             }
                         }
                     }
                     .onEnded { _ in
-                        dragAccumulator = 0
+                        scrollDragTracker.anchorY = 0
                     }
             )
 
@@ -254,15 +258,6 @@ public struct MainTabView: View {
                         )
                         .frame(maxWidth: .infinity)
                         .portGlassEffectID("bottom_mini_player", in: bottomGlassNamespace)
-                        .simultaneousGesture(
-                            LongPressGesture(minimumDuration: 0.40)
-                                .onEnded { _ in
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.impactOccurred()
-                                    showUserProfileSheet = false
-                                    showNavbarSettings = true
-                                }
-                        )
                         .contextMenu {
                             Button(action: {
                                 showUserProfileSheet = false
@@ -638,8 +633,8 @@ final class TabBarAttacherView: UIView, UIGestureRecognizerDelegate {
 
         let lp = TabBarCustomLongPressRecognizer(target: self, action: #selector(handleLP(_:)))
         lp.attacher = self
-        lp.minimumPressDuration = 0.38
-        lp.allowableMovement = 25.0
+        lp.minimumPressDuration = 0.55
+        lp.allowableMovement = 8.0
         lp.cancelsTouchesInView = false
         lp.delegate = self
         tabBar.addGestureRecognizer(lp)
