@@ -14,6 +14,7 @@ public struct SettingsMainView: View {
     @AppStorage("ui_keep_screen_awake") private var keepScreenAwake: Bool = false
     @AppStorage("navbar_icons_only") private var iconsOnly: Bool = false
     @AppStorage("navbar_scroll_minimize") private var scrollMinimize: Bool = true
+    @AppStorage("navbar_liquid_glass") private var useLiquidGlass: Bool = true
     @AppStorage("navbar_custom_tabs") private var customTabsRaw: String = "home,library,radio,search"
 
     @State private var searchQuery: String = ""
@@ -265,37 +266,7 @@ public struct SettingsMainView: View {
                 }
 
                 // 5. Sicherheit & Info
-                let showDevices = matches("geräte", "sitzungen", "sessions", "abmelden")
-                let showAbout = matches("über", "version", "info", "port music")
-
-                if showDevices || showAbout {
-                    Section(header: Text("Geräte & Info")) {
-                        if showDevices {
-                            NavigationLink {
-                                DeviceManagementView()
-                            } label: {
-                                HStack(spacing: 12) {
-                                    appleIcon("laptopcomputer.and.iphone", color: Color(hex: "#64d2ff"))
-                                    Text("Angemeldete Geräte")
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-
-                        if showAbout {
-                            HStack(spacing: 12) {
-                                appleIcon("info.circle.fill", color: Color(white: 0.42))
-                                Text("Version")
-                                    .foregroundColor(.white)
-                                Spacer()
-                                Text(appVersionDisplay)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .listRowBackground(Color(white: 0.11))
-                }
+                devicesAndInfoSection
 
                 // 6. Abmelden
                 if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -333,6 +304,7 @@ public struct SettingsMainView: View {
                 NavbarSettingsSheet(
                     iconsOnly: $iconsOnly,
                     scrollMinimize: $scrollMinimize,
+                    useLiquidGlass: $useLiquidGlass,
                     customTabsRaw: $customTabsRaw
                 )
             }
@@ -348,6 +320,41 @@ public struct SettingsMainView: View {
         }
         .preferredColorScheme(.dark)
         .tint(.white)
+    }
+
+    @ViewBuilder
+    private var devicesAndInfoSection: some View {
+        let showDevices = matches("geräte", "sitzungen", "sessions", "abmelden")
+        let showAbout = matches("über", "version", "info", "port music")
+
+        if showDevices || showAbout {
+            Section(header: Text("Geräte & Info")) {
+                if showDevices {
+                    NavigationLink {
+                        DeviceManagementView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            appleIcon("laptopcomputer.and.iphone", color: Color(hex: "#64d2ff"))
+                            Text("Angemeldete Geräte")
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+
+                if showAbout {
+                    HStack(spacing: 12) {
+                        appleIcon("info.circle.fill", color: Color(white: 0.42))
+                        Text("Version")
+                            .foregroundColor(.white)
+                        Spacer()
+                        Text(appVersionDisplay)
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .listRowBackground(Color(white: 0.11))
+        }
     }
 
     private func appleIcon(_ systemName: String, color: Color) -> some View {
