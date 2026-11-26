@@ -266,7 +266,53 @@ public struct HomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 20)
 
-            if tracks.isEmpty {
+            let offlinePlaylists = offlineManager.allDownloadedPlaylists()
+            if !offlinePlaylists.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    PortShelfHeader(
+                        iconName: "music.note.list",
+                        iconColor: .white,
+                        title: "Heruntergeladene Playlists",
+                        seeAllTitle: nil,
+                        seeAllRoute: nil
+                    )
+                    .padding(.horizontal, 20)
+
+                    PortShelfContainer {
+                        ForEach(offlinePlaylists) { pl in
+                            let sub = pl.nbTracks.map { "\($0) Songs · Offline" } ?? "Offline gespeichert"
+                            NavigationLink(value: AppRoute.playlist(id: pl.id, title: pl.title, coverUrl: pl.cover)) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    PlaylistArtworkView(
+                                        coverUrl: pl.cover,
+                                        trackCovers: pl.trackCovers,
+                                        cornerRadius: 14,
+                                        iconSize: 32,
+                                        serverURL: serverURL
+                                    )
+                                    .frame(width: 145, height: 145)
+                                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.10), lineWidth: 1))
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(pl.title)
+                                            .font(.system(size: 13.5, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .lineLimit(1)
+                                        Text(sub)
+                                            .font(.system(size: 11.5))
+                                            .foregroundColor(Color.white.opacity(0.55))
+                                            .lineLimit(1)
+                                    }
+                                    .frame(width: 145, alignment: .leading)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                    }
+                }
+            }
+
+            if tracks.isEmpty && offlinePlaylists.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "arrow.down.circle")
                         .font(.system(size: 36))

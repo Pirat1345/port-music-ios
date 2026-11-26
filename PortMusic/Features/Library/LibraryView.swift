@@ -145,6 +145,10 @@ public struct LibraryView: View {
                 await loadLibraryData()
             }
         }
+        .onChange(of: offlineManager.downloadedTrackIds) { _ in
+            let merged = offlineManager.mergeOfflinePlaylists(with: self.playlists)
+            self.playlists = merged
+        }
         .onChange(of: favoritesManager.favoritedTrackIds) { _ in
             Task {
                 await refreshFavoritesOnly()
@@ -749,41 +753,46 @@ public struct LibraryView: View {
         return result
     }
 
-    // MARK: - Data Loading (With Offline Cache Support)
+    // MARK: - Data Loading (With Instant Offline & Cache Support)
     private func loadLibraryData() async {
-        isLoading = true
         let favCacheKey = "port_music_cached_favorites_v1"
         let plCacheKey = "port_music_cached_playlists_v1"
 
-        // Sofort zwischengespeicherte Playlists & Favoriten laden fuer Offline-Start
-        if !favoritesManager.cachedFavoriteTracks.isEmpty {
-            await MainActor.run {
-                self.favorites = favoritesManager.cachedFavoriteTracks
-            }
-        } else if favorites.isEmpty,
-                  let fData = UserDefaults.standard.data(forKey: favCacheKey),
-                  let cachedFavs = try? JSONDecoder().decode([Track].self, from: fData) {
-            await MainActor.run {
-                self.favorites = cachedFavs
+        // 1. Sofort (0 ms) lokale Downloads & Caches laden, bevor ein Netzwerkwunsch wartet
+        var initialFavs: [Track] = favoritesManager.cachedFavoriteTracks
+        if initialFavs.isEmpty,
+           let fData = UserDefaults.standard.data(forKey: favCacheKey),
+           let cachedFavs = try? JSONDecoder().decode([Track].self, from: fData) {
+            initialFavs = cachedFavs
+        }
+        if initialFavs.isEmpty {
+            initialFavs = offlineManager.allDownloadedTracks().filter {
+                FavoritesManager.shared.isFavorite(trackId: $0.id)
             }
         }
-        if playlists.isEmpty,
-           let pData = UserDefaults.standard.data(forKey: plCacheKey),
-           let cachedPls = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: pData) {
-            await MainActor.run {
-                self.playlists = cachedPls
+
+        var cachedPls: [DiscoveryPlaylist] = []
+        if let pData = UserDefaults.standard.data(forKey: plCacheKey),
+           let decoded = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: pData) {
+            cachedPls = decoded
+        }
+        let initialPls = offlineManager.mergeOfflinePlaylists(with: cachedPls)
+
+        await MainActor.run {
+            if !initialFavs.isEmpty {
+                self.favorites = initialFavs
             }
+            if !initialPls.isEmpty {
+                self.playlists = initialPls
+            }
+            if self.historyTracks.isEmpty && !player.recentTracks.isEmpty {
+                self.historyTracks = player.recentTracks
+            }
+            self.isLoading = !sessionManager.isOfflineMode && (initialPls.isEmpty && initialFavs.isEmpty)
         }
 
         if sessionManager.isOfflineMode {
             await MainActor.run {
-                if !favoritesManager.cachedFavoriteTracks.isEmpty {
-                    self.favorites = favoritesManager.cachedFavoriteTracks
-                } else if self.favorites.isEmpty {
-                    self.favorites = offlineManager.allDownloadedTracks().filter {
-                        FavoritesManager.shared.isFavorite(trackId: $0.id)
-                    }
-                }
                 self.isLoading = false
             }
             return
@@ -806,9 +815,11 @@ public struct LibraryView: View {
             } else if !favoritesManager.cachedFavoriteTracks.isEmpty {
                 self.favorites = favoritesManager.cachedFavoriteTracks
             }
-            if !pls.isEmpty {
-                self.playlists = pls
-                if let encoded = try? JSONEncoder().encode(pls) {
+
+            let mergedPls = offlineManager.mergeOfflinePlaylists(with: pls.isEmpty ? self.playlists : pls)
+            if !mergedPls.isEmpty {
+                self.playlists = mergedPls
+                if !pls.isEmpty, let encoded = try? JSONEncoder().encode(mergedPls) {
                     UserDefaults.standard.set(encoded, forKey: plCacheKey)
                 }
             }

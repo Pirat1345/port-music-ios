@@ -453,32 +453,10 @@ public struct PlaylistDetailView: View {
 
     // MARK: - Data Loading
     private func loadPlaylistData() async {
-        isLoading = true
         errorMessage = nil
         let token = SessionManager.shared.currentToken
 
-        // 1. Try Discovery Playlist (/api/discovery/playlist/:id)
-        if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: playlistId, serverURL: serverURL, token: token) {
-            await MainActor.run {
-                self.playlistData = detail
-                self.tracks = detail.tracks.map { $0.toTrack() }
-                self.isLoading = false
-            }
-            return
-        }
-
-        // 2. Try User State (/api/state)
-        let (statePlaylists, _) = await MusicService.shared.fetchUserState(serverURL: serverURL, token: token)
-        if let found = statePlaylists.first(where: { $0.id == playlistId }) {
-            await MainActor.run {
-                self.playlistData = found
-                self.tracks = found.tracks.map { $0.toTrack() }
-                self.isLoading = false
-            }
-            return
-        }
-
-        // 3. Offline-Fallback: Lade gespeicherte Tracks aus OfflineDownloadManager
+        // 0. Sofort offline geladene Tracks anzeigen (0 ms ohne Netzwerk-Wartezeit)
         let offlineTracks = OfflineDownloadManager.shared.downloadedTracks(forPlaylistId: playlistId)
         if !offlineTracks.isEmpty {
             let meta = OfflineDownloadManager.shared.downloadedPlaylistMeta(forPlaylistId: playlistId)
@@ -496,6 +474,46 @@ public struct PlaylistDetailView: View {
                 )
                 self.tracks = offlineTracks
                 self.isDownloaded = true
+                self.isLoading = false
+            }
+            if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+                return
+            }
+        } else {
+            await MainActor.run {
+                self.isLoading = true
+            }
+            if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.errorMessage = "Im Offline-Modus sind für diese Playlist keine geladenen Titel vorhanden."
+                }
+                return
+            }
+        }
+
+        // 1. Try Discovery Playlist (/api/discovery/playlist/:id)
+        if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: playlistId, serverURL: serverURL, token: token) {
+            await MainActor.run {
+                self.playlistData = detail
+                let netTracks = detail.tracks.map { $0.toTrack() }
+                if !netTracks.isEmpty || self.tracks.isEmpty {
+                    self.tracks = netTracks
+                }
+                self.isLoading = false
+            }
+            return
+        }
+
+        // 2. Try User State (/api/state)
+        let (statePlaylists, _) = await MusicService.shared.fetchUserState(serverURL: serverURL, token: token)
+        if let found = statePlaylists.first(where: { $0.id == playlistId }) {
+            await MainActor.run {
+                self.playlistData = found
+                let netTracks = found.tracks.map { $0.toTrack() }
+                if !netTracks.isEmpty || self.tracks.isEmpty {
+                    self.tracks = netTracks
+                }
                 self.isLoading = false
             }
             return

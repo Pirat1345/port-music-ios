@@ -821,13 +821,32 @@ public struct LibraryCategoryDetailView: View {
 
         switch normalizedCategory {
         case "playlists":
+            // Sofort Offline- & Cache-Playlists anzeigen
+            let cachedCollections = await MusicService.shared.cachedLibraryCollections()
+            let immediatePls = await MainActor.run {
+                offlineManager.mergeOfflinePlaylists(with: cachedCollections.playlists)
+            }
+            if !immediatePls.isEmpty {
+                await MainActor.run {
+                    self.playlists = immediatePls
+                    self.folders = cachedCollections.folders
+                    self.pinnedIds = Set(cachedCollections.pinnedPlaylists)
+                    self.pinnedFolderIds = Set(cachedCollections.pinnedFolders)
+                    self.isLoading = false
+                }
+            }
+            if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+                await MainActor.run { self.isLoading = false }
+                return
+            }
+
             async let plsTask = MusicService.shared.fetchPlaylists(serverURL: serverURL, token: token)
             async let colTask = MusicService.shared.fetchLibraryCollections(serverURL: serverURL, token: token)
             let (userPls, collections) = await (plsTask, colTask)
             let stateById = Dictionary(uniqueKeysWithValues: collections.playlists.map { ($0.id, $0) })
-            let mergedPls: [DiscoveryPlaylist]
+            let rawMerged: [DiscoveryPlaylist]
             if userPls.isEmpty {
-                mergedPls = collections.playlists
+                rawMerged = collections.playlists
             } else {
                 var enriched = userPls.map { pl -> DiscoveryPlaylist in
                     if let st = stateById[pl.id] {
@@ -852,13 +871,18 @@ public struct LibraryCategoryDetailView: View {
                 for st in collections.playlists where !enriched.contains(where: { $0.id == st.id }) {
                     enriched.append(st)
                 }
-                mergedPls = enriched
+                rawMerged = enriched
+            }
+            let finalMerged = await MainActor.run {
+                offlineManager.mergeOfflinePlaylists(with: rawMerged.isEmpty ? immediatePls : rawMerged)
             }
             await MainActor.run {
-                self.playlists = mergedPls
-                self.folders = collections.folders
-                self.pinnedIds = Set(collections.pinnedPlaylists)
-                self.pinnedFolderIds = Set(collections.pinnedFolders)
+                self.playlists = finalMerged
+                if !collections.folders.isEmpty || !SessionManager.shared.isOfflineMode {
+                    self.folders = collections.folders
+                    self.pinnedIds = Set(collections.pinnedPlaylists)
+                    self.pinnedFolderIds = Set(collections.pinnedFolders)
+                }
                 self.isLoading = false
             }
 
@@ -883,7 +907,7 @@ public struct LibraryCategoryDetailView: View {
                 self.isLoading = false
             }
 
-            if !artistList.isEmpty {
+            if !artistList.isEmpty && !SessionManager.shared.isOfflineMode {
                 // Batch lookup über /api/artists/lookup-batch (sofortige Profilbilder wie im Web)
                 let batchMap = await MusicService.shared.lookupArtistImagesBatch(
                     names: artistList.map(\.name),

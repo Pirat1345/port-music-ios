@@ -1310,7 +1310,7 @@ public struct LibraryFolder: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
-public struct LibraryCollectionsData {
+public struct LibraryCollectionsData: Codable {
     public var playlists: [DiscoveryPlaylist]
     public var folders: [LibraryFolder]
     public var savedArtists: [String]

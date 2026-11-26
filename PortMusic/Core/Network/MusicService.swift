@@ -10,6 +10,8 @@ public final class MusicService {
     private let radioFavoritesCacheKey = "port_music_radio_favorites_cache_v1"
     private let podcastChartsCacheKey = "port_music_podcast_charts_cache_v1"
     private let podcastFeedCacheKey = "port_music_podcast_feeds_cache_v1"
+    private let userPlaylistsCacheKey = "port_music_cached_playlists_v1"
+    private let libraryCollectionsCacheKey = "port_music_cached_library_collections_v1"
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -1131,132 +1133,181 @@ public final class MusicService {
         return covers
     }
 
-    // MARK: - Fetch User Playlists (/api/playlists & /api/state)
+    // MARK: - Fetch User Playlists (/api/playlists & /api/state) + Offline Cache
+    public func cachedPlaylistsMergedWithOffline() async -> [DiscoveryPlaylist] {
+        var cached: [DiscoveryPlaylist] = []
+        if let data = UserDefaults.standard.data(forKey: userPlaylistsCacheKey),
+           let decoded = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: data) {
+            cached = decoded
+        }
+        return await MainActor.run {
+            OfflineDownloadManager.shared.mergeOfflinePlaylists(with: cached)
+        }
+    }
+
     public func fetchPlaylists(serverURL: String, token: String?) async -> [DiscoveryPlaylist] {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return await cachedPlaylistsMergedWithOffline()
+        }
+
         let base = cleanURL(serverURL)
         var resultPlaylists: [DiscoveryPlaylist] = []
+        var serverResponded = false
+        var hadTransportError = false
 
         // 1. Try /api/playlists
         if let url = URL(string: "\(base)/api/playlists") {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
+            request.timeoutInterval = 5.0
             if let tok = token, !tok.isEmpty {
                 request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
             }
 
-            if let (data, response) = try? await session.data(for: request),
-               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
-                let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-                var extraTrackCoversById: [String: [String]] = [:]
-                if let jsonArray {
-                    for item in jsonArray {
-                        if let id = item["id"] as? String,
-                           let rawTracks = item["tracks"] as? [[String: Any]] {
-                            let tc = Self.extractPlaylistTrackCovers(from: rawTracks)
-                            if !tc.isEmpty {
-                                extraTrackCoversById[id] = tc
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                    serverResponded = true
+                    let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+                    var extraTrackCoversById: [String: [String]] = [:]
+                    if let jsonArray {
+                        for item in jsonArray {
+                            if let id = item["id"] as? String,
+                               let rawTracks = item["tracks"] as? [[String: Any]] {
+                                let tc = Self.extractPlaylistTrackCovers(from: rawTracks)
+                                if !tc.isEmpty {
+                                    extraTrackCoversById[id] = tc
+                                }
                             }
                         }
                     }
-                }
 
-                if let list = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: data), !list.isEmpty {
-                    let enriched = list.map { pl in
-                        if pl.trackCovers?.isEmpty != false, let tc = extraTrackCoversById[pl.id] {
-                            return DiscoveryPlaylist(
-                                id: pl.id,
-                                title: pl.title,
-                                cover: pl.cover,
-                                nbTracks: pl.nbTracks,
-                                user: pl.user,
-                                folderId: pl.folderId,
-                                trackCovers: tc
-                            )
+                    if let list = try? JSONDecoder().decode([DiscoveryPlaylist].self, from: data), !list.isEmpty {
+                        let enriched = list.map { pl in
+                            if pl.trackCovers?.isEmpty != false, let tc = extraTrackCoversById[pl.id] {
+                                return DiscoveryPlaylist(
+                                    id: pl.id,
+                                    title: pl.title,
+                                    cover: pl.cover,
+                                    nbTracks: pl.nbTracks,
+                                    user: pl.user,
+                                    folderId: pl.folderId,
+                                    trackCovers: tc
+                                )
+                            }
+                            return pl
                         }
-                        return pl
-                    }
-                    resultPlaylists.append(contentsOf: enriched)
-                } else if let jsonArray {
-                    for item in jsonArray {
-                        guard let id = item["id"] as? String else { continue }
-                        let title = item["title"] as? String ?? item["name"] as? String ?? "Playlist"
-                        let cover = item["cover_url"] as? String ?? item["cover"] as? String ?? ""
-                        let user = item["owner_id"] as? String ?? item["user"] as? String
-                        let tc = extraTrackCoversById[id]
-                        resultPlaylists.append(DiscoveryPlaylist(id: id, title: title, cover: cover, nbTracks: nil, user: user, trackCovers: tc))
+                        resultPlaylists.append(contentsOf: enriched)
+                    } else if let jsonArray {
+                        for item in jsonArray {
+                            guard let id = item["id"] as? String else { continue }
+                            let title = item["title"] as? String ?? item["name"] as? String ?? "Playlist"
+                            let cover = item["cover_url"] as? String ?? item["cover"] as? String ?? ""
+                            let user = item["owner_id"] as? String ?? item["user"] as? String
+                            let tc = extraTrackCoversById[id]
+                            resultPlaylists.append(DiscoveryPlaylist(id: id, title: title, cover: cover, nbTracks: nil, user: user, trackCovers: tc))
+                        }
                     }
                 }
+            } catch {
+                hadTransportError = true
             }
         }
 
-        // 2. Also fetch /api/state to enrich track counts & covers (or populate if /api/playlists returned empty)
-        if let stateUrl = URL(string: "\(base)/api/state") {
+        // 2. Also fetch /api/state to enrich track counts & covers (nur wenn noch nicht abgebrochen oder bereits geantwortet)
+        if (serverResponded || !hadTransportError), let stateUrl = URL(string: "\(base)/api/state") {
             var request = URLRequest(url: stateUrl)
             request.httpMethod = "GET"
+            request.timeoutInterval = 5.0
             if let tok = token, !tok.isEmpty {
                 request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
             }
 
-            if let (data, response) = try? await session.data(for: request),
-               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let pls = json["playlists"] as? [[String: Any]] {
-                var stateMap: [String: (title: String, cover: String, count: Int, owner: String?, folderId: String?, trackCovers: [String])] = [:]
-                for pl in pls {
-                    guard let id = pl["id"] as? String else { continue }
-                    let title = pl["name"] as? String ?? pl["title"] as? String ?? "Playlist"
-                    let cover = pl["cover"] as? String ?? pl["cover_url"] as? String ?? ""
-                    let rawTracks = pl["tracks"] as? [[String: Any]] ?? []
-                    let tracksCount = rawTracks.isEmpty ? ((pl["tracks"] as? [Any])?.count ?? 0) : rawTracks.count
-                    let tc = Self.extractPlaylistTrackCovers(from: rawTracks)
-                    let owner = pl["ownerId"] as? String ?? pl["owner_id"] as? String
-                    let folderId = pl["folderId"] as? String ?? pl["folder_id"] as? String
-                    stateMap[id] = (title, cover, tracksCount, owner, folderId, tc)
-                }
-
-                if resultPlaylists.isEmpty {
-                    for pl in pls {
-                        guard let id = pl["id"] as? String, let info = stateMap[id] else { continue }
-                        resultPlaylists.append(DiscoveryPlaylist(
-                            id: id,
-                            title: info.title,
-                            cover: info.cover,
-                            nbTracks: info.count,
-                            user: info.owner,
-                            folderId: info.folderId,
-                            trackCovers: info.trackCovers.isEmpty ? nil : info.trackCovers
-                        ))
-                    }
-                } else {
-                    resultPlaylists = resultPlaylists.map { existing in
-                        if let info = stateMap[existing.id] {
-                            let mergedTrackCovers: [String]?
-                            if let existingTc = existing.trackCovers, !existingTc.isEmpty {
-                                mergedTrackCovers = existingTc
-                            } else {
-                                mergedTrackCovers = info.trackCovers.isEmpty ? nil : info.trackCovers
-                            }
-                            return DiscoveryPlaylist(
-                                id: existing.id,
-                                title: existing.title,
-                                cover: existing.cover.isEmpty ? info.cover : existing.cover,
-                                nbTracks: existing.nbTracks ?? info.count,
-                                user: existing.user ?? info.owner,
-                                folderId: existing.folderId ?? info.folderId,
-                                trackCovers: mergedTrackCovers
-                            )
+            do {
+                let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                    serverResponded = true
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let pls = json["playlists"] as? [[String: Any]] {
+                        var stateMap: [String: (title: String, cover: String, count: Int, owner: String?, folderId: String?, trackCovers: [String])] = [:]
+                        for pl in pls {
+                            guard let id = pl["id"] as? String else { continue }
+                            let title = pl["name"] as? String ?? pl["title"] as? String ?? "Playlist"
+                            let cover = pl["cover"] as? String ?? pl["cover_url"] as? String ?? ""
+                            let rawTracks = pl["tracks"] as? [[String: Any]] ?? []
+                            let tracksCount = rawTracks.isEmpty ? ((pl["tracks"] as? [Any])?.count ?? 0) : rawTracks.count
+                            let tc = Self.extractPlaylistTrackCovers(from: rawTracks)
+                            let owner = pl["ownerId"] as? String ?? pl["owner_id"] as? String
+                            let folderId = pl["folderId"] as? String ?? pl["folder_id"] as? String
+                            stateMap[id] = (title, cover, tracksCount, owner, folderId, tc)
                         }
-                        return existing
+
+                        if resultPlaylists.isEmpty {
+                            for pl in pls {
+                                guard let id = pl["id"] as? String, let info = stateMap[id] else { continue }
+                                resultPlaylists.append(DiscoveryPlaylist(
+                                    id: id,
+                                    title: info.title,
+                                    cover: info.cover,
+                                    nbTracks: info.count,
+                                    user: info.owner,
+                                    folderId: info.folderId,
+                                    trackCovers: info.trackCovers.isEmpty ? nil : info.trackCovers
+                                ))
+                            }
+                        } else {
+                            resultPlaylists = resultPlaylists.map { existing in
+                                if let info = stateMap[existing.id] {
+                                    let mergedTrackCovers: [String]?
+                                    if let existingTc = existing.trackCovers, !existingTc.isEmpty {
+                                        mergedTrackCovers = existingTc
+                                    } else {
+                                        mergedTrackCovers = info.trackCovers.isEmpty ? nil : info.trackCovers
+                                    }
+                                    return DiscoveryPlaylist(
+                                        id: existing.id,
+                                        title: existing.title,
+                                        cover: existing.cover.isEmpty ? info.cover : existing.cover,
+                                        nbTracks: existing.nbTracks ?? info.count,
+                                        user: existing.user ?? info.owner,
+                                        folderId: existing.folderId ?? info.folderId,
+                                        trackCovers: mergedTrackCovers
+                                    )
+                                }
+                                return existing
+                            }
+                        }
                     }
                 }
+            } catch {
+                hadTransportError = true
             }
         }
 
-        return resultPlaylists
+        if serverResponded {
+            let finalMerged = await MainActor.run {
+                SessionManager.shared.setOfflineMode(false)
+                return OfflineDownloadManager.shared.mergeOfflinePlaylists(with: resultPlaylists)
+            }
+            if !resultPlaylists.isEmpty, let encoded = try? JSONEncoder().encode(resultPlaylists) {
+                UserDefaults.standard.set(encoded, forKey: userPlaylistsCacheKey)
+            }
+            return finalMerged
+        } else {
+            if hadTransportError {
+                await MainActor.run {
+                    SessionManager.shared.setOfflineMode(true)
+                }
+            }
+            return await cachedPlaylistsMergedWithOffline()
+        }
     }
 
     // MARK: - Fetch Favorites (/api/favorites & /api/state) + Offline Sync Flush
     public func fetchFavorites(serverURL: String, token: String?) async -> [Track] {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return await MainActor.run { FavoritesManager.shared.cachedFavoriteTracks }
+        }
         // Zuerst ausstehende Offline-Likes/-Unlikes an den Server uebertragen
         await FavoritesManager.shared.syncPendingWithServer(serverURL: serverURL, token: token)
 
@@ -1584,6 +1635,9 @@ public final class MusicService {
 
     // MARK: - Online Playlist Discovery (/api/discovery/playlist/:id)
     public func fetchDiscoveryPlaylist(id: String, serverURL: String, token: String?) async -> DiscoveryPlaylistDetailData? {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return nil
+        }
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -1628,6 +1682,9 @@ public final class MusicService {
 
     // MARK: - Fetch User State Playlists & Tracks (/api/state)
     public func fetchUserState(serverURL: String, token: String?) async -> (playlists: [DiscoveryPlaylistDetailData], favorites: [Track]) {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return ([], [])
+        }
         let base = cleanURL(serverURL)
         guard let url = URL(string: "\(base)/api/state") else { return ([], []) }
 
@@ -1850,13 +1907,30 @@ public final class MusicService {
         }
     }
 
-    // MARK: - Library Collections (/api/state)
+    // MARK: - Library Collections (/api/state) + Offline Cache
+    public func cachedLibraryCollections() async -> LibraryCollectionsData {
+        var cached = LibraryCollectionsData()
+        if let data = UserDefaults.standard.data(forKey: libraryCollectionsCacheKey),
+           let decoded = try? JSONDecoder().decode(LibraryCollectionsData.self, from: data) {
+            cached = decoded
+        }
+        let mergedPlaylists = await MainActor.run {
+            OfflineDownloadManager.shared.mergeOfflinePlaylists(with: cached.playlists)
+        }
+        cached.playlists = mergedPlaylists
+        return cached
+    }
+
     public func fetchLibraryCollections(serverURL: String, token: String?) async -> LibraryCollectionsData {
+        if await MainActor.run(body: { SessionManager.shared.isOfflineMode }) {
+            return await cachedLibraryCollections()
+        }
         let base = cleanURL(serverURL)
-        guard let url = URL(string: "\(base)/api/state") else { return LibraryCollectionsData() }
+        guard let url = URL(string: "\(base)/api/state") else { return await cachedLibraryCollections() }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 5.0
         request.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
         if let tok = token, !tok.isEmpty {
             request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
@@ -1868,7 +1942,7 @@ public final class MusicService {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return result
+                return await cachedLibraryCollections()
             }
 
             if let pls = json["playlists"] as? [[String: Any]] {
@@ -1918,10 +1992,21 @@ public final class MusicService {
                 result.pinnedPlaylists = libState["pinnedPlaylists"] as? [String] ?? []
                 result.pinnedFolders = libState["pinnedFolders"] as? [String] ?? []
             }
+            if let encoded = try? JSONEncoder().encode(result) {
+                UserDefaults.standard.set(encoded, forKey: libraryCollectionsCacheKey)
+            }
+            result.playlists = await MainActor.run {
+                SessionManager.shared.setOfflineMode(false)
+                return OfflineDownloadManager.shared.mergeOfflinePlaylists(with: result.playlists)
+            }
+            return result
         } catch {
             print("MusicService.fetchLibraryCollections error: \(error)")
+            await MainActor.run {
+                SessionManager.shared.setOfflineMode(true)
+            }
+            return await cachedLibraryCollections()
         }
-        return result
     }
 
     public func createFolder(name: String, parentFolderId: String? = nil, serverURL: String, token: String?) async -> LibraryFolder? {

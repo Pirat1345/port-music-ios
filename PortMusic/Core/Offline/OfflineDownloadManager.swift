@@ -298,6 +298,82 @@ public final class OfflineDownloadManager: ObservableObject {
         playlistMetas[playlistId]
     }
 
+    public func allDownloadedPlaylists() -> [DiscoveryPlaylist] {
+        var playlistIds = Set(playlistMetas.keys)
+        for rec in records.values {
+            for pid in rec.playlistIds where !pid.isEmpty {
+                playlistIds.insert(pid)
+            }
+        }
+
+        var result: [(playlist: DiscoveryPlaylist, sortDate: Date)] = []
+        for pid in playlistIds {
+            let dlTracks = downloadedTracks(forPlaylistId: pid)
+            let meta = playlistMetas[pid]
+            // Nur Playlists anzeigen, die Metadaten oder mindestens einen geladenen Track besitzen
+            guard meta != nil || !dlTracks.isEmpty else { continue }
+
+            var trackCovers: [String] = []
+            var seenCov = Set<String>()
+            for t in dlTracks {
+                if let cov = t.coverUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !cov.isEmpty,
+                   seenCov.insert(cov).inserted {
+                    trackCovers.append(cov)
+                    if trackCovers.count >= 4 { break }
+                }
+            }
+
+            let title = meta?.name ?? "Offline-Playlist"
+            let cover = meta?.coverUrl ?? trackCovers.first ?? ""
+            let pl = DiscoveryPlaylist(
+                id: pid,
+                title: title,
+                cover: cover,
+                nbTracks: dlTracks.count,
+                user: "Offline gespeichert",
+                folderId: nil,
+                trackCovers: trackCovers.isEmpty ? nil : trackCovers
+            )
+            result.append((pl, meta?.downloadedAt ?? Date.distantPast))
+        }
+
+        return result
+            .sorted { $0.sortDate > $1.sortDate }
+            .map { $0.playlist }
+    }
+
+    public func mergeOfflinePlaylists(with baseList: [DiscoveryPlaylist]) -> [DiscoveryPlaylist] {
+        let offline = allDownloadedPlaylists()
+        guard !offline.isEmpty else { return baseList }
+        let offlineById = Dictionary(uniqueKeysWithValues: offline.map { ($0.id, $0) })
+
+        var merged: [DiscoveryPlaylist] = []
+        var seen = Set<String>()
+        for pl in baseList {
+            if let off = offlineById[pl.id] {
+                let mergedCover = pl.cover.isEmpty ? off.cover : pl.cover
+                let mergedTrackCovers = (pl.trackCovers?.isEmpty == false) ? pl.trackCovers : off.trackCovers
+                merged.append(DiscoveryPlaylist(
+                    id: pl.id,
+                    title: pl.title.isEmpty ? off.title : pl.title,
+                    cover: mergedCover,
+                    nbTracks: pl.nbTracks ?? off.nbTracks,
+                    user: pl.user ?? off.user,
+                    folderId: pl.folderId,
+                    trackCovers: mergedTrackCovers
+                ))
+            } else {
+                merged.append(pl)
+            }
+            seen.insert(pl.id)
+        }
+        for off in offline where !seen.contains(off.id) {
+            merged.insert(off, at: 0)
+        }
+        return merged
+    }
+
     private func enrichTrackWithLocalCover(_ record: OfflineTrackRecord) -> Track {
         if let covURL = localCoverFileURL(for: record.track.id) {
             return Track(
