@@ -23,8 +23,10 @@ public struct LibraryView: View {
     @State private var newFolderName: String = ""
     @State private var showSettingsSheet: Bool = false
     @State private var isEditingCategories: Bool = false
+    @State private var animateEditControls: Bool = false
     @State private var editingCategories: [LibraryCategoryConfig] = []
     @State private var categoriesConfig: [LibraryCategoryConfig] = LibraryView.defaultCategories()
+    @Namespace private var topGlassNamespace
 
     private let tabs = ["Playlists", "Songs", "Alben", "Verlauf"]
     private static let categoriesStorageKey = "port_music_library_categories_config_v2"
@@ -32,7 +34,9 @@ public struct LibraryView: View {
     public init(serverURL: String, user: UserProfile? = nil) {
         self.serverURL = serverURL
         self.user = user
-        self._categoriesConfig = State(initialValue: Self.loadSavedCategories())
+        let loaded = Self.loadSavedCategories()
+        self._categoriesConfig = State(initialValue: loaded)
+        self._editingCategories = State(initialValue: loaded)
     }
 
     private static func defaultCategories() -> [LibraryCategoryConfig] {
@@ -86,8 +90,9 @@ public struct LibraryView: View {
     private func enterInlineEditMode() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         editingCategories = categoriesConfig
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.85)) {
             isEditingCategories = true
+            animateEditControls = true
         }
     }
 
@@ -99,7 +104,8 @@ public struct LibraryView: View {
         }
         categoriesConfig = finalList
         persistCategories(finalList)
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.85)) {
+            animateEditControls = false
             isEditingCategories = false
         }
     }
@@ -121,28 +127,26 @@ public struct LibraryView: View {
     }
 
     public var body: some View {
-        Group {
-            if isEditingCategories {
-                inlineCategoryEditList
-                    .transition(.opacity)
-            } else {
-                mainLibraryScrollView
-            }
+        ZStack(alignment: .top) {
+            Color.black
+                .ignoresSafeArea()
+
+            mainLibraryScrollView
+                .opacity(isEditingCategories ? 0 : 1)
+                .offset(y: isEditingCategories ? 10 : 0)
+                .allowsHitTesting(!isEditingCategories)
+                .zIndex(1)
+
+            inlineCategoryEditList
+                .opacity(isEditingCategories ? 1 : 0)
+                .offset(y: isEditingCategories ? 0 : 8)
+                .allowsHitTesting(isEditingCategories)
+                .zIndex(2)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            libraryHeaderBar
         }
         .background(Color.black.ignoresSafeArea())
-        .navigationTitle("Bibliothek")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            #if compiler(>=6.2)
-            if #available(iOS 26.0, *) {
-                iOS26LibraryToolbar
-            } else {
-                legacyLibraryToolbar
-            }
-            #else
-            legacyLibraryToolbar
-            #endif
-        }
         .task {
             await loadLibraryData()
         }
@@ -209,7 +213,7 @@ public struct LibraryView: View {
                 // Categorized Library Rows (Apple Music style direkt auf Schwarz)
                 categoryLinksSection
                     .padding(.horizontal, 20)
-                    .padding(.top, 4)
+                    .padding(.top, 8)
 
                 // Hero Section: Liked Songs Card & Playlists Carousel
                 heroCarouselSection
@@ -225,7 +229,6 @@ public struct LibraryView: View {
                 Spacer(minLength: 140)
             }
         }
-        .portScrollEdgeEffectSoftTop()
         .accessibilityHint("Deine Musiksammlung")
         .background(Color.black.ignoresSafeArea())
         .refreshable {
@@ -265,7 +268,59 @@ public struct LibraryView: View {
         .padding(.horizontal, 20)
     }
 
-    // MARK: - Top Toolbar (Apple Music Liquid Glass Bubble + User Avatar / Checkmark)
+    // MARK: - Single-Row Apple Music Header (Bibliothek + Liquid Glass Bubble + Avatar / Checkmark)
+    private var libraryHeaderBar: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text("Bibliothek")
+                .font(.system(size: 32, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(1)
+
+            Spacer()
+
+            PortBottomGlassContainer(spacing: 10) {
+                if isEditingCategories {
+                    doneEditToolbarButton
+                        .portGlassEffectID("library_trailing_actions", in: topGlassNamespace)
+                        .transition(.scale(scale: 0.72).combined(with: .opacity))
+                } else {
+                    libraryActionsGlassPill
+                        .portGlassEffectID("library_trailing_actions", in: topGlassNamespace)
+                        .transition(.scale(scale: 0.82).combined(with: .opacity))
+
+                    profileToolbarButton
+                        .portGlassEffectID("library_profile_btn", in: topGlassNamespace)
+                        .transition(.scale(scale: 0.65).combined(with: .opacity))
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black, location: 0.0),
+                    .init(color: Color.black.opacity(0.92), location: 0.78),
+                    .init(color: Color.black.opacity(0.0), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+        )
+    }
+
+    private var libraryActionsGlassPill: some View {
+        HStack(spacing: 2) {
+            createPlaylistToolbarMenu
+            editCategoriesToolbarButton
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 44)
+        .portLiquidGlassCapsule(interactive: true)
+    }
+
     private var createPlaylistToolbarMenu: some View {
         Menu {
             Button {
@@ -291,6 +346,10 @@ public struct LibraryView: View {
             }
         } label: {
             Image(systemName: "text.badge.plus")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 42)
+                .contentShape(Rectangle())
         }
     }
 
@@ -299,7 +358,13 @@ public struct LibraryView: View {
             enterInlineEditMode()
         } label: {
             Image(systemName: "checklist")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 42)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reihenfolge bearbeiten")
     }
 
     private var profileToolbarButton: some View {
@@ -311,112 +376,109 @@ public struct LibraryView: View {
                 rawAvatar: activeProfileUser.avatar,
                 username: activeProfileUser.username,
                 serverURL: serverURL,
-                size: 32
+                size: 36
             )
             .clipShape(Circle())
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+            .portLiquidGlassCircle(interactive: true)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Benutzerprofil")
     }
 
-    #if compiler(>=6.2)
-    @available(iOS 26.0, *)
-    @ToolbarContentBuilder
-    private var iOS26LibraryToolbar: some ToolbarContent {
-        if isEditingCategories {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    saveInlineCategoriesAndExit()
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(Color(hex: "#0a84ff"))
+    @ViewBuilder
+    private var doneEditToolbarButton: some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            Button {
+                saveInlineCategoriesAndExit()
+            } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.tint(Color(hex: "#0a84ff")).interactive(), in: Circle())
+            .accessibilityLabel("Fertig")
         } else {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                createPlaylistToolbarMenu
-                editCategoriesToolbarButton
-            }
-
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-
-            ToolbarItem(placement: .topBarTrailing) {
-                profileToolbarButton
-            }
+            legacyDoneEditButton
         }
+        #else
+        legacyDoneEditButton
+        #endif
     }
-    #endif
 
-    @ToolbarContentBuilder
-    private var legacyLibraryToolbar: some ToolbarContent {
-        if isEditingCategories {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    saveInlineCategoriesAndExit()
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
-                        .background(Color(hex: "#0a84ff"))
-                        .clipShape(Circle())
-                }
-            }
-        } else {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                createPlaylistToolbarMenu
-                editCategoriesToolbarButton
-                profileToolbarButton
-            }
+    private var legacyDoneEditButton: some View {
+        Button {
+            saveInlineCategoriesAndExit()
+        } label: {
+            Image(systemName: "checkmark")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(Color(hex: "#0a84ff"))
+                .clipShape(Circle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Fertig")
     }
 
     // MARK: - Inline Apple Music Category Edit List (Checkmarks + Drag Reorder)
     private var inlineCategoryEditList: some View {
-        List {
-            ForEach(editingCategories) { cat in
-                HStack(spacing: 14) {
-                    Button(action: {
-                        toggleInlineCategory(cat.id)
-                    }) {
-                        Image(systemName: cat.visible ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 23))
-                            .foregroundColor(cat.visible ? .white : Color.white.opacity(0.32))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            List {
+                ForEach(editingCategories) { cat in
+                    HStack(spacing: 14) {
+                        Button(action: {
+                            toggleInlineCategory(cat.id)
+                        }) {
+                            Image(systemName: cat.visible ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 23))
+                                .foregroundColor(cat.visible ? .white : Color.white.opacity(0.32))
+                                .frame(width: 30, height: 30)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .scaleEffect(animateEditControls ? 1.0 : 0.45)
+                        .opacity(animateEditControls ? 1.0 : 0.0)
+                        .offset(x: animateEditControls ? 0 : -14)
+
+                        Image(systemName: cat.iconName)
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(width: 26, alignment: .center)
+                            .offset(x: animateEditControls ? 0 : -18)
+
+                        Text(cat.label)
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(.white)
+                            .offset(x: animateEditControls ? 0 : -18)
+
+                        Spacer()
                     }
-                    .buttonStyle(.plain)
-
-                    Image(systemName: cat.iconName)
-                        .font(.system(size: 19, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(width: 26, alignment: .center)
-
-                    Text(cat.label)
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundColor(.white)
-
-                    Spacer()
+                    .padding(.vertical, 6)
+                    .listRowBackground(Color.black)
+                    .listRowSeparatorTint(Color.white.opacity(0.14))
+                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
                 }
-                .padding(.vertical, 6)
-                .listRowBackground(Color.black)
-                .listRowSeparatorTint(Color.white.opacity(0.14))
-                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
+                .onMove { indices, newOffset in
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    editingCategories.move(fromOffsets: indices, toOffset: newOffset)
+                }
             }
-            .onMove { indices, newOffset in
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                editingCategories.move(fromOffsets: indices, toOffset: newOffset)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.black.ignoresSafeArea())
+            .environment(\.editMode, .constant(.active))
+            .safeAreaInset(edge: .bottom) {
+                Spacer().frame(height: 120)
             }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(Color.black.ignoresSafeArea())
-        .environment(\.editMode, .constant(.active))
-        .safeAreaInset(edge: .bottom) {
-            Spacer().frame(height: 120)
         }
     }
 
