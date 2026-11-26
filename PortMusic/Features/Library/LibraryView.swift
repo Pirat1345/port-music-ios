@@ -126,64 +126,7 @@ public struct LibraryView: View {
                 inlineCategoryEditList
                     .transition(.opacity)
             } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        if sessionManager.isOfflineMode {
-                            HStack(spacing: 10) {
-                                Image(systemName: "wifi.slash")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(PortColors.accentOrange)
-                                Text("Offline-Modus · \(offlineManager.downloadedTrackIds.count) Songs gespeichert")
-                                    .font(.system(size: 12.5, weight: .medium))
-                                    .foregroundColor(Color.white.opacity(0.85))
-                                    .lineLimit(1)
-                                Spacer()
-                                Button("Verbinden") {
-                                    Task {
-                                        _ = await sessionManager.retryConnection()
-                                        await loadLibraryData()
-                                    }
-                                }
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.white.opacity(0.12))
-                                .clipShape(Capsule())
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.06))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.10), lineWidth: 1))
-                            .padding(.horizontal, 20)
-                        }
-
-                        // Categorized Library Rows (Apple Music style direkt auf Schwarz)
-                        categoryLinksSection
-                            .padding(.horizontal, 20)
-                            .padding(.top, 4)
-
-                        // Hero Section: Liked Songs Card & Playlists Carousel
-                        heroCarouselSection
-
-                        // Segmented Sub-Tab Navigation Bar (Quick Switcher)
-                        segmentedTabBar
-                            .padding(.horizontal, 20)
-
-                        // Dynamic Content Based on Selected Tab
-                        tabContentSection
-                            .padding(.horizontal, 20)
-
-                        Spacer(minLength: 140)
-                    }
-                }
-                .portScrollEdgeEffectSoftTop()
-                .accessibilityHint("Deine Musiksammlung")
-                .background(Color.black.ignoresSafeArea())
-                .refreshable {
-                    await loadLibraryData()
-                }
+                mainLibraryScrollView
             }
         }
         .background(Color.black.ignoresSafeArea())
@@ -254,6 +197,72 @@ public struct LibraryView: View {
         } message: {
             Text("Name für den neuen Ordner eingeben.")
         }
+    }
+
+    private var mainLibraryScrollView: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
+                if sessionManager.isOfflineMode {
+                    offlineModeBanner
+                }
+
+                // Categorized Library Rows (Apple Music style direkt auf Schwarz)
+                categoryLinksSection
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+
+                // Hero Section: Liked Songs Card & Playlists Carousel
+                heroCarouselSection
+
+                // Segmented Sub-Tab Navigation Bar (Quick Switcher)
+                segmentedTabBar
+                    .padding(.horizontal, 20)
+
+                // Dynamic Content Based on Selected Tab
+                tabContentSection
+                    .padding(.horizontal, 20)
+
+                Spacer(minLength: 140)
+            }
+        }
+        .portScrollEdgeEffectSoftTop()
+        .accessibilityHint("Deine Musiksammlung")
+        .background(Color.black.ignoresSafeArea())
+        .refreshable {
+            await loadLibraryData()
+        }
+    }
+
+    private var offlineModeBanner: some View {
+        let downloadedCount = offlineManager.downloadedTrackIds.count
+        return HStack(spacing: 10) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(PortColors.accentOrange)
+            Text("Offline-Modus · \(downloadedCount) Songs gespeichert")
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundColor(Color.white.opacity(0.85))
+                .lineLimit(1)
+            Spacer()
+            Button("Verbinden") {
+                Task {
+                    _ = await sessionManager.retryConnection()
+                    await loadLibraryData()
+                }
+            }
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.12))
+            .clipShape(Capsule())
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.10), lineWidth: 1))
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Top Toolbar (Apple Music Liquid Glass Bubble + User Avatar / Checkmark)
