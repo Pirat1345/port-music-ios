@@ -902,6 +902,24 @@ public final class OfflineDownloadManager: ObservableObject {
         saveManifest()
     }
 
+    public func removePlaylistDownload(playlistId: String) {
+        playlistMetas.removeValue(forKey: playlistId)
+        savePlaylistMetas()
+        UserDefaults.standard.set(false, forKey: "port_playlist_downloaded_\(playlistId)")
+
+        let affectedIds = records.values.filter { $0.playlistIds.contains(playlistId) }.map(\.id)
+        for tid in affectedIds {
+            guard var rec = records[tid] else { continue }
+            rec.playlistIds.removeAll { $0 == playlistId }
+            if rec.playlistIds.isEmpty {
+                removeDownload(trackId: tid)
+            } else {
+                records[tid] = rec
+            }
+        }
+        saveManifest()
+    }
+
     public func removeAllDownloads() {
         try? FileManager.default.removeItem(at: tracksDirectoryURL)
         try? FileManager.default.removeItem(at: coversDirectoryURL)

@@ -2051,6 +2051,233 @@ public final class MusicService {
         }
     }
 
+    // MARK: - Folder & Playlist State Mutations (/api/state & /api/playlists)
+    private func authorizedStateRequest(url: URL, method: String, token: String?, body: [String: Any]? = nil) -> URLRequest {
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.timeoutInterval = 8.0
+        req.setValue(currentDeviceId, forHTTPHeaderField: "X-Device-ID")
+        if let tok = token, !tok.isEmpty {
+            req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            req.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+        if let body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        }
+        return req
+    }
+
+    private func fetchStateJSON(serverURL: String, token: String?) async -> [String: Any]? {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/state") else { return nil }
+        let req = authorizedStateRequest(url: url, method: "GET", token: token)
+        guard let (data, resp) = try? await session.data(for: req),
+              let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return json
+    }
+
+    private func putStatePayload(_ payload: [String: Any], serverURL: String, token: String?) async -> Bool {
+        let base = cleanURL(serverURL)
+        guard let url = URL(string: "\(base)/api/state") else { return false }
+        let req = authorizedStateRequest(url: url, method: "PUT", token: token, body: payload)
+        guard let (_, resp) = try? await session.data(for: req),
+              let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return false
+        }
+        return true
+    }
+
+    public func updateFolder(
+        id: String,
+        name: String,
+        parentFolderId: String?,
+        serverURL: String,
+        token: String?
+    ) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, !trimmed.isEmpty else { return false }
+
+        var folderObj: [String: Any] = [
+            "id": id,
+            "name": trimmed
+        ]
+        if let pid = parentFolderId, !pid.isEmpty {
+            folderObj["parentFolderId"] = pid
+        } else {
+            folderObj["parentFolderId"] = NSNull()
+        }
+
+        let payload: [String: Any] = [
+            "playlists": [],
+            "folders": [folderObj],
+            "favorites": []
+        ]
+        return await putStatePayload(payload, serverURL: serverURL, token: token)
+    }
+
+    public func deleteFolder(id: String, serverURL: String, token: String?) async -> Bool {
+        guard !id.isEmpty, let json = await fetchStateJSON(serverURL: serverURL, token: token) else {
+            return false
+        }
+
+        // Unterordner und Playlists auf Hauptebene (null) heben, bevor Ordner gelöscht wird
+        let rawFolders = (json["folders"] as? [[String: Any]]) ?? []
+        var updatedFolders: [[String: Any]] = []
+        for var f in rawFolders {
+            let fid = f["id"] as? String ?? ""
+            let pId = (f["parentId"] as? String) ?? (f["parentFolderId"] as? String)
+            if fid != id, pId == id {
+                f["parentFolderId"] = NSNull()
+                f["parentId"] = NSNull()
+                updatedFolders.append(f)
+            }
+        }
+
+        let rawPlaylists = (json["playlists"] as? [[String: Any]]) ?? []
+        var updatedPlaylists: [[String: Any]] = []
+        for var pl in rawPlaylists {
+            if (pl["folderId"] as? String) == id {
+                pl["folderId"] = NSNull()
+                updatedPlaylists.append(pl)
+            }
+        }
+
+        var libState = (json["libraryState"] as? [String: Any]) ?? [:]
+        var pinnedFolders = (libState["pinnedFolders"] as? [String]) ?? []
+        pinnedFolders.removeAll { $0 == id }
+        libState["pinnedFolders"] = pinnedFolders
+        if var order = libState["folderOrder"] as? [String] {
+            order.removeAll { $0 == id }
+            libState["folderOrder"] = order
+        }
+
+        var payload: [String: Any] = [
+            "playlists": updatedPlaylists,
+            "folders": updatedFolders,
+            "favorites": [],
+            "libraryState": libState,
+            "_deletedFolderIds": [id]
+        ]
+        if let bookmarks = json["audiobookBookmarks"] { payload["audiobookBookmarks"] = bookmarks }
+        if let ignored = json["ignoredDuplicatePairs"] { payload["ignoredDuplicatePairs"] = ignored }
+
+        return await putStatePayload(payload, serverURL: serverURL, token: token)
+    }
+
+    public func updatePlaylistMetadata(
+        id: String,
+        name: String? = nil,
+        folderId: String?,
+        shouldUpdateFolder: Bool,
+        serverURL: String,
+        token: String?
+    ) async -> Bool {
+        guard !id.isEmpty, let json = await fetchStateJSON(serverURL: serverURL, token: token) else {
+            return false
+        }
+
+        let rawPlaylists = (json["playlists"] as? [[String: Any]]) ?? []
+        guard var target = rawPlaylists.first(where: { ($0["id"] as? String) == id }) else {
+            return false
+        }
+
+        if let newName = name?.trimmingCharacters(in: .whitespacesAndNewlines), !newName.isEmpty {
+            target["name"] = newName
+        }
+        if shouldUpdateFolder {
+            if let fid = folderId, !fid.isEmpty {
+                target["folderId"] = fid
+            } else {
+                target["folderId"] = NSNull()
+            }
+        }
+
+        let payload: [String: Any] = [
+            "playlists": [target],
+            "folders": [],
+            "favorites": []
+        ]
+        return await putStatePayload(payload, serverURL: serverURL, token: token)
+    }
+
+    public func deletePlaylist(id: String, serverURL: String, token: String?) async -> Bool {
+        guard !id.isEmpty else { return false }
+        let base = cleanURL(serverURL)
+        var restDeleted = false
+        if let deleteUrl = URL(string: "\(base)/api/playlists/\(id)") {
+            let req = authorizedStateRequest(url: deleteUrl, method: "DELETE", token: token)
+            if let (_, resp) = try? await session.data(for: req),
+               let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                restDeleted = true
+            }
+        }
+
+        var stateDeleted = false
+        if let json = await fetchStateJSON(serverURL: serverURL, token: token) {
+            var libState = (json["libraryState"] as? [String: Any]) ?? [:]
+            if var pinned = libState["pinnedPlaylists"] as? [String] {
+                pinned.removeAll { $0 == id }
+                libState["pinnedPlaylists"] = pinned
+            }
+            if var saved = libState["savedPlaylists"] as? [String] {
+                saved.removeAll { $0 == id }
+                libState["savedPlaylists"] = saved
+            }
+            if var order = libState["playlistOrder"] as? [String] {
+                order.removeAll { $0 == id }
+                libState["playlistOrder"] = order
+            }
+
+            var payload: [String: Any] = [
+                "playlists": [],
+                "folders": [],
+                "favorites": [],
+                "libraryState": libState,
+                "_deletedPlaylistIds": [id]
+            ]
+            if let bookmarks = json["audiobookBookmarks"] { payload["audiobookBookmarks"] = bookmarks }
+            if let ignored = json["ignoredDuplicatePairs"] { payload["ignoredDuplicatePairs"] = ignored }
+            stateDeleted = await putStatePayload(payload, serverURL: serverURL, token: token)
+        }
+        return restDeleted || stateDeleted
+    }
+
+    public func setLibraryPinState(
+        id: String,
+        isFolder: Bool,
+        isPinned: Bool,
+        serverURL: String,
+        token: String?
+    ) async -> Bool {
+        guard !id.isEmpty, let json = await fetchStateJSON(serverURL: serverURL, token: token) else {
+            return false
+        }
+        var libState = (json["libraryState"] as? [String: Any]) ?? [:]
+        let key = isFolder ? "pinnedFolders" : "pinnedPlaylists"
+        var list = (libState[key] as? [String]) ?? []
+        if isPinned {
+            if !list.contains(id) { list.append(id) }
+        } else {
+            list.removeAll { $0 == id }
+        }
+        libState[key] = list
+
+        var payload: [String: Any] = [
+            "playlists": [],
+            "folders": [],
+            "favorites": [],
+            "libraryState": libState
+        ]
+        if let bookmarks = json["audiobookBookmarks"] { payload["audiobookBookmarks"] = bookmarks }
+        if let ignored = json["ignoredDuplicatePairs"] { payload["ignoredDuplicatePairs"] = ignored }
+
+        return await putStatePayload(payload, serverURL: serverURL, token: token)
+    }
+
     private func parseLibraryTrackDict(_ item: [String: Any]) -> Track? {
         guard let id = item["id"] as? String, !id.isEmpty else { return nil }
         let title = item["title"] as? String ?? item["name"] as? String ?? "Kein Titel"

@@ -778,6 +778,16 @@ public final class AudioPlayerManager: ObservableObject {
         queue.insert(track, at: insertIndex)
     }
 
+    public func playNext(tracks: [Track], serverURL: String? = nil) {
+        guard !tracks.isEmpty else { return }
+        if queue.isEmpty {
+            playAll(tracks: tracks, shuffle: false, serverURL: serverURL)
+            return
+        }
+        let insertIndex = min(queueIndex + 1, queue.count)
+        queue.insert(contentsOf: tracks, at: insertIndex)
+    }
+
     public func addToQueue(track: Track) {
         if queue.isEmpty {
             let activeURL = currentServerURL ?? SessionManager.shared.serverURL ?? ""

@@ -85,6 +85,13 @@ public struct LibraryCategoryDetailView: View {
     @State private var showCreateFolderAlert: Bool = false
     @State private var newFolderName: String = ""
 
+    @State private var renameTargetFolder: LibraryFolder? = nil
+    @State private var renameTargetPlaylist: DiscoveryPlaylist? = nil
+    @State private var renameInputText: String = ""
+    @State private var deleteTargetFolder: LibraryFolder? = nil
+    @State private var deleteTargetPlaylist: DiscoveryPlaylist? = nil
+    @State private var shareTargetPlaylist: DiscoveryPlaylist? = nil
+
     public init(
         category: String,
         serverURL: String,
@@ -228,14 +235,44 @@ public struct LibraryCategoryDetailView: View {
         .sheet(isPresented: $showCreatePlaylistSheet) {
             CreatePlaylistSheet(serverURL: serverURL) { created in
                 PlaylistActivityStore.shared.markAdded(playlistId: created.id)
-                playlists.insert(created, at: 0)
+                let adjusted = DiscoveryPlaylist(
+                    id: created.id,
+                    title: created.title,
+                    cover: created.cover,
+                    nbTracks: created.nbTracks,
+                    user: created.user,
+                    folderId: folderId ?? created.folderId,
+                    trackCovers: created.trackCovers
+                )
+                playlists.insert(adjusted, at: 0)
+                if let fid = folderId {
+                    movePlaylist(adjusted, toFolderId: fid)
+                }
             }
         }
         .sheet(isPresented: $showImportPlaylistSheet) {
             ImportPlaylistSheet(serverURL: serverURL) { imported in
                 PlaylistActivityStore.shared.markAdded(playlistId: imported.id)
-                playlists.insert(imported, at: 0)
+                let adjusted = DiscoveryPlaylist(
+                    id: imported.id,
+                    title: imported.title,
+                    cover: imported.cover,
+                    nbTracks: imported.nbTracks,
+                    user: imported.user,
+                    folderId: folderId ?? imported.folderId,
+                    trackCovers: imported.trackCovers
+                )
+                playlists.insert(adjusted, at: 0)
+                if let fid = folderId {
+                    movePlaylist(adjusted, toFolderId: fid)
+                }
             }
+        }
+        .sheet(item: $shareTargetPlaylist) { pl in
+            ShareSheet(activityItems: [
+                "Höre Playlist '\(pl.title)' auf Port Music",
+                serverURL
+            ])
         }
     }
 
@@ -554,6 +591,11 @@ public struct LibraryCategoryDetailView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .contextMenu {
+                            folderContextMenu(folder: folder, isPinned: isPinned)
+                        } preview: {
+                            folderContextPreview(folder: folder, inFolder: inFolder, subText: subText)
+                        }
 
                         Divider()
                             .background(Color.white.opacity(0.12))
@@ -608,6 +650,11 @@ public struct LibraryCategoryDetailView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .contextMenu {
+                            playlistContextMenu(playlist: pl)
+                        } preview: {
+                            playlistContextPreview(playlist: pl)
+                        }
 
                         if pl.id != items.last?.id {
                             Divider()
@@ -708,6 +755,11 @@ public struct LibraryCategoryDetailView: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .contextMenu {
+                            folderContextMenu(folder: folder, isPinned: isPinned)
+                        } preview: {
+                            folderContextPreview(folder: folder, inFolder: inFolder, subText: subText)
+                        }
                     }
 
                     // Playlists Grid Cards
@@ -756,6 +808,11 @@ public struct LibraryCategoryDetailView: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .contextMenu {
+                            playlistContextMenu(playlist: pl)
+                        } preview: {
+                            playlistContextPreview(playlist: pl)
+                        }
                     }
                 }
             }
@@ -783,6 +840,579 @@ public struct LibraryCategoryDetailView: View {
             }
         } message: {
             Text(folderId == nil ? "Name für den neuen Ordner eingeben." : "Name für den neuen Unterordner eingeben.")
+        }
+        .background(
+            Color.clear
+                .alert(
+                    "Ordner umbenennen",
+                    isPresented: Binding(
+                        get: { renameTargetFolder != nil },
+                        set: { if !$0 { renameTargetFolder = nil } }
+                    )
+                ) {
+                    TextField("Ordnername", text: $renameInputText)
+                    Button("Abbrechen", role: .cancel) { renameTargetFolder = nil }
+                    Button("Speichern") {
+                        if let folder = renameTargetFolder {
+                            renameFolder(folder, to: renameInputText)
+                        }
+                        renameTargetFolder = nil
+                    }
+                } message: {
+                    Text("Gib einen neuen Namen für diesen Ordner ein.")
+                }
+        )
+        .background(
+            Color.clear
+                .alert(
+                    "Playlist umbenennen",
+                    isPresented: Binding(
+                        get: { renameTargetPlaylist != nil },
+                        set: { if !$0 { renameTargetPlaylist = nil } }
+                    )
+                ) {
+                    TextField("Playlist-Name", text: $renameInputText)
+                    Button("Abbrechen", role: .cancel) { renameTargetPlaylist = nil }
+                    Button("Speichern") {
+                        if let pl = renameTargetPlaylist {
+                            renamePlaylist(pl, to: renameInputText)
+                        }
+                        renameTargetPlaylist = nil
+                    }
+                } message: {
+                    Text("Gib einen neuen Namen für diese Playlist ein.")
+                }
+        )
+        .background(
+            Color.clear
+                .alert(
+                    "Ordner löschen?",
+                    isPresented: Binding(
+                        get: { deleteTargetFolder != nil },
+                        set: { if !$0 { deleteTargetFolder = nil } }
+                    )
+                ) {
+                    Button("Abbrechen", role: .cancel) { deleteTargetFolder = nil }
+                    Button("Löschen", role: .destructive) {
+                        if let folder = deleteTargetFolder {
+                            deleteFolder(folder)
+                        }
+                        deleteTargetFolder = nil
+                    }
+                } message: {
+                    Text("Der Ordner wird entfernt. Darin enthaltene Playlists bleiben unter Playlists erhalten.")
+                }
+        )
+        .background(
+            Color.clear
+                .alert(
+                    "Playlist löschen?",
+                    isPresented: Binding(
+                        get: { deleteTargetPlaylist != nil },
+                        set: { if !$0 { deleteTargetPlaylist = nil } }
+                    )
+                ) {
+                    Button("Abbrechen", role: .cancel) { deleteTargetPlaylist = nil }
+                    Button("Löschen", role: .destructive) {
+                        if let pl = deleteTargetPlaylist {
+                            deletePlaylist(pl)
+                        }
+                        deleteTargetPlaylist = nil
+                    }
+                } message: {
+                    Text("Möchtest du '\(deleteTargetPlaylist?.title ?? "Playlist")' wirklich löschen?")
+                }
+        )
+    }
+
+    // MARK: - Folder & Playlist Context Menus + Previews (Apple Music Style)
+    @ViewBuilder
+    private func folderContextMenu(folder: LibraryFolder, isPinned: Bool) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            renameInputText = folder.name
+            renameTargetFolder = folder
+        } label: {
+            Label("Umbenennen", systemImage: "pencil")
+        }
+
+        Menu {
+            if let pid = folder.parentId, !pid.isEmpty {
+                Button {
+                    moveFolder(folder, toParentId: nil)
+                } label: {
+                    Label("Playlists (Hauptebene)", systemImage: "music.note.list")
+                }
+                Divider()
+            }
+            let targets = validMoveTargets(forFolder: folder)
+            if targets.isEmpty {
+                if folder.parentId == nil || folder.parentId?.isEmpty == true {
+                    Text("Keine anderen Zielordner")
+                }
+            } else {
+                ForEach(targets) { target in
+                    Button {
+                        moveFolder(folder, toParentId: target.id)
+                    } label: {
+                        Label(target.name, systemImage: "folder")
+                    }
+                }
+            }
+        } label: {
+            Label("In Ordner bewegen", systemImage: "folder")
+        }
+
+        Button {
+            togglePinFolder(folder)
+        } label: {
+            Label(isPinned ? "Nicht mehr anpinnen" : "Anpinnen", systemImage: isPinned ? "pin.slash" : "pin")
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            deleteTargetFolder = folder
+        } label: {
+            Label("Löschen", systemImage: "trash")
+        }
+    }
+
+    private func folderContextPreview(folder: LibraryFolder, inFolder: [DiscoveryPlaylist], subText: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FolderCoverView(
+                folder: folder,
+                playlists: inFolder,
+                serverURL: serverURL
+            )
+            .frame(width: 210, height: 210)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(folder.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                Text(subText)
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: "#a0a0a0"))
+                    .lineLimit(1)
+            }
+        }
+        .padding(16)
+        .frame(width: 242)
+        .background(Color(hex: "#16161a"))
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func playlistContextMenu(playlist pl: DiscoveryPlaylist) -> some View {
+        Button {
+            playPlaylistImmediately(pl)
+        } label: {
+            Label("Abspielen", systemImage: "play.fill")
+        }
+
+        Button {
+            enqueuePlaylistNext(pl)
+        } label: {
+            Label("Als Nächstes abspielen", systemImage: "text.line.first.and.arrowtriangle.forward")
+        }
+
+        Divider()
+
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            renameInputText = pl.title
+            renameTargetPlaylist = pl
+        } label: {
+            Label("Umbenennen", systemImage: "pencil")
+        }
+
+        Menu {
+            if let fid = pl.folderId, !fid.isEmpty {
+                Button {
+                    movePlaylist(pl, toFolderId: nil)
+                } label: {
+                    Label("Playlists (Hauptebene)", systemImage: "music.note.list")
+                }
+                Divider()
+            }
+            let targets = folders
+                .filter { $0.id != pl.folderId }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            if targets.isEmpty {
+                if pl.folderId == nil || pl.folderId?.isEmpty == true {
+                    Text("Noch keine Zielordner vorhanden")
+                }
+            } else {
+                ForEach(targets) { target in
+                    Button {
+                        movePlaylist(pl, toFolderId: target.id)
+                    } label: {
+                        Label(target.name, systemImage: "folder")
+                    }
+                }
+            }
+        } label: {
+            Label("In Ordner bewegen", systemImage: "folder")
+        }
+
+        let isPlDownloaded = isPlaylistOfflineDownloaded(pl.id)
+        Button {
+            togglePlaylistOfflineDownload(pl)
+        } label: {
+            Label(
+                isPlDownloaded ? "Download entfernen" : "Laden",
+                systemImage: isPlDownloaded ? "trash" : "arrow.down.circle"
+            )
+        }
+
+        let isPinned = pinnedIds.contains(pl.id)
+        Button {
+            togglePinPlaylist(pl)
+        } label: {
+            Label(isPinned ? "Nicht mehr anpinnen" : "Anpinnen", systemImage: isPinned ? "pin.slash" : "pin")
+        }
+
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            shareTargetPlaylist = pl
+        } label: {
+            Label("Teilen", systemImage: "square.and.arrow.up")
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            deleteTargetPlaylist = pl
+        } label: {
+            Label("Löschen", systemImage: "trash")
+        }
+    }
+
+    private func playlistContextPreview(playlist pl: DiscoveryPlaylist) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PlaylistArtworkView(
+                coverUrl: pl.cover,
+                trackCovers: pl.trackCovers,
+                cornerRadius: 12,
+                iconSize: 44,
+                serverURL: serverURL
+            )
+            .frame(width: 210, height: 210)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pl.title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                let count = pl.nbTracks.map { "\(String($0)) Songs" } ?? (pl.user ?? "Playlist")
+                Text(count)
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: "#a0a0a0"))
+                    .lineLimit(1)
+            }
+        }
+        .padding(16)
+        .frame(width: 242)
+        .background(Color(hex: "#16161a"))
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Folder & Playlist Actions
+    private func descendantFolderIds(of rootId: String) -> Set<String> {
+        var visited = Set<String>([rootId])
+        var queue = [rootId]
+        while let current = queue.first {
+            queue.removeFirst()
+            for f in folders where f.parentId == current && !visited.contains(f.id) {
+                visited.insert(f.id)
+                queue.append(f.id)
+            }
+        }
+        return visited
+    }
+
+    private func validMoveTargets(forFolder folder: LibraryFolder) -> [LibraryFolder] {
+        let excluded = descendantFolderIds(of: folder.id)
+        return folders
+            .filter { !excluded.contains($0.id) && $0.id != folder.parentId }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func renameFolder(_ folder: LibraryFolder, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != folder.name else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            folders = folders.map {
+                $0.id == folder.id
+                ? LibraryFolder(id: $0.id, name: trimmed, parentId: $0.parentId, color: $0.color)
+                : $0
+            }
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.updateFolder(
+                id: folder.id,
+                name: trimmed,
+                parentFolderId: folder.parentId,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
+
+    private func moveFolder(_ folder: LibraryFolder, toParentId newParentId: String?) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            folders = folders.map {
+                $0.id == folder.id
+                ? LibraryFolder(id: $0.id, name: $0.name, parentId: newParentId, color: $0.color)
+                : $0
+            }
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.updateFolder(
+                id: folder.id,
+                name: folder.name,
+                parentFolderId: newParentId,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
+
+    private func deleteFolder(_ folder: LibraryFolder) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+            folders = folders.compactMap { f in
+                if f.id == folder.id { return nil }
+                if f.parentId == folder.id {
+                    return LibraryFolder(id: f.id, name: f.name, parentId: nil, color: f.color)
+                }
+                return f
+            }
+            playlists = playlists.map { pl in
+                if pl.folderId == folder.id {
+                    return DiscoveryPlaylist(
+                        id: pl.id,
+                        title: pl.title,
+                        cover: pl.cover,
+                        nbTracks: pl.nbTracks,
+                        user: pl.user,
+                        folderId: nil,
+                        trackCovers: pl.trackCovers
+                    )
+                }
+                return pl
+            }
+            pinnedFolderIds.remove(folder.id)
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.deleteFolder(id: folder.id, serverURL: serverURL, token: token)
+        }
+    }
+
+    private func togglePinFolder(_ folder: LibraryFolder) {
+        let nextPinned = !pinnedFolderIds.contains(folder.id)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            if nextPinned {
+                pinnedFolderIds.insert(folder.id)
+            } else {
+                pinnedFolderIds.remove(folder.id)
+            }
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.setLibraryPinState(
+                id: folder.id,
+                isFolder: true,
+                isPinned: nextPinned,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
+
+    private func renamePlaylist(_ pl: DiscoveryPlaylist, to newTitle: String) {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != pl.title else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            playlists = playlists.map {
+                $0.id == pl.id
+                ? DiscoveryPlaylist(
+                    id: $0.id,
+                    title: trimmed,
+                    cover: $0.cover,
+                    nbTracks: $0.nbTracks,
+                    user: $0.user,
+                    folderId: $0.folderId,
+                    trackCovers: $0.trackCovers
+                )
+                : $0
+            }
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.updatePlaylistMetadata(
+                id: pl.id,
+                name: trimmed,
+                folderId: pl.folderId,
+                shouldUpdateFolder: false,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
+
+    private func movePlaylist(_ pl: DiscoveryPlaylist, toFolderId newFolderId: String?) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            playlists = playlists.map {
+                $0.id == pl.id
+                ? DiscoveryPlaylist(
+                    id: $0.id,
+                    title: $0.title,
+                    cover: $0.cover,
+                    nbTracks: $0.nbTracks,
+                    user: $0.user,
+                    folderId: newFolderId,
+                    trackCovers: $0.trackCovers
+                )
+                : $0
+            }
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.updatePlaylistMetadata(
+                id: pl.id,
+                name: nil,
+                folderId: newFolderId,
+                shouldUpdateFolder: true,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
+
+    private func deletePlaylist(_ pl: DiscoveryPlaylist) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+            playlists.removeAll { $0.id == pl.id }
+            pinnedIds.remove(pl.id)
+        }
+        offlineManager.removePlaylistDownload(playlistId: pl.id)
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.deletePlaylist(id: pl.id, serverURL: serverURL, token: token)
+        }
+    }
+
+    private func togglePinPlaylist(_ pl: DiscoveryPlaylist) {
+        let nextPinned = !pinnedIds.contains(pl.id)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            if nextPinned {
+                pinnedIds.insert(pl.id)
+            } else {
+                pinnedIds.remove(pl.id)
+            }
+        }
+        Task {
+            let token = SessionManager.shared.currentToken
+            _ = await MusicService.shared.setLibraryPinState(
+                id: pl.id,
+                isFolder: false,
+                isPinned: nextPinned,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
+
+    private func isPlaylistOfflineDownloaded(_ playlistId: String) -> Bool {
+        if UserDefaults.standard.bool(forKey: "port_playlist_downloaded_\(playlistId)") {
+            return true
+        }
+        return !offlineManager.downloadedTracks(forPlaylistId: playlistId).isEmpty
+            || offlineManager.downloadedPlaylistMeta(forPlaylistId: playlistId) != nil
+    }
+
+    private func resolvePlaylistTracks(_ pl: DiscoveryPlaylist) async -> [Track] {
+        let offline = await MainActor.run {
+            offlineManager.downloadedTracks(forPlaylistId: pl.id)
+        }
+        let isOffline = await MainActor.run { SessionManager.shared.isOfflineMode }
+        if isOffline {
+            return offline
+        }
+        let token = SessionManager.shared.currentToken
+        if let detail = await MusicService.shared.fetchDiscoveryPlaylist(id: pl.id, serverURL: serverURL, token: token),
+           !detail.tracks.isEmpty {
+            return detail.tracks.map { $0.toTrack(serverURL: serverURL) }
+        }
+        let collections = await MusicService.shared.cachedLibraryCollections()
+        if let cached = collections.playlistTracksMap[pl.id], !cached.isEmpty {
+            return cached
+        }
+        return offline
+    }
+
+    private func playPlaylistImmediately(_ pl: DiscoveryPlaylist) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task {
+            let tracks = await resolvePlaylistTracks(pl)
+            guard !tracks.isEmpty else { return }
+            await MainActor.run {
+                PlaylistActivityStore.shared.markPlayed(playlistId: pl.id)
+                player.playAll(tracks: tracks, shuffle: false, serverURL: serverURL)
+            }
+        }
+    }
+
+    private func enqueuePlaylistNext(_ pl: DiscoveryPlaylist) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task {
+            let tracks = await resolvePlaylistTracks(pl)
+            guard !tracks.isEmpty else { return }
+            await MainActor.run {
+                player.playNext(tracks: tracks, serverURL: serverURL)
+            }
+        }
+    }
+
+    private func togglePlaylistOfflineDownload(_ pl: DiscoveryPlaylist) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if isPlaylistOfflineDownloaded(pl.id) {
+            offlineManager.removePlaylistDownload(playlistId: pl.id)
+            return
+        }
+        Task {
+            let tracks = await resolvePlaylistTracks(pl)
+            guard !tracks.isEmpty else { return }
+            let token = SessionManager.shared.currentToken
+            await MainActor.run {
+                UserDefaults.standard.set(true, forKey: "port_playlist_downloaded_\(pl.id)")
+                offlineManager.downloadPlaylist(
+                    playlistId: pl.id,
+                    name: pl.title,
+                    coverUrl: pl.cover.isEmpty ? nil : pl.cover,
+                    tracks: tracks,
+                    serverURL: serverURL,
+                    token: token
+                )
+            }
         }
     }
 
