@@ -95,10 +95,7 @@ public final class MusicService {
 
     /// Wärmt den Stream-Resolver & Server-Disk-Cache für nachfolgende Queue-Titel im Voraus auf.
     public func prefetchStream(for track: Track, serverURL: String) {
-        guard !track.isLive,
-              !serverURL.isEmpty,
-              !SessionManager.shared.isOfflineMode,
-              OfflineDownloadManager.shared.localAudioFileURL(for: track.id) == nil else {
+        guard !track.isLive, !serverURL.isEmpty else {
             return
         }
         let base = cleanURL(serverURL)
@@ -119,16 +116,24 @@ public final class MusicService {
         comps.queryItems = items
         guard let url = comps.url else { return }
 
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 8.0
-        req.setValue("PortMusic-iOS/1.0", forHTTPHeaderField: "User-Agent")
-        if let tok = SessionManager.shared.currentToken, !tok.isEmpty {
-            req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
-            req.setValue(tok, forHTTPHeaderField: "x-session-token")
-        }
+        let trackId = track.id
         let sess = self.session
         Task.detached(priority: .utility) {
+            let (shouldPrefetch, token): (Bool, String?) = await MainActor.run {
+                let offline = SessionManager.shared.isOfflineMode
+                let downloaded = OfflineDownloadManager.shared.localAudioFileURL(for: trackId) != nil
+                return (!offline && !downloaded, SessionManager.shared.currentToken)
+            }
+            guard shouldPrefetch else { return }
+
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.timeoutInterval = 8.0
+            req.setValue("PortMusic-iOS/1.0", forHTTPHeaderField: "User-Agent")
+            if let tok = token, !tok.isEmpty {
+                req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+                req.setValue(tok, forHTTPHeaderField: "x-session-token")
+            }
             _ = try? await sess.data(for: req)
         }
     }
