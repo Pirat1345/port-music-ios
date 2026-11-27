@@ -46,6 +46,9 @@ public final class AudioPlayerManager: ObservableObject {
     private var didAttemptQualityFallbackForCurrentTrack: Bool = false
     private var consecutiveFailureSkips: Int = 0
     private var isAdvancingAfterFailure: Bool = false
+    private var handledEndForCurrentItem: Bool = false
+    private var isExtendingAutoplay: Bool = false
+    private var prefetchedStreamIds: Set<String> = []
     private var skipTimerWorkItem: DispatchWorkItem? = nil
     private let recentTracksStorageKey = "port_music_recent_tracks"
 
@@ -99,10 +102,16 @@ public final class AudioPlayerManager: ObservableObject {
             }
 
             if let qData = UserDefaults.standard.data(forKey: lastPlayedQueueKey),
-               let q = try? JSONDecoder().decode([Track].self, from: qData) {
+               let q = try? JSONDecoder().decode([Track].self, from: qData), !q.isEmpty {
                 self.queue = q
+                if let idx = q.firstIndex(where: { $0.id == track.id }) {
+                    self.queueIndex = idx
+                } else {
+                    self.queueIndex = 0
+                }
             } else {
                 self.queue = [track]
+                self.queueIndex = 0
             }
             self.isPlayingOffline = OfflineDownloadManager.shared.localAudioFileURL(for: track.id) != nil
             loadArtwork(from: track.coverUrl)
@@ -342,6 +351,8 @@ public final class AudioPlayerManager: ObservableObject {
         }
         skipTimerWorkItem?.cancel()
         skipTimerWorkItem = nil
+        handledEndForCurrentItem = false
+        isExtendingAutoplay = false
         if !isQualityRetry {
             self.activeQualityOverride = nil
             self.didAttemptQualityFallbackForCurrentTrack = false
@@ -386,23 +397,19 @@ public final class AudioPlayerManager: ObservableObject {
                     self.queueIndex = 0
                 }
             } else if contextQueue.count == 1 {
-                // When a single track is passed, DO NOT wipe existing queue
-                if self.queue.isEmpty {
-                    self.queue = [track]
-                    self.queueIndex = 0
-                } else if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
+                // Einzeltitel sauber starten, ohne veraltete Rest-Queue mitzuschleppen
+                self.queue = [track]
+                self.queueIndex = 0
+            } else {
+                if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
                     self.queueIndex = idx
                 } else {
-                    self.queue.insert(track, at: self.queueIndex + 1)
-                    self.queueIndex += 1
+                    self.queue = [track]
+                    self.queueIndex = 0
                 }
-            } else {
-                if !self.queue.contains(where: { $0.id == track.id }) {
-                    self.queue.append(track)
-                    self.queueIndex = self.queue.count - 1
-                } else if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
-                    self.queueIndex = idx
-                }
+            }
+            if !self.queue.isEmpty {
+                self.queueIndex = max(0, min(self.queueIndex, self.queue.count - 1))
             }
         }
 
@@ -480,6 +487,7 @@ public final class AudioPlayerManager: ObservableObject {
         cleanupCurrentItem()
 
         let playerItem = AVPlayerItem(url: playbackURL)
+        playerItem.preferredForwardBufferDuration = 6.0
         observePlayerItem(playerItem)
 
         if let existing = avPlayer {
@@ -494,6 +502,7 @@ public final class AudioPlayerManager: ObservableObject {
         avPlayer?.play()
         self.isPlaying = true
 
+        prefetchUpcomingQueueTracks(serverURL: effectiveServerURL)
         updateNowPlayingInfo()
         loadArtwork(from: track.coverUrl)
 
@@ -628,6 +637,9 @@ public final class AudioPlayerManager: ObservableObject {
         }
 
         if SessionManager.shared.isOfflineMode {
+            if SessionManager.shared.isPathSatisfied {
+                SessionManager.shared.reportSuspectedConnectionFailure()
+            }
             let downloader = OfflineDownloadManager.shared
             let playableIndices = queue.indices.filter { downloader.localAudioFileURL(for: queue[$0].id) != nil }
 
@@ -646,27 +658,24 @@ public final class AudioPlayerManager: ObservableObject {
                 return
             }
 
-            // Weitere lokale Downloads an die Queue haengen, bevor gewrappt wird
-            let offlineList = downloader.allDownloadedTracks()
-            let existingIds = Set(queue.map { $0.id })
-            let extraOffline = offlineList.filter { !existingIds.contains($0.id) }
-            if let firstNew = extraOffline.first {
-                self.queue.append(contentsOf: extraOffline)
-                if let newIdx = self.queue.firstIndex(where: { $0.id == firstNew.id }) {
-                    self.queueIndex = newIdx
+            // Weitere lokale Downloads nur im echten Offline-Modus anhängen, wenn Autoplay aktiv ist
+            let autoplayEnabled = UserDefaults.standard.object(forKey: "playback_autoplay_enabled") as? Bool ?? true
+            if autoplayEnabled && !SessionManager.shared.isPathSatisfied {
+                let offlineList = downloader.allDownloadedTracks()
+                let existingIds = Set(queue.map { $0.id })
+                let extraOffline = offlineList.filter { !existingIds.contains($0.id) }
+                if let firstNew = extraOffline.first {
+                    let insertStart = self.queue.count
+                    self.queue.append(contentsOf: extraOffline)
+                    self.queueIndex = insertStart
+                    play(track: firstNew, from: self.queue, serverURL: activeURL)
+                    return
                 }
-                play(track: firstNew, from: self.queue, serverURL: activeURL)
-                return
             }
 
-            if let firstPlayable = playableIndices.first {
+            if isRepeat, let firstPlayable = playableIndices.first {
                 self.queueIndex = firstPlayable
                 play(track: queue[firstPlayable], from: queue, serverURL: activeURL)
-                return
-            }
-
-            if let first = offlineList.first {
-                play(track: first, from: offlineList, serverURL: activeURL)
                 return
             }
 
@@ -704,51 +713,78 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     private func extendAutoplayQueueAndPlayNext(serverURL: String) {
+        guard !isExtendingAutoplay else { return }
+        isExtendingAutoplay = true
+        let seedTrackId = self.currentTrack?.id
+        let seedTrack = self.currentTrack
+        let snapshotQueue = self.queue
+
         Task { @MainActor in
+            defer { self.isExtendingAutoplay = false }
+
             if SessionManager.shared.isOfflineMode {
+                guard !SessionManager.shared.isPathSatisfied else {
+                    SessionManager.shared.reportSuspectedConnectionFailure()
+                    self.isPlaying = false
+                    self.isBuffering = false
+                    return
+                }
                 let offlineList = OfflineDownloadManager.shared.allDownloadedTracks()
                 let existingIds = Set(self.queue.map { $0.id })
                 let newOffline = offlineList.filter { !existingIds.contains($0.id) }
                 if let firstNew = newOffline.first {
+                    let insertStart = self.queue.count
                     self.queue.append(contentsOf: newOffline)
-                    self.queueIndex += 1
+                    self.queueIndex = insertStart
                     self.play(track: firstNew, from: self.queue, serverURL: serverURL)
-                } else if let firstOffline = offlineList.first {
-                    self.play(track: firstOffline, from: offlineList, serverURL: serverURL)
+                } else {
+                    self.isPlaying = false
+                    self.isBuffering = false
                 }
                 return
             }
-            let token = SessionManager.shared.currentToken
-            let existingIds = Set(self.queue.map { $0.id })
 
-            // 1. Höchste Priorität: Ähnliche Titel / Discovery Recommendations zum aktuellen Song
-            if let cur = self.currentTrack {
+            let token = SessionManager.shared.currentToken
+            let existingIds = Set(snapshotQueue.map { $0.id })
+            let extraArtists = snapshotQueue.suffix(5).map(\.artist)
+            let extraTitles = snapshotQueue.suffix(5).map(\.title)
+            let excludeList = Array(snapshotQueue.suffix(15).map(\.id))
+
+            // 1. Höchste Priorität: Ähnliche Titel / Discovery Recommendations zur beendeten Playlist/Track
+            if let cur = seedTrack {
                 let recs = await MusicService.shared.fetchRecommendations(
                     trackId: cur.id,
                     artist: cur.artist,
                     title: cur.title,
+                    extraArtists: extraArtists,
+                    extraTitles: extraTitles,
+                    excludeIds: excludeList,
                     serverURL: serverURL,
                     token: token
                 )
-                let newRecs = recs.filter { !existingIds.contains($0.id) }
+                guard self.currentTrack?.id == seedTrackId else { return }
+                let newRecs = recs.filter { !existingIds.contains($0.id) && $0.id != seedTrackId }
                 if !newRecs.isEmpty {
+                    let insertStart = self.queue.count
                     self.queue.append(contentsOf: newRecs)
-                    self.queueIndex += 1
-                    let nextTrack = self.queue[self.queueIndex]
+                    self.queueIndex = insertStart
+                    let nextTrack = self.queue[insertStart]
                     self.play(track: nextTrack, from: self.queue, serverURL: serverURL)
                     return
                 }
             }
 
             // 2. Mittlere Priorität: Weitere Top-Tracks des Künstlers abrufen
-            if let cur = self.currentTrack, !cur.artist.isEmpty && cur.artist != "Unbekannt" {
+            if let cur = seedTrack, !cur.artist.isEmpty && cur.artist != "Unbekannt" {
                 if let artistData = await MusicService.shared.fetchArtist(name: cur.artist, serverURL: serverURL, token: token) {
+                    guard self.currentTrack?.id == seedTrackId else { return }
                     let artistPool = artistData.topTracks.map { $0.toTrack() }
-                    let newArtistTracks = artistPool.filter { !existingIds.contains($0.id) }
+                    let newArtistTracks = artistPool.filter { !existingIds.contains($0.id) && $0.id != seedTrackId }
                     if !newArtistTracks.isEmpty {
+                        let insertStart = self.queue.count
                         self.queue.append(contentsOf: newArtistTracks)
-                        self.queueIndex += 1
-                        let nextTrack = self.queue[self.queueIndex]
+                        self.queueIndex = insertStart
+                        let nextTrack = self.queue[insertStart]
                         self.play(track: nextTrack, from: self.queue, serverURL: serverURL)
                         return
                     }
@@ -757,6 +793,7 @@ public final class AudioPlayerManager: ObservableObject {
 
             // 3. Fallback: Frische Home-Discovery-Tracks (Trending, Hits, For You, Radar)
             if let discovery = await MusicService.shared.fetchHomeDiscovery(serverURL: serverURL, token: token) {
+                guard self.currentTrack?.id == seedTrackId else { return }
                 var freshTracks: [Track] = []
                 if let trending = discovery.trendingEverywhere {
                     freshTracks.append(contentsOf: trending.map { $0.toTrack() })
@@ -771,21 +808,21 @@ public final class AudioPlayerManager: ObservableObject {
                     freshTracks.append(contentsOf: picks.map { $0.toTrack() })
                 }
 
-                let newUnique = freshTracks.filter { !existingIds.contains($0.id) }
+                let newUnique = freshTracks.filter { !existingIds.contains($0.id) && $0.id != seedTrackId }
                 if !newUnique.isEmpty {
+                    let insertStart = self.queue.count
                     self.queue.append(contentsOf: newUnique)
-                    self.queueIndex += 1
-                    let nextTrack = self.queue[self.queueIndex]
+                    self.queueIndex = insertStart
+                    let nextTrack = self.queue[insertStart]
                     self.play(track: nextTrack, from: self.queue, serverURL: serverURL)
                     return
                 }
             }
 
-            // 4. Absoluter Not-Fallback: Nur wenn wirklich alle Quellen erschöpft sind
-            if !self.queue.isEmpty {
-                self.queueIndex = 0
-                self.play(track: self.queue[0], from: self.queue, serverURL: serverURL)
-            }
+            // 4. Sauberes Stoppen am Playlist-Ende, falls keine Empfehlungen abrufbar waren (keine zufälligen Downloads einstreuen!)
+            self.isPlaying = false
+            self.isBuffering = false
+            self.updateNowPlayingInfo()
         }
     }
 
@@ -889,6 +926,9 @@ public final class AudioPlayerManager: ObservableObject {
         let maxDur = duration > 1.0 ? duration : 3600.0
         let clamped = max(0.0, min(targetSeconds, maxDur))
         self.currentTime = clamped
+        if clamped < maxDur - 1.5 {
+            handledEndForCurrentItem = false
+        }
 
         let time = CMTime(seconds: clamped, preferredTimescale: 600)
         let tolerance = CMTime(seconds: 0.25, preferredTimescale: 600)
@@ -916,6 +956,9 @@ public final class AudioPlayerManager: ObservableObject {
         }
         let insertIndex = min(queueIndex + 1, queue.count)
         queue.insert(track, at: insertIndex)
+        if let activeURL = currentServerURL ?? SessionManager.shared.serverURL {
+            MusicService.shared.prefetchStream(for: track, serverURL: activeURL)
+        }
         if JamManager.shared.isInJam {
             JamManager.shared.syncQueue(queue)
         }
@@ -1085,8 +1128,8 @@ public final class AudioPlayerManager: ObservableObject {
                         durationSeconds: self.duration
                     )
                 }
-                // Automatischer Übergang zum nächsten Track wenn das reale Songende erreicht ist (keine 3 Minuten Stille)
-                if self.isPlaying && self.currentTrack?.isLive != true && self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
+                // Automatischer Übergang zum nächsten Track exakt einmalig beim Songende (kein Mehrfach-Trigger beim Autoplay-Laden)
+                if !self.handledEndForCurrentItem && self.isPlaying && self.currentTrack?.isLive != true && self.duration > 1.0 && self.currentTime >= self.duration - 0.35 {
                     self.playerItemDidReachEnd()
                     return
                 }
@@ -1184,32 +1227,52 @@ public final class AudioPlayerManager: ObservableObject {
         }
     }
 
+    private func prefetchUpcomingQueueTracks(serverURL: String) {
+        guard !serverURL.isEmpty, !SessionManager.shared.isOfflineMode else { return }
+        let startIdx = max(0, queueIndex + 1)
+        guard startIdx < queue.count else { return }
+        let upperBound = min(queue.count, startIdx + 2)
+        for idx in startIdx..<upperBound {
+            let upcoming = queue[idx]
+            if !upcoming.isLive && !prefetchedStreamIds.contains(upcoming.id) {
+                if prefetchedStreamIds.count > 200 {
+                    prefetchedStreamIds.removeAll()
+                }
+                prefetchedStreamIds.insert(upcoming.id)
+                MusicService.shared.prefetchStream(for: upcoming, serverURL: serverURL)
+            }
+        }
+    }
+
     @objc private func playerItemDidReachEnd() {
         Task { @MainActor in
             guard self.isPlaying else {
                 print("AudioPlayerManager: Item ended while paused, skipping ignored")
                 return
             }
+            guard !self.handledEndForCurrentItem else { return }
             if self.duration > 5.0 && self.currentTime < self.duration - 3.0 {
                 // Timescale-Verdopplungs-Bug abfangen: Wenn AVPlayer den Song bei ca. der Hälfte der Spieldauer regulär beendet
                 if self.currentTime > 30.0 && self.currentTime >= (self.duration * 0.42) && self.currentTime <= (self.duration * 0.58) {
+                    self.handledEndForCurrentItem = true
                     print("AudioPlayerManager: fMP4-Timescale-Verdopplung bei EOF erkannt (\(self.currentTime)/\(self.duration)). Dauer korrigiert, springe zum nächsten Titel.")
                     self.duration = self.currentTime
                     if let track = self.currentTrack {
-                PodcastProgressStore.shared.recordProgress(
-                    track: track,
-                    positionSeconds: self.duration,
-                    durationSeconds: self.duration,
-                    isCompleted: true,
-                    forcePersist: true
-                )
-            }
-            self.next()
+                        PodcastProgressStore.shared.recordProgress(
+                            track: track,
+                            positionSeconds: self.duration,
+                            durationSeconds: self.duration,
+                            isCompleted: true,
+                            forcePersist: true
+                        )
+                    }
+                    self.next()
                     return
                 }
                 print("AudioPlayerManager: Premature stream end at \(self.currentTime)/\(self.duration), skipping ignored")
                 return
             }
+            self.handledEndForCurrentItem = true
             if let track = self.currentTrack {
                 PodcastProgressStore.shared.recordProgress(
                     track: track,

@@ -93,6 +93,46 @@ public final class MusicService {
         return components.url
     }
 
+    /// Wärmt den Stream-Resolver & Server-Disk-Cache für nachfolgende Queue-Titel im Voraus auf.
+    public func prefetchStream(for track: Track, serverURL: String) {
+        guard !track.isLive,
+              !serverURL.isEmpty,
+              !SessionManager.shared.isOfflineMode,
+              OfflineDownloadManager.shared.localAudioFileURL(for: track.id) == nil else {
+            return
+        }
+        let base = cleanURL(serverURL)
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))
+        let encodedId = track.id.addingPercentEncoding(withAllowedCharacters: allowed) ?? track.id
+        guard var comps = URLComponents(string: "\(base)/api/stream/\(encodedId)/prefetch") else { return }
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "title", value: track.title),
+            URLQueryItem(name: "artist", value: track.artist)
+        ]
+        if let album = track.album, !album.isEmpty {
+            items.append(URLQueryItem(name: "album", value: album))
+        }
+        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
+        if storedQuality == "low" || storedQuality == "normal" {
+            items.append(URLQueryItem(name: "quality", value: "low"))
+        }
+        comps.queryItems = items
+        guard let url = comps.url else { return }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 8.0
+        req.setValue("PortMusic-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        if let tok = SessionManager.shared.currentToken, !tok.isEmpty {
+            req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
+            req.setValue(tok, forHTTPHeaderField: "x-session-token")
+        }
+        let sess = self.session
+        Task.detached(priority: .utility) {
+            _ = try? await sess.data(for: req)
+        }
+    }
+
     // MARK: - Fetch Home Discovery Shelves
     public func fetchHomeDiscovery(serverURL: String, token: String?) async -> DiscoveryHomeResponse? {
         let base = cleanURL(serverURL)
@@ -960,6 +1000,8 @@ public final class MusicService {
             durSec = dsNum.doubleValue
         }
 
+        let sourceUrl = (dict["sourceUrl"] as? String) ?? (dict["source_url"] as? String)
+
         return Track(
             id: id,
             title: title,
@@ -969,7 +1011,8 @@ public final class MusicService {
             durationSeconds: durSec,
             coverUrl: cover,
             isLive: false,
-            isExplicit: (dict["is_explicit"] as? Bool) ?? false
+            isExplicit: (dict["is_explicit"] as? Bool) ?? false,
+            sourceUrl: sourceUrl
         )
     }
 
@@ -1848,8 +1891,11 @@ public final class MusicService {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let lrc = json["lyrics"] as? String ?? json["lrc"] as? String, !lrc.isEmpty {
-                    return lrc
+                if let lrc = json["lyrics"] as? String ?? json["lrc"] as? String {
+                    let clean = lrc.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !clean.isEmpty && clean.lowercased() != "null" {
+                        return clean
+                    }
                 }
                 // Strukturierte Backend-Antwort (LyricsResponse mit lines: [{ text, start, end }])
                 if let lines = json["lines"] as? [[String: Any]], !lines.isEmpty {
@@ -1866,15 +1912,33 @@ public final class MusicService {
                         return lrcBuilder
                     }
                 }
+                return nil
             }
-            return String(data: data, encoding: .utf8)
+            if let rawText = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !rawText.isEmpty,
+               rawText.lowercased() != "null",
+               rawText.lowercased() != "undefined",
+               !rawText.hasPrefix("{"),
+               !rawText.hasPrefix("[") {
+                return rawText
+            }
+            return nil
         } catch {
             return nil
         }
     }
 
     // MARK: - Similar Songs / Recommendations (Feature #20)
-    public func fetchRecommendations(trackId: String, artist: String, title: String, serverURL: String, token: String? = nil) async -> [Track] {
+    public func fetchRecommendations(
+        trackId: String,
+        artist: String,
+        title: String,
+        extraArtists: [String] = [],
+        extraTitles: [String] = [],
+        excludeIds: [String] = [],
+        serverURL: String,
+        token: String? = nil
+    ) async -> [Track] {
         guard !serverURL.isEmpty else { return [] }
         let cleanBase = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: "\(cleanBase)/api/discovery/recommendations") else { return [] }
@@ -1887,16 +1951,26 @@ public final class MusicService {
         }
 
         var artistsList: [String] = []
-        if !artist.isEmpty && artist != "Unbekannt" {
-            artistsList.append(artist)
+        for candidate in ([artist] + extraArtists) {
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty && trimmed != "Unbekannt" && !artistsList.contains(trimmed) {
+                artistsList.append(trimmed)
+                if artistsList.count >= 4 { break }
+            }
         }
+
         var seedTracksList: [String] = []
-        if !title.isEmpty {
-            seedTracksList.append(title)
+        for seed in ([title] + extraTitles) {
+            let trimmed = seed.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty && !seedTracksList.contains(trimmed) {
+                seedTracksList.append(trimmed)
+                if seedTracksList.count >= 4 { break }
+            }
         }
-        var excludeIdsList: [String] = []
-        if !trackId.isEmpty {
-            excludeIdsList.append(trackId)
+
+        var excludeIdsList = excludeIds
+        if !trackId.isEmpty && !excludeIdsList.contains(trackId) {
+            excludeIdsList.insert(trackId, at: 0)
         }
 
         let body: [String: Any] = [

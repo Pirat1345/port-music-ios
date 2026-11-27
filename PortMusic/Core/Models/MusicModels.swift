@@ -1197,24 +1197,38 @@ public struct LyricLine: Identifiable, Equatable, Hashable {
 
 public func parseLRC(_ lrc: String) -> [LyricLine] {
     let trimmedInput = lrc.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedInput.isEmpty else { return [] }
+    let lowerInput = trimmedInput.lowercased()
+    guard !trimmedInput.isEmpty,
+          lowerInput != "null",
+          lowerInput != "nil",
+          lowerInput != "undefined",
+          lowerInput != "(null)",
+          trimmedInput != "{}",
+          trimmedInput != "[]" else {
+        return []
+    }
 
-    // 1. Wenn die Antwort bereits ein JSON-Objekt mit einem "lines"-Array ist
-    if trimmedInput.first == Character(UnicodeScalar(123)) && trimmedInput.contains("\"lines\""),
+    // 1. Wenn die Antwort JSON ist (z. B. {"lyrics":null} oder {"lines":[...]})
+    if trimmedInput.first == Character(UnicodeScalar(123)),
        let data = trimmedInput.data(using: .utf8),
-       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-       let rawLines = json["lines"] as? [[String: Any]] {
-        var parsed: [LyricLine] = []
-        for line in rawLines {
-            let text = (line["text"] as? String ?? "").trimmingCharacters(in: .whitespaces)
-            let start = line["start"] as? Double ?? 0.0
-            if !text.isEmpty {
-                parsed.append(LyricLine(time: start, text: text))
+       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let rawLines = json["lines"] as? [[String: Any]] {
+            var parsed: [LyricLine] = []
+            for line in rawLines {
+                let text = (line["text"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+                let start = line["start"] as? Double ?? 0.0
+                if !text.isEmpty {
+                    parsed.append(LyricLine(time: start, text: text))
+                }
+            }
+            if !parsed.isEmpty {
+                return parsed.sorted { $0.time < $1.time }
             }
         }
-        if !parsed.isEmpty {
-            return parsed.sorted { $0.time < $1.time }
+        if let innerLrc = json["lyrics"] as? String {
+            return parseLRC(innerLrc)
         }
+        return []
     }
 
     var lines: [LyricLine] = []

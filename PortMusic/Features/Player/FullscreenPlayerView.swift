@@ -339,7 +339,7 @@ public struct FullscreenPlayerView: View {
 
     // MARK: - PHONE PORTRAIT LYRICS MODUS (Synchronisierter Songtext über den gesamten Bildschirm)
     private func phoneLyricsLayout(geo: GeometryProxy) -> some View {
-        let contentWidth = min(geo.size.width - 44, 420)
+        let contentWidth = min(geo.size.width - 56, 420)
 
         return VStack(spacing: 12) {
             // Kompakte Kopfzeile mit Mini-Cover, Song-Info und Schließen-Button
@@ -380,11 +380,13 @@ public struct FullscreenPlayerView: View {
             // Scrubber, Transport-Leiste & Aktionen unten
             VStack(spacing: 8) {
                 scrubberContent(fixedWidth: contentWidth)
+                    .frame(width: contentWidth)
                 playbackControlsSection
                     .frame(width: contentWidth)
                 bottomActionRow
                     .frame(width: contentWidth)
             }
+            .frame(width: contentWidth)
             .padding(.bottom, max(geo.safeAreaInsets.bottom, 20))
         }
         .frame(width: geo.size.width)
@@ -393,7 +395,7 @@ public struct FullscreenPlayerView: View {
 
     // MARK: - PHONE INLINE APPLE MUSIC QUEUE MODUS (Wiedergabe fortsetzen)
     private func phoneQueueLayout(geo: GeometryProxy, fullHeight: CGFloat) -> some View {
-        let contentWidth = min(geo.size.width - 44, 420)
+        let contentWidth = min(geo.size.width - 56, 420)
         let upcomingStart = min(player.queueIndex + 1, player.queue.count)
         let upcoming = Array(player.queue[upcomingStart...])
 
@@ -463,6 +465,7 @@ public struct FullscreenPlayerView: View {
 
             VStack(spacing: 12) {
                 scrubberContent(fixedWidth: contentWidth)
+                    .frame(width: contentWidth)
                 playbackControlsSection
                     .frame(width: contentWidth)
                 volumeSliderSection
@@ -470,6 +473,7 @@ public struct FullscreenPlayerView: View {
                 bottomActionRow
                     .frame(width: contentWidth)
             }
+            .frame(width: contentWidth)
             .padding(.bottom, max(geo.safeAreaInsets.bottom, 18))
         }
         .frame(width: geo.size.width)
@@ -607,7 +611,7 @@ public struct FullscreenPlayerView: View {
 
     // MARK: - ZENTRIERTER VOLLBILD PLAYER (Big Picture Modus sowohl für Phone als auch für iPad)
     private func centeredPlayerLayout(geo: GeometryProxy, isTablet: Bool) -> some View {
-        let contentWidth = min(geo.size.width - (isTablet ? 96 : 44), isTablet ? 500 : 420)
+        let contentWidth = min(geo.size.width - (isTablet ? 96 : 56), isTablet ? 500 : 420)
         let artworkMax = isTablet ? min(contentWidth, geo.size.height * 0.44) : min(contentWidth, geo.size.height * 0.38)
 
         return VStack(spacing: min(16, geo.size.height * 0.022)) {
@@ -903,13 +907,20 @@ public struct FullscreenPlayerView: View {
                     .frame(height: 24)
                 }
 
-                // Links vergangen, Mitte Qualitäts-Chip ("High" / "Offline"), Rechts verbleibend (-M:SS)
-                HStack {
-                    Text(formatSeconds(activeProgress))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.60))
+                // Links vergangen, Mitte exakt zentrierter Qualitäts-Chip ("High" / "Offline"), Rechts verbleibend (-M:SS)
+                ZStack(alignment: .center) {
+                    HStack {
+                        Text(formatSeconds(activeProgress))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.60))
 
-                    Spacer()
+                        Spacer()
+
+                        let remaining = max(0, player.duration - activeProgress)
+                        Text("-" + formatSeconds(remaining))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.60))
+                    }
 
                     let isOfflineTrack = player.isPlayingOffline || (player.currentTrack.map { offlineManager.isDownloaded(trackId: $0.id) } ?? false)
                     if isOfflineTrack {
@@ -932,7 +943,9 @@ public struct FullscreenPlayerView: View {
                                 )
                         )
                     } else {
-                        Text("High")
+                        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
+                        let qualityTitle = (storedQuality == "low" || storedQuality == "normal") ? "Low" : "High"
+                        Text(qualityTitle)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(Color.white.opacity(0.85))
                             .padding(.horizontal, 10)
@@ -946,15 +959,10 @@ public struct FullscreenPlayerView: View {
                                     )
                             )
                     }
-
-                    Spacer()
-
-                    let remaining = max(0, player.duration - activeProgress)
-                    Text("-" + formatSeconds(remaining))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.60))
                 }
+                .frame(maxWidth: .infinity)
             }
+            .frame(width: fixedWidth)
         }
     }
 
@@ -1175,10 +1183,16 @@ public struct FullscreenPlayerView: View {
                     Image(systemName: "quote.bubble")
                         .font(.system(size: 38))
                         .foregroundColor(Color.white.opacity(0.30))
-                    Text("Kein synchronisierter Songtext verfügbar")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color.white.opacity(0.50))
+                    Text("Keine Lyrics für diesen Song gefunden")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.75))
+                        .multilineTextAlignment(.center)
+                    Text("Für diesen Titel liegen aktuell keine Songtexte vor.")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color.white.opacity(0.45))
+                        .multilineTextAlignment(.center)
                 }
+                .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
@@ -1330,9 +1344,9 @@ public struct FullscreenPlayerView: View {
                 }
                 .padding(.vertical, 16)
             } else if lyricsLines.isEmpty {
-                Text("Kein synchronisierter Songtext verfügbar")
+                Text("Keine Lyrics für diesen Song gefunden")
                     .font(.system(size: 13))
-                    .foregroundColor(Color.white.opacity(0.45))
+                    .foregroundColor(Color.white.opacity(0.50))
                     .padding(.vertical, 16)
             } else {
                 VStack(alignment: .leading, spacing: 14) {
@@ -1405,11 +1419,12 @@ public struct FullscreenPlayerView: View {
             serverURL: serverURL,
             token: token
         ) {
-            if OfflineDownloadManager.shared.isDownloaded(trackId: track.id) {
+            let parsed = parseLRC(rawLrc)
+            if !parsed.isEmpty && OfflineDownloadManager.shared.isDownloaded(trackId: track.id) {
                 OfflineDownloadManager.shared.saveLyrics(rawLrc, for: track.id)
             }
             await MainActor.run {
-                self.lyricsLines = parseLRC(rawLrc)
+                self.lyricsLines = parsed
             }
         } else if cachedLocalLrc == nil {
             await MainActor.run {
