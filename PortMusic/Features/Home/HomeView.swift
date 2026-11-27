@@ -9,6 +9,7 @@ public struct HomeView: View {
     @ObservedObject private var sessionManager = SessionManager.shared
 
     @State private var discovery: DiscoveryHomeResponse? = nil
+    @State private var cachedShelves: DeduplicatedResult? = nil
     @State private var userFavorites: [Track] = []
     @State private var userPlaylists: [DiscoveryPlaylist] = []
     @State private var recommendedTracks: [Track] = []
@@ -18,6 +19,10 @@ public struct HomeView: View {
     @State private var isLoading: Bool = true
     @State private var errorMessage: String? = nil
     @State private var showSettingsSheet: Bool = false
+
+    private var activeProfileUser: UserProfile {
+        sessionManager.currentUser ?? user
+    }
 
     public init(serverURL: String, user: UserProfile) {
         self.serverURL = serverURL
@@ -53,18 +58,18 @@ public struct HomeView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 32) {
-                    // Header: Begruessung + dezenter Avatar-Button rechts
-                    topGreetingHeader
-                        .padding(.top, 16)
-
                     mainContentBody
 
                     // Ausreichend Abstand am unteren Rand fuer MiniPlayer & TabBar
                     Spacer(minLength: 160)
                 }
+                .padding(.top, 8)
             }
             .refreshable {
                 await loadHomeData()
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                topGreetingHeader
             }
             .ignoresSafeArea(edges: .bottom)
         }
@@ -98,7 +103,7 @@ public struct HomeView: View {
             }
         }
         .sheet(isPresented: $showSettingsSheet) {
-            SettingsMainView(user: user, serverURL: serverURL) {
+            SettingsMainView(user: activeProfileUser, serverURL: serverURL) {
                 SessionManager.shared.logout()
             }
         }
@@ -114,11 +119,10 @@ public struct HomeView: View {
                 PortShelfSkeletonView()
                 PortShelfSkeletonView()
             }
-            .padding(.top, 16)
+            .padding(.top, 8)
         } else if errorMessage != nil, discovery == nil {
             offlineHomeSection(tracks: offlineManager.allDownloadedTracks())
-        } else if let data = discovery {
-            let deduplicated = deduplicateShelves(data: data, recentHistory: player.recentTracks)
+        } else if let data = discovery, let deduplicated = cachedShelves {
             discoveryShelvesContent(deduplicated: deduplicated, rawData: data)
         }
     }
@@ -201,32 +205,50 @@ public struct HomeView: View {
         }
     }
 
-    // MARK: - Header (Apple-Stil: Begrüßung + dezenter Avatar-Button rechts)
+    // MARK: - Header (Sticky Top-Bar & Liquid-Glass Avatar-Button passend zu Suche & Bibliothek)
     private var topGreetingHeader: some View {
-        HStack {
+        HStack(alignment: .center, spacing: 12) {
             Text(greeting)
                 .font(.system(size: 32, weight: .bold))
                 .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
 
             Spacer()
 
-            Button(action: {
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.impactOccurred()
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showSettingsSheet = true
-            }) {
+            } label: {
                 PortUserAvatarView(
-                    rawAvatar: user.avatar,
-                    username: user.username,
+                    rawAvatar: activeProfileUser.avatar,
+                    username: activeProfileUser.username,
                     serverURL: serverURL,
-                    size: 38
+                    size: 36
                 )
-                .overlay(
-                    Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.8)
-                )
+                .clipShape(Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+                .portLiquidGlassCircle(interactive: true)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Benutzerprofil")
         }
         .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black, location: 0.0),
+                    .init(color: Color.black.opacity(0.92), location: 0.78),
+                    .init(color: Color.black.opacity(0.0), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+        )
     }
 
     // MARK: - Offline Fallback Section
@@ -998,7 +1020,27 @@ public struct HomeView: View {
         let trendingArtists: [DiscoveryArtist]
     }
 
-    private func deduplicateShelves(data: DiscoveryHomeResponse, recentHistory: [Track]) -> DeduplicatedResult {
+    private func stableShuffled<T>(_ items: [T], salt: UInt64, key: (T) -> String) -> [T] {
+        guard items.count > 1 else { return items }
+        return items.enumerated()
+            .map { index, item -> (hash: UInt64, item: T) in
+                var hash: UInt64 = 14695981039346656037 &+ salt &+ (UInt64(index) &* 1099511628211)
+                for byte in key(item).utf8 {
+                    hash ^= UInt64(byte)
+                    hash &*= 1099511628211
+                }
+                hash ^= hash >> 30
+                hash &*= 0xbf58476d1ce4e5b9
+                hash ^= hash >> 27
+                hash &*= 0x94d049bb133111eb
+                hash ^= hash >> 31
+                return (hash, item)
+            }
+            .sorted { $0.hash < $1.hash }
+            .map(\.item)
+    }
+
+    private func deduplicateShelves(data: DiscoveryHomeResponse, recentHistory: [Track], salt: UInt64) -> DeduplicatedResult {
         var seenIds = Set<String>()
         var seenSignatures = Set<String>()
 
@@ -1060,7 +1102,7 @@ public struct HomeView: View {
         for pick in data.topPicks ?? [] {
             tryAddPick(pick)
         }
-        for rec in recommendedTracks.shuffled() {
+        for rec in stableShuffled(recommendedTracks, salt: salt, key: { $0.id }) {
             if let cov = rec.coverUrl, !cov.isEmpty {
                 tryAddPick(DiscoveryPosterPick(
                     id: rec.id,
@@ -1073,7 +1115,7 @@ public struct HomeView: View {
                 ))
             }
         }
-        for tr in (data.trendingEverywhere ?? []).shuffled() {
+        for tr in stableShuffled(data.trendingEverywhere ?? [], salt: salt, key: { $0.id }) {
             if let cov = tr.cover, !cov.isEmpty {
                 tryAddPick(DiscoveryPosterPick(
                     id: tr.id,
@@ -1086,7 +1128,7 @@ public struct HomeView: View {
                 ))
             }
         }
-        for fav in userFavorites.shuffled().prefix(2) {
+        for fav in stableShuffled(userFavorites, salt: salt, key: { $0.id }).prefix(2) {
             if let cov = fav.coverUrl, !cov.isEmpty {
                 tryAddPick(DiscoveryPosterPick(
                     id: fav.id,
@@ -1156,9 +1198,21 @@ public struct HomeView: View {
         // 5. Für dich empfohlen (Recommendations + tieferer Top100/Trending-Pool + leichte Favoriten-Abwechslung)
         var dedupForYou: [Track] = []
         var forYouArtists = Set<String>()
-        let deeperTop100 = (data.top100Global ?? []).dropFirst(16).map { $0.toTrack() }.shuffled()
-        let deeperTrending = (data.trendingEverywhere ?? []).dropFirst(8).map { $0.toTrack() }.shuffled()
-        let forYouCandidates: [Track] = recommendedTracks.shuffled() + deeperTop100 + deeperTrending + Array(userFavorites.shuffled().prefix(3))
+        let deeperTop100 = stableShuffled(
+            Array((data.top100Global ?? []).dropFirst(16).map { $0.toTrack() }),
+            salt: salt,
+            key: { $0.id }
+        )
+        let deeperTrending = stableShuffled(
+            Array((data.trendingEverywhere ?? []).dropFirst(8).map { $0.toTrack() }),
+            salt: salt,
+            key: { $0.id }
+        )
+        let forYouCandidates: [Track] =
+            stableShuffled(recommendedTracks, salt: salt, key: { $0.id })
+            + deeperTop100
+            + deeperTrending
+            + Array(stableShuffled(userFavorites, salt: salt, key: { $0.id }).prefix(3))
         for t in forYouCandidates {
             guard dedupForYou.count < 16 else { break }
             let aKey = primaryArtistKey(t.artist)
@@ -1334,6 +1388,7 @@ public struct HomeView: View {
         isLoading = true
         errorMessage = nil
 
+        let loadSalt = UInt64.random(in: 0...UInt64.max)
         let token = SessionManager.shared.currentToken
 
         async let discoveryFetch = MusicService.shared.fetchHomeDiscovery(serverURL: serverURL, token: token)
@@ -1359,13 +1414,25 @@ public struct HomeView: View {
         }
 
         if let response = discoveryRes {
+            let recentSnapshot = !historyRes.isEmpty ? historyRes : player.recentTracks
             await MainActor.run {
                 SessionManager.shared.setOfflineMode(false)
                 self.discovery = response
+                self.cachedShelves = self.deduplicateShelves(
+                    data: response,
+                    recentHistory: recentSnapshot,
+                    salt: loadSalt
+                )
                 self.isLoading = false
             }
             prefetchHomeCovers(from: response)
-            await enrichPersonalizedShelves(discovery: response, favorites: favsRes, token: token)
+            await enrichPersonalizedShelves(
+                discovery: response,
+                favorites: favsRes,
+                recentHistory: recentSnapshot,
+                salt: loadSalt,
+                token: token
+            )
         } else {
             await MainActor.run {
                 SessionManager.shared.reportSuspectedConnectionFailure()
@@ -1375,7 +1442,13 @@ public struct HomeView: View {
         }
     }
 
-    private func enrichPersonalizedShelves(discovery: DiscoveryHomeResponse, favorites: [Track], token: String?) async {
+    private func enrichPersonalizedShelves(
+        discovery: DiscoveryHomeResponse,
+        favorites: [Track],
+        recentHistory: [Track],
+        salt: UInt64,
+        token: String?
+    ) async {
         let pool = player.recentTracks + favorites
         var artistCounts: [String: (display: String, count: Int)] = [:]
         for t in pool {
@@ -1446,6 +1519,11 @@ public struct HomeView: View {
             self.recommendedTracks = recResults
             self.topArtistSpotlight = spotlightResult
             self.radarTracks = radarResults
+            self.cachedShelves = self.deduplicateShelves(
+                data: discovery,
+                recentHistory: recentHistory,
+                salt: salt
+            )
         }
     }
 
