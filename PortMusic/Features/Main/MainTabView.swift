@@ -112,9 +112,7 @@ public struct MainTabView: View {
 
     @State private var showFullscreenPlayer: Bool = false
     @State private var playerDismissProgress: CGFloat = 1.0
-    @State private var showMenuDrawer: Bool = false
     @State private var showUserProfileSheet: Bool = false
-    @State private var showSettingsSheet: Bool = false
     @State private var homePath: [AppRoute] = []
     @State private var libraryPath: [AppRoute] = []
     @State private var radioPath: [AppRoute] = []
@@ -353,31 +351,6 @@ public struct MainTabView: View {
                 )
                 .zIndex(999)
             }
-
-            // ── Menü Drawer (Slide-In Sheet von links) ──
-            PortMenuDrawerView(
-                user: session.currentUser ?? user,
-                serverURL: serverURL,
-                isPresented: $showMenuDrawer,
-                onNavigateHome: {
-                    selectLiquidTab(.home)
-                    showMenuDrawer = false
-                },
-                onOpenProfile: {
-                    showUserProfileSheet = true
-                    showMenuDrawer = false
-                },
-                onOpenSettings: {
-                    showSettingsSheet = true
-                    showMenuDrawer = false
-                },
-                onLogout: onLogout
-            )
-            .ignoresSafeArea()
-            .zIndex(998)
-        }
-        .sheet(isPresented: $showSettingsSheet) {
-            SettingsMainView(user: session.currentUser ?? user, serverURL: serverURL, onLogout: onLogout)
         }
         .sheet(isPresented: $showUserProfileSheet) {
             UserPageView(user: session.currentUser ?? user, serverURL: serverURL)
@@ -480,7 +453,6 @@ public struct MainTabView: View {
                 targetItem = .search
             }
             selectedTab = targetItem
-            showMenuDrawer = false
         }
     }
 
