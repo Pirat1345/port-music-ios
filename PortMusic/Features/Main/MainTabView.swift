@@ -522,6 +522,8 @@ public struct MainTabView: View {
             LikedSongsView(serverURL: serverURL)
         case .libraryCategory(let category):
             LibraryCategoryDetailView(category: category, serverURL: serverURL)
+        case .jam:
+            JamView(serverURL: serverURL)
         case .playlistFolder(let folderId, let title, let parentTrail):
             LibraryCategoryDetailView(
                 category: "playlists",

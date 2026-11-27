@@ -9,6 +9,7 @@ public struct LibraryView: View {
     @ObservedObject private var favoritesManager = FavoritesManager.shared
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @ObservedObject private var sessionManager = SessionManager.shared
+    @ObservedObject private var jamManager = JamManager.shared
 
     @State private var favorites: [Track] = []
     @State private var playlists: [DiscoveryPlaylist] = []
@@ -46,6 +47,7 @@ public struct LibraryView: View {
             LibraryCategoryConfig(id: "albums", label: "Alben", iconName: "square.stack.fill", visible: true),
             LibraryCategoryConfig(id: "podcasts", label: "Podcasts", iconName: "mic.fill", visible: true),
             LibraryCategoryConfig(id: "radio", label: "Radio", iconName: "dot.radiowaves.left.and.right", visible: true),
+            LibraryCategoryConfig(id: "jam", label: "Jam", iconName: "person.2.wave.2.fill", visible: true),
             LibraryCategoryConfig(id: "songs", label: "Songs", iconName: "music.note", visible: true),
             LibraryCategoryConfig(id: "downloaded", label: "Heruntergeladen", iconName: "arrow.down.circle.fill", visible: true),
             LibraryCategoryConfig(id: "local-files", label: "Lokale Dateien", iconName: "doc.badge.gearshape.fill", visible: true),
@@ -70,6 +72,8 @@ public struct LibraryView: View {
         for def in defaults where !result.contains(where: { $0.id == def.id }) {
             if def.id == "podcasts", let albumsIdx = result.firstIndex(where: { $0.id == "albums" }) {
                 result.insert(def, at: albumsIdx + 1)
+            } else if def.id == "jam", let radioIdx = result.firstIndex(where: { $0.id == "radio" }) {
+                result.insert(def, at: radioIdx + 1)
             } else {
                 result.append(def)
             }
@@ -604,7 +608,7 @@ public struct LibraryView: View {
 
         return VStack(spacing: 0) {
             ForEach(visibleCats) { cat in
-                NavigationLink(value: AppRoute.libraryCategory(category: cat.id)) {
+                NavigationLink(value: cat.id == "jam" ? AppRoute.jam : AppRoute.libraryCategory(category: cat.id)) {
                     HStack(spacing: 16) {
                         Image(systemName: cat.iconName)
                             .font(.system(size: 19, weight: .medium))
@@ -621,6 +625,10 @@ public struct LibraryView: View {
                             Text(String(offlineManager.downloadedTrackIds.count))
                                 .font(.system(size: 14))
                                 .foregroundColor(Color.white.opacity(0.45))
+                        } else if cat.id == "jam", jamManager.isInJam {
+                            Text("Aktiv")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(PortColors.successGreen)
                         }
 
                         Image(systemName: "chevron.right")

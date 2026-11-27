@@ -243,9 +243,64 @@ public final class AudioPlayerManager: ObservableObject {
         return nil
     }
 
+    // MARK: - Jam Integration Bridge
+    public func pauseAndPrepareForJam() {
+        avPlayer?.pause()
+        avPlayer?.replaceCurrentItem(with: nil)
+        cleanupCurrentItem()
+        self.isPlaying = false
+        self.isBuffering = false
+        self.isPlayingOffline = false
+    }
+
+    public func applyJamExternalPlaybackState(
+        track: Track?,
+        isPlaying: Bool,
+        currentTime: Double,
+        duration: Double,
+        queue: [Track]
+    ) {
+        let trackChanged = (self.currentTrack?.id != track?.id)
+        if let tr = track {
+            self.currentTrack = tr
+        }
+        if !queue.isEmpty {
+            self.queue = queue
+            if let cur = track, let idx = queue.firstIndex(where: { $0.id == cur.id }) {
+                self.queueIndex = idx
+            }
+        }
+        self.isPlaying = isPlaying
+        self.isBuffering = false
+        self.isPlayingOffline = false
+        self.currentTime = max(0.0, currentTime)
+        if duration > 0 {
+            self.duration = duration
+        }
+        if trackChanged, let tr = track {
+            loadArtwork(from: tr.coverUrl)
+        } else {
+            updateNowPlayingInfo()
+        }
+    }
+
+    public func applyJamExited() {
+        self.isPlaying = false
+        self.isBuffering = false
+        updateNowPlayingInfo()
+    }
+
     public func play(track: Track, from contextQueue: [Track] = [], serverURL: String? = nil, startAt: Double? = nil) {
         if let sUrl = serverURL, !sUrl.isEmpty {
             self.currentServerURL = sUrl
+        }
+        if JamManager.shared.isInJam {
+            if track.isLive {
+                JamManager.shared.leaveJam()
+            } else {
+                JamManager.shared.playTrackInJam(track, queue: contextQueue)
+                return
+            }
         }
         let effectiveServerURL = (serverURL != nil && !serverURL!.isEmpty) ? serverURL! : (self.currentServerURL ?? SessionManager.shared.serverURL ?? "")
         let token = SessionManager.shared.currentToken
@@ -444,6 +499,10 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func togglePlayPause() {
+        if JamManager.shared.isInJam {
+            JamManager.shared.togglePlayPause()
+            return
+        }
         if isPlaying {
             pause()
         } else {
@@ -452,6 +511,12 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func resume() {
+        if JamManager.shared.isInJam {
+            if !JamManager.shared.isPlaying {
+                JamManager.shared.togglePlayPause()
+            }
+            return
+        }
         guard let player = avPlayer else {
             if let current = currentTrack {
                 let startPos = self.currentTime
@@ -469,6 +534,12 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func pause() {
+        if JamManager.shared.isInJam {
+            if JamManager.shared.isPlaying {
+                JamManager.shared.togglePlayPause()
+            }
+            return
+        }
         guard let player = avPlayer else { return }
         self.isPlaying = false
         player.pause()
@@ -485,6 +556,10 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func next(serverURL: String? = nil) {
+        if JamManager.shared.isInJam {
+            JamManager.shared.nextTrack()
+            return
+        }
         let activeURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
         if queue.isEmpty {
             if let track = currentTrack {
@@ -658,6 +733,10 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func previous(serverURL: String? = nil) {
+        if JamManager.shared.isInJam {
+            JamManager.shared.previousTrack()
+            return
+        }
         let activeURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
         let now = Date()
         let isQuickConsecutiveTap = (lastPreviousTapTime != nil && now.timeIntervalSince(lastPreviousTapTime!) < 2.0)
@@ -746,6 +825,10 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func seek(to targetSeconds: Double) {
+        if JamManager.shared.isInJam {
+            JamManager.shared.seek(to: targetSeconds)
+            return
+        }
         let maxDur = duration > 1.0 ? duration : 3600.0
         let clamped = max(0.0, min(targetSeconds, maxDur))
         self.currentTime = clamped
@@ -840,6 +923,14 @@ public final class AudioPlayerManager: ObservableObject {
             targetQueue.shuffle()
         }
         let first = targetQueue[0]
+        if JamManager.shared.isInJam {
+            if first.isLive {
+                JamManager.shared.leaveJam()
+            } else {
+                JamManager.shared.playTrackInJam(first, queue: targetQueue)
+                return
+            }
+        }
         play(track: first, from: targetQueue, serverURL: activeURL)
     }
 
