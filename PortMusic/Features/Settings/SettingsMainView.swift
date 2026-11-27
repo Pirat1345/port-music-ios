@@ -117,45 +117,50 @@ public struct SettingsMainView: View {
                     .listRowBackground(Color(white: 0.11))
                 }
 
-                // 1b. Netzwerk & 100%-Offline-Switch
-                let showOfflineSwitch = matches("offline", "flugzeug", "mobilfunk", "mobile daten", "datensparmodus", "datenvolumen", "netzwerk", "internet")
-                if showOfflineSwitch {
+                // 1b. Netzwerk & Datenvolumen
+                let showOfflineSwitch = matches("offline", "flugzeug", "0 bytes", "netzwerk", "internet")
+                let showCellularQuality = matches("mobile daten", "mobilfunk", "lte", "5g", "datensparmodus", "datenvolumen", "qualität", "streaming", "high", "low", "wlan")
+                if showOfflineSwitch || showCellularQuality {
                     Section(
-                        header: Text("Netzwerk & Datenvolumen"),
+                        header: Text("Netzwerk & Offline"),
                         footer: Text(networkPolicyFooterText)
                     ) {
-                        Toggle(isOn: Binding(
-                            get: { sessionManager.isManualOfflineMode },
-                            set: { sessionManager.setManualOfflineMode($0) }
-                        )) {
-                            HStack(spacing: 12) {
-                                appleIcon(
-                                    sessionManager.isManualOfflineMode ? "wifi.slash" : "antenna.radiowaves.left.and.right.circle.fill",
-                                    color: sessionManager.isManualOfflineMode ? Color(hex: "#ff453a") : Color(hex: "#30d158")
-                                )
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Offline-Modus (0 Bytes)")
-                                        .foregroundColor(.white)
-                                    Text(sessionManager.isManualOfflineMode ? "Alle externen Aufrufe hart blockiert" : "Nur lokale Titel oder regulär verbinden")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
+                        if showOfflineSwitch {
+                            Toggle(isOn: Binding(
+                                get: { sessionManager.isManualOfflineMode },
+                                set: { sessionManager.setManualOfflineMode($0) }
+                            )) {
+                                HStack(spacing: 12) {
+                                    appleIcon(
+                                        sessionManager.isManualOfflineMode ? "wifi.slash" : "antenna.radiowaves.left.and.right.circle.fill",
+                                        color: sessionManager.isManualOfflineMode ? Color(hex: "#ff453a") : Color(hex: "#30d158")
+                                    )
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Offline-Modus (0 Bytes)")
+                                            .foregroundColor(.white)
+                                        Text(sessionManager.isManualOfflineMode ? "Alle externen Aufrufe hart blockiert" : "Nur lokale Titel oder regulär verbinden")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
                             }
+                            .tint(Color(hex: "#ff9f0a"))
                         }
-                        .tint(Color(hex: "#ff9f0a"))
 
-                        NavigationLink {
-                            SettingsPlaybackView()
-                        } label: {
-                            HStack(spacing: 12) {
-                                appleIcon("cellularbars", color: Color(hex: "#0a84ff"))
-                                Text("Mobile Daten & Qualität")
-                                    .foregroundColor(.white)
-                                Spacer()
-                                Text(sessionManager.cellularStreamingMode.shortLabel)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.secondary)
+                        if showCellularQuality {
+                            NavigationLink {
+                                SettingsNetworkDataView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    appleIcon("cellularbars", color: Color(hex: "#0a84ff"))
+                                    Text("Mobile Daten & Qualität")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Text(sessionManager.cellularStreamingMode.shortLabel)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
                     }
@@ -225,7 +230,7 @@ public struct SettingsMainView: View {
                 }
 
                 // 3. Audio & Wiedergabe
-                let showPlayback = matches("wiedergabe", "autoplay", "qualität", "audio", "überspringen")
+                let showPlayback = matches("wiedergabe", "autoplay", "audio", "überspringen", "defekte")
                 let showEqualizer = matches("equalizer", "klang", "normalisierung", "lautstärke")
 
                 if showPlayback || showEqualizer {
@@ -236,7 +241,7 @@ public struct SettingsMainView: View {
                             } label: {
                                 HStack(spacing: 12) {
                                     appleIcon("waveform", color: Color(hex: "#ff375f"))
-                                    Text("Wiedergabe & Qualität")
+                                    Text("Wiedergabe")
                                         .foregroundColor(.white)
                                 }
                             }

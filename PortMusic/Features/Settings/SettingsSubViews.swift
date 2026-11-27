@@ -216,15 +216,9 @@ public struct SettingsDownloadsView: View {
     }
 }
 
-// MARK: - 2. Wiedergabe, Mobile Daten & Qualität (Apple insetGrouped + Spotify-Parität)
-public struct SettingsPlaybackView: View {
+// MARK: - 2a. Mobile Daten & Streaming-Qualität (Dedizierte Unterseite ohne Duplikate)
+public struct SettingsNetworkDataView: View {
     @ObservedObject private var sessionManager = SessionManager.shared
-    @AppStorage("playback_autoplay_enabled") private var autoplayEnabled: Bool = true
-    @AppStorage("playback_skip_timeout") private var skipTimeout: Int = 10
-
-    private let skipOptions: [(value: Int, label: String)] = [
-        (0, "Aus"), (3, "3 Sekunden"), (5, "5 Sekunden"), (7, "7 Sekunden"), (9, "9 Sekunden"), (10, "10 Sekunden"), (15, "15 Sekunden")
-    ]
 
     public init() {}
 
@@ -234,36 +228,6 @@ public struct SettingsPlaybackView: View {
 
     public var body: some View {
         List {
-            Section(
-                header: Text("Offline-Schutz"),
-                footer: Text(sessionManager.isManualOfflineMode
-                             ? "100 % Offline aktiv: Keine externen Server- oder CDN-Anfragen (0 Bytes Datenvolumen)."
-                             : "Kappt bei Aktivierung sofort laufende Online-Streams und blockiert jeden externen Aufruf.")
-            ) {
-                Toggle("Offline-Modus (100 % Offline)", isOn: Binding(
-                    get: { sessionManager.isManualOfflineMode },
-                    set: { sessionManager.setManualOfflineMode($0) }
-                ))
-                .tint(Color(hex: "#ff9f0a"))
-            }
-            .listRowBackground(Color(white: 0.11))
-
-            Section(
-                header: Text("Wiedergabeverhalten"),
-                footer: Text("Autoplay spielt passende Empfehlungen weiter, sobald deine aktuelle Warteschlange endet.")
-            ) {
-                Toggle("Autoplay", isOn: $autoplayEnabled)
-                    .tint(Color(hex: "#30d158"))
-
-                Picker("Defekte Songs überspringen", selection: $skipTimeout) {
-                    ForEach(skipOptions, id: \.value) { opt in
-                        Text(opt.label).tag(opt.value)
-                    }
-                }
-                .foregroundColor(.white)
-            }
-            .listRowBackground(Color(white: 0.11))
-
             Section(
                 header: Text("Bei Mobilen Daten (LTE / 5G)"),
                 footer: Text(cellularModeFooter)
@@ -288,7 +252,7 @@ public struct SettingsPlaybackView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
-        .navigationTitle("Wiedergabe & Daten")
+        .navigationTitle("Mobile Daten & Qualität")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -349,6 +313,43 @@ public struct SettingsPlaybackView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - 2b. Wiedergabe (Reines Wiedergabeverhalten ohne doppelte Netzwerk- oder Qualitätsoptionen)
+public struct SettingsPlaybackView: View {
+    @AppStorage("playback_autoplay_enabled") private var autoplayEnabled: Bool = true
+    @AppStorage("playback_skip_timeout") private var skipTimeout: Int = 10
+
+    private let skipOptions: [(value: Int, label: String)] = [
+        (0, "Aus"), (3, "3 Sekunden"), (5, "5 Sekunden"), (7, "7 Sekunden"), (9, "9 Sekunden"), (10, "10 Sekunden"), (15, "15 Sekunden")
+    ]
+
+    public init() {}
+
+    public var body: some View {
+        List {
+            Section(
+                header: Text("Wiedergabeverhalten"),
+                footer: Text("Autoplay spielt passende Empfehlungen weiter, sobald deine aktuelle Warteschlange endet.")
+            ) {
+                Toggle("Autoplay", isOn: $autoplayEnabled)
+                    .tint(Color(hex: "#30d158"))
+
+                Picker("Defekte Songs überspringen", selection: $skipTimeout) {
+                    ForEach(skipOptions, id: \.value) { opt in
+                        Text(opt.label).tag(opt.value)
+                    }
+                }
+                .foregroundColor(.white)
+            }
+            .listRowBackground(Color(white: 0.11))
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.black.ignoresSafeArea())
+        .navigationTitle("Wiedergabe")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -584,9 +585,11 @@ public struct SettingsDebugView: View {
                 }
                 .padding(.vertical, 3)
 
-                metricRow("App-Modus", sessionManager.isOfflineMode ? "Offline-Modus aktiv" : "Online (Streaming bereit)")
+                metricRow("App-Modus", sessionManager.isManualOfflineMode ? "Manuell Offline (0 Bytes)" : (sessionManager.isOfflineMode ? "Offline-Modus aktiv" : "Online (Streaming bereit)"))
+                metricRow("Mobilfunk-Regel", sessionManager.cellularStreamingMode.title)
                 metricRow("Mobilfunk / Begrenzt", sessionManager.isExpensiveConnection ? "Ja" : "Nein")
-                metricRow("Datensparmodus", sessionManager.isConstrainedConnection ? "Aktiv" : "Aus")
+                metricRow("iOS-Datensparmodus", sessionManager.isConstrainedConnection ? "Aktiv" : "Aus")
+                metricRow("Effektive Qualität", sessionManager.isDataSaverActive ? "Low (Sparmodus)" : (sessionManager.effectiveAudioQuality == "low" ? "Low" : "High"))
                 metricRow("Server-URL", (sessionManager.serverURL ?? serverURL).isEmpty ? "-" : (sessionManager.serverURL ?? serverURL))
 
                 if let check = serverCheckResult {
