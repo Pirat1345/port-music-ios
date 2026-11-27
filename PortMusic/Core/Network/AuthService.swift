@@ -210,6 +210,14 @@ public final class AuthService {
         return "Ungültige Anmeldedaten. Bitte überprüfen Sie Benutzername und Passwort."
     }
 
+    private func makeEphemeralSession(timeout: TimeInterval = 15.0) -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = timeout
+        config.timeoutIntervalForResource = timeout
+        PortNetworkFirewall.applyPolicy(to: config)
+        return URLSession(configuration: config)
+    }
+
     // MARK: - 1. Sitzungsprüfung (GET /api/auth/check)
 
     public func checkAuth(serverURL: String, token: String, timeout: TimeInterval = 4.5) async throws -> UserProfile {
@@ -219,10 +227,7 @@ public final class AuthService {
         }
 
         let request = makeRequest(url: url, method: "GET", token: token)
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout
-        let session = URLSession(configuration: config)
+        let session = makeEphemeralSession(timeout: timeout)
 
         let data: Data
         let response: URLResponse
@@ -316,9 +321,7 @@ public final class AuthService {
         }
 
         let request = makeRequest(url: url, method: "POST", bodyData: httpBody)
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 12.0
-        let session = URLSession(configuration: config)
+        let session = makeEphemeralSession(timeout: 12.0)
 
         let data: Data
         let response: URLResponse
@@ -461,9 +464,7 @@ public final class AuthService {
         }
 
         let request = makeRequest(url: url, method: "POST", bodyData: bodyData)
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 10.0
-        let session = URLSession(configuration: config)
+        let session = makeEphemeralSession(timeout: 10.0)
 
         let data: Data
         let response: URLResponse
@@ -521,7 +522,7 @@ public final class AuthService {
         guard let url = URL(string: "\(base)/api/auth/captcha/status") else { return false }
 
         let request = makeRequest(url: url, method: "GET")
-        let session = URLSession(configuration: .ephemeral)
+        let session = makeEphemeralSession()
         do {
             let (data, response) = try await session.data(for: request)
             if let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) {
@@ -550,7 +551,7 @@ public final class AuthService {
         let bodyData = (try? JSONEncoder().encode(reqObj)) ?? "{}".data(using: .utf8)
 
         let request = makeRequest(url: url, method: "POST", bodyData: bodyData)
-        let session = URLSession(configuration: .ephemeral)
+        let session = makeEphemeralSession()
         do {
             let (data, response) = try await session.data(for: request)
             if let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) {
@@ -593,7 +594,7 @@ public final class AuthService {
         }
 
         let request = makeRequest(url: url, method: "POST", bodyData: httpBody)
-        let session = URLSession(configuration: .ephemeral)
+        let session = makeEphemeralSession()
         do {
             let (data, response) = try await session.data(for: request)
             if let httpRes = response as? HTTPURLResponse {

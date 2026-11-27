@@ -189,7 +189,8 @@ public final class JamAudioEngine {
         if let localOffline = OfflineDownloadManager.shared.localAudioFileURL(for: trackId) {
             item = AVPlayerItem(asset: AVURLAsset(url: localOffline))
         } else {
-            guard let resolvedURL = buildIOSCompatibleStreamURL(
+            guard PortNetworkFirewall.shared.allowsOnlineRequests,
+                  let resolvedURL = buildIOSCompatibleStreamURL(
                 trackId: trackId,
                 rawStreamURL: streamURLString,
                 serverURL: serverURL,
@@ -202,16 +203,18 @@ public final class JamAudioEngine {
             }
             // User-Agent niemals manuell in AVURLAssetHTTPHeaderFieldsKey überschreiben:
             // CFNetwork nutzt automatisch nativen AppleCoreMedia-Agent, den der Backend-Stream benötigt.
+            var assetOptions: [String: Any] = [
+                AVURLAssetAllowsCellularAccessKey: PortNetworkFirewall.shared.allowsCellularTraffic
+            ]
             if resolvedURL.path.hasPrefix("/api/files/audio/"),
                let tok = token, !tok.isEmpty {
                 let headers: [String: String] = [
                     "Authorization": "Bearer \(tok)",
                     "x-session-token": tok
                 ]
-                item = AVPlayerItem(asset: AVURLAsset(url: resolvedURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers]))
-            } else {
-                item = AVPlayerItem(url: resolvedURL)
+                assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
             }
+            item = AVPlayerItem(asset: AVURLAsset(url: resolvedURL, options: assetOptions))
         }
 
         item.audioTimePitchAlgorithm = .timeDomain
@@ -860,13 +863,8 @@ public final class JamAudioEngine {
 
         guard var comps = URLComponents(string: resolvedString) else { return nil }
         if comps.path.contains("/api/stream/") {
-            let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
-            let wantsLow = forceLowQuality
-                || storedQuality == "low"
-                || storedQuality == "normal"
-                || SessionManager.shared.isExpensiveConnection
-                || SessionManager.shared.isConstrainedConnection
-            if wantsLow {
+            let prefersLow = forceLowQuality || PortNetworkFirewall.shared.effectiveAudioQuality == "low"
+            if prefersLow {
                 var items = comps.queryItems ?? []
                 items.removeAll { $0.name.lowercased() == "quality" }
                 items.append(URLQueryItem(name: "quality", value: "low"))

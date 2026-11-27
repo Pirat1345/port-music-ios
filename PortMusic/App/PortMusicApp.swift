@@ -6,9 +6,15 @@ struct PortMusicApp: App {
 
     public init() {
         UserDefaults.standard.register(defaults: [
-            "com.apple.SwiftUI.IgnoreSolariumLinkedOnCheck": true
+            "com.apple.SwiftUI.IgnoreSolariumLinkedOnCheck": true,
+            PortNetworkFirewall.manualOfflineKey: false,
+            PortNetworkFirewall.cellularModeKey: CellularStreamingMode.dataSaver.rawValue,
+            PortNetworkFirewall.wifiOnlyDownloadsKey: true,
+            "playback_autoplay_enabled": true,
+            "ui_haptics_enabled": true
         ])
         UserDefaults.standard.set(true, forKey: "com.apple.SwiftUI.IgnoreSolariumLinkedOnCheck")
+        PortNetworkFirewall.install()
         UIApplication.shared.isIdleTimerDisabled = UserDefaults.standard.bool(forKey: "ui_keep_screen_awake")
         UITextField.appearance().tintColor = .white
         UITextView.appearance().tintColor = .white

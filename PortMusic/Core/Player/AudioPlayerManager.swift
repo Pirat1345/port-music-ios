@@ -264,6 +264,30 @@ public final class AudioPlayerManager: ObservableObject {
         return nil
     }
 
+    // MARK: - Hard Offline Cut (Sofortiger Abbruch laufender Online-Streams)
+    public func enforceHardOfflineCutIfNeeded() {
+        guard !SessionManager.shared.allowsOnlineRequests else { return }
+        skipTimerWorkItem?.cancel()
+        skipTimerWorkItem = nil
+        isExtendingAutoplay = false
+
+        if let current = currentTrack,
+           !current.isLive,
+           OfflineDownloadManager.shared.localAudioFileURL(for: current.id) != nil {
+            self.isPlayingOffline = true
+            return
+        }
+
+        avPlayer?.pause()
+        avPlayer?.currentItem?.asset.cancelLoading()
+        avPlayer?.replaceCurrentItem(with: nil)
+        cleanupCurrentItem()
+        self.isPlaying = false
+        self.isBuffering = false
+        self.isPlayingOffline = false
+        updateNowPlayingInfo()
+    }
+
     // MARK: - Jam Integration Bridge
     public func pauseAndPrepareForJam() {
         avPlayer?.pause()
@@ -426,7 +450,7 @@ public final class AudioPlayerManager: ObservableObject {
         self.isBuffering = true
 
         // Background-Metadaten-Anreicherung falls Dauer unbekannt (0s) und online (niemals fuer Live-Radio)
-        if !track.isLive && self.duration <= 0 && !SessionManager.shared.isOfflineMode {
+        if !track.isLive && self.duration <= 0 && SessionManager.shared.allowsOnlineRequests {
             let searchQ = "\(track.title) \(track.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
             if !searchQ.isEmpty {
                 let trackId = track.id
@@ -459,7 +483,7 @@ public final class AudioPlayerManager: ObservableObject {
         persistRecentTracks()
 
         // Background Playback Reporting to server (nur wenn online)
-        if !SessionManager.shared.isOfflineMode {
+        if SessionManager.shared.allowsOnlineRequests {
             Task {
                 await MusicService.shared.reportPlayback(track: track, serverURL: effectiveServerURL, token: token)
             }
@@ -470,7 +494,7 @@ public final class AudioPlayerManager: ObservableObject {
         if let localURL = OfflineDownloadManager.shared.localAudioFileURL(for: track.id) {
             playbackURL = localURL
             self.isPlayingOffline = true
-        } else if SessionManager.shared.isOfflineMode {
+        } else if !SessionManager.shared.allowsOnlineRequests {
             self.isPlayingOffline = false
             self.isBuffering = false
             self.isPlaying = false
@@ -486,7 +510,16 @@ public final class AudioPlayerManager: ObservableObject {
 
         cleanupCurrentItem()
 
-        let playerItem = AVPlayerItem(url: playbackURL)
+        let playerItem: AVPlayerItem
+        if isPlayingOffline {
+            playerItem = AVPlayerItem(url: playbackURL)
+        } else {
+            let asset = AVURLAsset(
+                url: playbackURL,
+                options: [AVURLAssetAllowsCellularAccessKey: PortNetworkFirewall.shared.allowsCellularTraffic]
+            )
+            playerItem = AVPlayerItem(asset: asset)
+        }
         playerItem.preferredForwardBufferDuration = 6.0
         observePlayerItem(playerItem)
 
@@ -531,7 +564,7 @@ public final class AudioPlayerManager: ObservableObject {
         let effectiveURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
         guard !effectiveURL.isEmpty,
               !seedTrack.isLive,
-              !SessionManager.shared.isOfflineMode else {
+              SessionManager.shared.allowsOnlineRequests else {
             return
         }
 
@@ -682,8 +715,8 @@ public final class AudioPlayerManager: ObservableObject {
             return
         }
 
-        if SessionManager.shared.isOfflineMode {
-            if SessionManager.shared.isPathSatisfied {
+        if SessionManager.shared.isOfflineMode || !SessionManager.shared.allowsOnlineRequests {
+            if SessionManager.shared.allowsOnlineRequests && SessionManager.shared.isPathSatisfied {
                 SessionManager.shared.reportSuspectedConnectionFailure()
             }
             let downloader = OfflineDownloadManager.shared
@@ -704,9 +737,9 @@ public final class AudioPlayerManager: ObservableObject {
                 return
             }
 
-            // Weitere lokale Downloads nur im echten Offline-Modus anhängen, wenn Autoplay aktiv ist
+            // Weitere lokale Downloads nur im Offline-Modus anhängen, wenn Autoplay aktiv ist
             let autoplayEnabled = UserDefaults.standard.object(forKey: "playback_autoplay_enabled") as? Bool ?? true
-            if autoplayEnabled && !SessionManager.shared.isPathSatisfied {
+            if autoplayEnabled && !SessionManager.shared.allowsOnlineRequests {
                 let offlineList = downloader.allDownloadedTracks()
                 let existingIds = Set(queue.map { $0.id })
                 let extraOffline = offlineList.filter { !existingIds.contains($0.id) }
@@ -768,8 +801,8 @@ public final class AudioPlayerManager: ObservableObject {
         Task { @MainActor in
             defer { self.isExtendingAutoplay = false }
 
-            if SessionManager.shared.isOfflineMode {
-                guard !SessionManager.shared.isPathSatisfied else {
+            if SessionManager.shared.isOfflineMode || !SessionManager.shared.allowsOnlineRequests {
+                if SessionManager.shared.allowsOnlineRequests && SessionManager.shared.isPathSatisfied {
                     SessionManager.shared.reportSuspectedConnectionFailure()
                     self.isPlaying = false
                     self.isBuffering = false
@@ -1002,7 +1035,9 @@ public final class AudioPlayerManager: ObservableObject {
         }
         let insertIndex = min(queueIndex + 1, queue.count)
         queue.insert(track, at: insertIndex)
-        if let activeURL = currentServerURL ?? SessionManager.shared.serverURL {
+        if let activeURL = currentServerURL ?? SessionManager.shared.serverURL,
+           SessionManager.shared.allowsOnlineRequests,
+           !SessionManager.shared.isDataSaverActive {
             MusicService.shared.prefetchStream(for: track, serverURL: activeURL)
         }
         if JamManager.shared.isInJam {
@@ -1274,7 +1309,9 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     private func prefetchUpcomingQueueTracks(serverURL: String) {
-        guard !serverURL.isEmpty, !SessionManager.shared.isOfflineMode else { return }
+        guard !serverURL.isEmpty,
+              SessionManager.shared.allowsOnlineRequests,
+              !SessionManager.shared.isDataSaverActive else { return }
         let startIdx = max(0, queueIndex + 1)
         guard startIdx < queue.count else { return }
         let upperBound = min(queue.count, startIdx + 2)

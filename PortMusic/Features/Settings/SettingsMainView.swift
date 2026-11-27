@@ -55,6 +55,26 @@ public struct SettingsMainView: View {
         }
     }
 
+    private var networkPolicyFooterText: String {
+        if sessionManager.isManualOfflineMode {
+            return "100 % Offline aktiv: Laufende Streams und Downloads wurden abgebrochen, jede externe Netzwerkanfrage ist gesperrt."
+        }
+        if sessionManager.networkInterface == .cellular {
+            switch sessionManager.cellularStreamingMode {
+            case .offlineOnly:
+                return "Aktuell über Mobile Daten: Mobilfunk-Schutz aktiv (nur Offline-Songs). Im WLAN automatisch wieder online."
+            case .dataSaver:
+                return "Aktuell über Mobile Daten: Datensparmodus aktiv (Low ~48–64 kbps, kein Hintergrund-Prefetch)."
+            case .unlimited:
+                return "Aktuell über Mobile Daten: Ungedrosselt (wie im WLAN)."
+            }
+        }
+        if sessionManager.networkInterface == .wifi || sessionManager.networkInterface == .wiredEthernet {
+            return "Verbunden über \(sessionManager.networkInterface.rawValue) – volle Server-Verbindung aktiv."
+        }
+        return "Offline-Switch kappt jederzeit sofort sämtliche externen Verbindungen."
+    }
+
     private func matches(_ text: String...) -> Bool {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return true }
@@ -92,6 +112,51 @@ public struct SettingsMainView: View {
                                 }
                             }
                             .padding(.vertical, 4)
+                        }
+                    }
+                    .listRowBackground(Color(white: 0.11))
+                }
+
+                // 1b. Netzwerk & 100%-Offline-Switch
+                let showOfflineSwitch = matches("offline", "flugzeug", "mobilfunk", "mobile daten", "datensparmodus", "datenvolumen", "netzwerk", "internet")
+                if showOfflineSwitch {
+                    Section(
+                        header: Text("Netzwerk & Datenvolumen"),
+                        footer: Text(networkPolicyFooterText)
+                    ) {
+                        Toggle(isOn: Binding(
+                            get: { sessionManager.isManualOfflineMode },
+                            set: { sessionManager.setManualOfflineMode($0) }
+                        )) {
+                            HStack(spacing: 12) {
+                                appleIcon(
+                                    sessionManager.isManualOfflineMode ? "wifi.slash" : "antenna.radiowaves.left.and.right.circle.fill",
+                                    color: sessionManager.isManualOfflineMode ? Color(hex: "#ff453a") : Color(hex: "#30d158")
+                                )
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Offline-Modus (0 Bytes)")
+                                        .foregroundColor(.white)
+                                    Text(sessionManager.isManualOfflineMode ? "Alle externen Aufrufe hart blockiert" : "Nur lokale Titel oder regulär verbinden")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        .tint(Color(hex: "#ff9f0a"))
+
+                        NavigationLink {
+                            SettingsPlaybackView()
+                        } label: {
+                            HStack(spacing: 12) {
+                                appleIcon("cellularbars", color: Color(hex: "#0a84ff"))
+                                Text("Mobile Daten & Qualität")
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text(sessionManager.cellularStreamingMode.shortLabel)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                     .listRowBackground(Color(white: 0.11))

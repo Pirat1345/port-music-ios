@@ -74,6 +74,10 @@ public struct HomeView: View {
             .ignoresSafeArea(edges: .bottom)
         }
         .task {
+            guard sessionManager.allowsOnlineRequests else {
+                isLoading = false
+                return
+            }
             if discovery == nil {
                 await loadHomeData()
             } else {
@@ -86,9 +90,11 @@ public struct HomeView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task {
+                guard sessionManager.allowsOnlineRequests else { return }
                 if sessionManager.isOfflineMode {
                     _ = await sessionManager.retryConnection()
                 }
+                guard sessionManager.allowsOnlineRequests else { return }
                 let token = SessionManager.shared.currentToken
                 await FavoritesManager.shared.syncPendingWithServer(serverURL: serverURL, token: token)
                 let historyRes = await MusicService.shared.fetchStatsAndHistory(serverURL: serverURL, token: token)
@@ -99,6 +105,7 @@ public struct HomeView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .portMusicDidReconnect)) { _ in
             Task {
+                guard sessionManager.allowsOnlineRequests else { return }
                 await loadHomeData()
             }
         }
@@ -111,7 +118,7 @@ public struct HomeView: View {
 
     @ViewBuilder
     private var mainContentBody: some View {
-        if sessionManager.isOfflineMode && discovery == nil {
+        if !sessionManager.allowsOnlineRequests || (sessionManager.isOfflineMode && discovery == nil) {
             offlineHomeSection(tracks: offlineManager.allDownloadedTracks())
         } else if isLoading && discovery == nil {
             VStack(spacing: 28) {
@@ -260,28 +267,50 @@ public struct HomeView: View {
                     .foregroundColor(PortColors.accentOrange)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Offline-Modus")
+                    Text(offlineBannerTitle)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white)
-                    Text("\(tracks.count) gespeicherte Titel auf diesem Gerät bereit")
+                    Text("\(offlineBannerSubtitle) · \(tracks.count) gespeicherte Titel bereit")
                         .font(.system(size: 12))
                         .foregroundColor(Color.white.opacity(0.60))
                 }
 
                 Spacer()
 
-                Button("Verbinden") {
-                    Task {
-                        _ = await SessionManager.shared.retryConnection()
-                        await loadHomeData()
+                if sessionManager.isManualOfflineMode {
+                    Button("Online gehen") {
+                        sessionManager.setManualOfflineMode(false)
                     }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white)
+                    .clipShape(Capsule())
+                } else if sessionManager.networkInterface == .cellular && sessionManager.cellularStreamingMode == .offlineOnly {
+                    Button("Sparmodus") {
+                        sessionManager.setCellularStreamingMode(.dataSaver)
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.14))
+                    .clipShape(Capsule())
+                } else {
+                    Button("Verbinden") {
+                        Task {
+                            _ = await SessionManager.shared.retryConnection()
+                            await loadHomeData()
+                        }
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
                 }
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
             }
             .padding(14)
             .background(Color.white.opacity(0.06))
@@ -1383,8 +1412,34 @@ public struct HomeView: View {
         .padding(.vertical, 40)
     }
 
+    private var offlineBannerTitle: String {
+        if sessionManager.isManualOfflineMode {
+            return "Offline-Modus (0 Bytes)"
+        }
+        if sessionManager.networkInterface == .cellular && sessionManager.cellularStreamingMode == .offlineOnly {
+            return "Mobilfunk-Schutz aktiv"
+        }
+        return "Offline-Modus"
+    }
+
+    private var offlineBannerSubtitle: String {
+        if sessionManager.isManualOfflineMode {
+            return "Alle externen Anfragen blockiert"
+        }
+        if sessionManager.networkInterface == .cellular && sessionManager.cellularStreamingMode == .offlineOnly {
+            return "Im Mobilfunk nur lokale Downloads"
+        }
+        return "Keine Serververbindung"
+    }
+
     // MARK: - API Abruf & Personalisierte Anreicherung
     private func loadHomeData() async {
+        guard SessionManager.shared.allowsOnlineRequests else {
+            await MainActor.run {
+                self.isLoading = false
+            }
+            return
+        }
         isLoading = true
         errorMessage = nil
 
@@ -1528,6 +1583,10 @@ public struct HomeView: View {
     }
 
     private func prefetchHomeCovers(from res: DiscoveryHomeResponse) {
+        guard SessionManager.shared.allowsOnlineRequests,
+              !SessionManager.shared.isDataSaverActive else {
+            return
+        }
         var rawUrls: [String?] = []
         res.topPicks?.forEach { rawUrls.append($0.cover) }
         res.trendingEverywhere?.forEach { rawUrls.append($0.cover) }

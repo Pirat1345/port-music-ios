@@ -1455,8 +1455,13 @@ private struct FullscreenScrubberView: View {
                                 )
                         )
                     } else {
-                        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
-                        let qualityTitle = (storedQuality == "low" || storedQuality == "normal") ? "Low" : "High"
+                        let effectiveQ = sessionManager.effectiveAudioQuality
+                        let qualityTitle: String = {
+                            if sessionManager.isDataSaverActive {
+                                return "Low · Sparmodus"
+                            }
+                            return effectiveQ == "low" ? "Low" : "High"
+                        }()
                         Text(qualityTitle)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(Color.white.opacity(0.85))

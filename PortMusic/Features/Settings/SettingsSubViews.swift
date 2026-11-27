@@ -6,7 +6,7 @@ public struct SettingsDownloadsView: View {
     public let serverURL: String
 
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
-    @AppStorage("offline_wifi_only") private var offlineWifiOnly: Bool = true
+    @ObservedObject private var sessionManager = SessionManager.shared
     @State private var cacheSizeBytes: Int64 = 0
     @State private var showClearDownloadsAlert: Bool = false
     @State private var showCacheClearedAlert: Bool = false
@@ -104,9 +104,17 @@ public struct SettingsDownloadsView: View {
             .listRowBackground(Color(white: 0.11))
 
             // 2. Einstellungen & Cache
-            Section(header: Text("Download-Einstellungen")) {
-                Toggle("Nur über WLAN herunterladen", isOn: $offlineWifiOnly)
-                    .tint(Color(hex: "#30d158"))
+            Section(
+                header: Text("Download-Einstellungen"),
+                footer: Text(sessionManager.offlineWifiOnly && sessionManager.networkInterface == .cellular
+                             ? "Aktuell über Mobile Daten verbunden – Downloads warten bis zum nächsten WLAN."
+                             : "Verhindert versehentliche Downloads ganzer Playlists über dein mobiles Datenvolumen.")
+            ) {
+                Toggle("Nur über WLAN herunterladen", isOn: Binding(
+                    get: { sessionManager.offlineWifiOnly },
+                    set: { sessionManager.setOfflineWifiOnly($0) }
+                ))
+                .tint(Color(hex: "#30d158"))
 
                 Button {
                     URLCache.shared.removeAllCachedResponses()
@@ -208,11 +216,11 @@ public struct SettingsDownloadsView: View {
     }
 }
 
-// MARK: - 2. Wiedergabe & Qualität (Apple insetGrouped + Web Parity)
+// MARK: - 2. Wiedergabe, Mobile Daten & Qualität (Apple insetGrouped + Spotify-Parität)
 public struct SettingsPlaybackView: View {
+    @ObservedObject private var sessionManager = SessionManager.shared
     @AppStorage("playback_autoplay_enabled") private var autoplayEnabled: Bool = true
     @AppStorage("playback_skip_timeout") private var skipTimeout: Int = 10
-    @AppStorage("portmusic_audio_quality") private var audioQuality: String = "high"
 
     private let skipOptions: [(value: Int, label: String)] = [
         (0, "Aus"), (3, "3 Sekunden"), (5, "5 Sekunden"), (7, "7 Sekunden"), (9, "9 Sekunden"), (10, "10 Sekunden"), (15, "15 Sekunden")
@@ -220,12 +228,26 @@ public struct SettingsPlaybackView: View {
 
     public init() {}
 
-    private var normalizedQuality: String {
-        audioQuality == "low" || audioQuality == "normal" ? "low" : "high"
+    private var normalizedWifiQuality: String {
+        sessionManager.wifiAudioQuality == "low" ? "low" : "high"
     }
 
     public var body: some View {
         List {
+            Section(
+                header: Text("Offline-Schutz"),
+                footer: Text(sessionManager.isManualOfflineMode
+                             ? "100 % Offline aktiv: Keine externen Server- oder CDN-Anfragen (0 Bytes Datenvolumen)."
+                             : "Kappt bei Aktivierung sofort laufende Online-Streams und blockiert jeden externen Aufruf.")
+            ) {
+                Toggle("Offline-Modus (100 % Offline)", isOn: Binding(
+                    get: { sessionManager.isManualOfflineMode },
+                    set: { sessionManager.setManualOfflineMode($0) }
+                ))
+                .tint(Color(hex: "#ff9f0a"))
+            }
+            .listRowBackground(Color(white: 0.11))
+
             Section(
                 header: Text("Wiedergabeverhalten"),
                 footer: Text("Autoplay spielt passende Empfehlungen weiter, sobald deine aktuelle Warteschlange endet.")
@@ -243,8 +265,18 @@ public struct SettingsPlaybackView: View {
             .listRowBackground(Color(white: 0.11))
 
             Section(
-                header: Text("Streaming-Qualität"),
-                footer: Text(normalizedQuality == "high"
+                header: Text("Bei Mobilen Daten (LTE / 5G)"),
+                footer: Text(cellularModeFooter)
+            ) {
+                ForEach(CellularStreamingMode.allCases, id: \.rawValue) { mode in
+                    cellularModeRow(mode)
+                }
+            }
+            .listRowBackground(Color(white: 0.11))
+
+            Section(
+                header: Text("Streaming-Qualität im WLAN"),
+                footer: Text(normalizedWifiQuality == "high"
                              ? "High Quality liefert maximal verfügbare AAC/MP4-Qualität (128–256 kbps)."
                              : "Low Quality nutzt gezielt den sparsamen Low-Bitrate-Stream (~48–64 kbps HE-AAC).")
             ) {
@@ -256,13 +288,48 @@ public struct SettingsPlaybackView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black.ignoresSafeArea())
-        .navigationTitle("Wiedergabe")
+        .navigationTitle("Wiedergabe & Daten")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var cellularModeFooter: String {
+        switch sessionManager.cellularStreamingMode {
+        case .dataSaver:
+            return "Empfohlen unterwegs: Streaming wird automatisch auf Low (~48–64 kbps) reduziert, Vorladen von nächsten Songs & Covern pausiert."
+        case .offlineOnly:
+            return "Maximaler Schutz: Unterwegs werden nur heruntergeladene Songs abgespielt. Sobald WLAN verbunden ist, geht Port Music automatisch wieder online."
+        case .unlimited:
+            return "Keine Drosselung im Mobilfunk – nutzt dieselbe Qualität und dasselbe Vorladen wie im WLAN."
+        }
+    }
+
+    private func cellularModeRow(_ mode: CellularStreamingMode) -> some View {
+        Button {
+            sessionManager.setCellularStreamingMode(mode)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(mode.title)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                    Text(mode.subtitle)
+                        .font(.system(size: 12.5))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                if sessionManager.cellularStreamingMode == mode {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(hex: "#0a84ff"))
+                }
+            }
+        }
     }
 
     private func qualityRow(id: String, title: String, subtitle: String) -> some View {
         Button {
-            audioQuality = id
+            sessionManager.setWifiAudioQuality(id)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             HStack {
@@ -275,7 +342,7 @@ public struct SettingsPlaybackView: View {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                if normalizedQuality == id {
+                if normalizedWifiQuality == id {
                     Image(systemName: "checkmark")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(Color(hex: "#0a84ff"))

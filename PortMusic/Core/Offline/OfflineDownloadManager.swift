@@ -95,8 +95,29 @@ public final class OfflineDownloadManager: ObservableObject {
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 45.0
         cfg.timeoutIntervalForResource = 300.0
+        PortNetworkFirewall.applyPolicy(to: cfg, isDownload: true)
         return URLSession(configuration: cfg)
     }()
+
+    public func cancelAllActiveDownloads(keepUserMarks: Bool = true) {
+        for task in playlistDownloadTasks.values {
+            task.cancel()
+        }
+        playlistDownloadTasks.removeAll()
+        downloadingPlaylistIds.removeAll()
+        downloadingTrackIds.removeAll()
+        downloadProgressMap.removeAll()
+
+        downloadSession.getAllTasks { tasks in
+            for task in tasks {
+                task.cancel()
+            }
+        }
+
+        if !keepUserMarks {
+            markedOfflinePlaylistIds.removeAll()
+        }
+    }
 
     private var tracksDirectoryURL: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -532,10 +553,12 @@ public final class OfflineDownloadManager: ObservableObject {
                 records[track.id] = record
                 saveManifest()
             }
-            if localCoverFileURL(for: track.id) == nil {
+            if localCoverFileURL(for: track.id) == nil, SessionManager.shared.allowsOnlineRequests {
                 _ = await ensureCoverSavedForRecord(trackId: track.id, preferredCoverUrl: track.coverUrl, serverURL: serverURL, token: token)
             }
-            if localLyrics(for: track.id) == nil, !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if localLyrics(for: track.id) == nil,
+               SessionManager.shared.allowsOnlineRequests,
+               !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let safeId = safeTrackId(for: track.id)
                 if let lrcName = await fetchAndPersistLyrics(track: track, safeTrackId: safeId, serverURL: serverURL, token: token),
                    var record = records[track.id] {
@@ -553,6 +576,10 @@ public final class OfflineDownloadManager: ObservableObject {
                 }
             }
             return true
+        }
+
+        guard SessionManager.shared.allowsDownloads else {
+            return false
         }
 
         if isDownloading(trackId: track.id) {
@@ -621,8 +648,10 @@ public final class OfflineDownloadManager: ObservableObject {
         var detectedMime: String? = nil
 
         for cand in candidates {
+            guard SessionManager.shared.allowsDownloads else { break }
             var req = URLRequest(url: cand)
             req.httpMethod = "GET"
+            req.allowsCellularAccess = PortNetworkFirewall.shared.allowsDownloadsCellular
             if let tok = token, !tok.isEmpty {
                 req.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
                 req.setValue(tok, forHTTPHeaderField: "x-session-token")
@@ -741,6 +770,11 @@ public final class OfflineDownloadManager: ObservableObject {
             return
         }
 
+        guard SessionManager.shared.allowsDownloads else {
+            downloadingPlaylistIds.remove(playlistId)
+            return
+        }
+
         playlistDownloadTasks[playlistId]?.cancel()
         downloadingPlaylistIds.insert(playlistId)
 
@@ -751,7 +785,7 @@ public final class OfflineDownloadManager: ObservableObject {
                 self.playlistDownloadTasks.removeValue(forKey: playlistId)
             }
             for track in missing {
-                if Task.isCancelled || SessionManager.shared.isOfflineMode {
+                if Task.isCancelled || !SessionManager.shared.allowsDownloads {
                     break
                 }
                 _ = await self.downloadTrack(track: track, serverURL: serverURL, token: token, playlistId: playlistId)
@@ -803,8 +837,8 @@ public final class OfflineDownloadManager: ObservableObject {
             saveManifest()
         }
 
-        // 2. Fehlende oder neu hinzugekommene Songs herunterladen (wenn online & nicht bereits laufend)
-        if !SessionManager.shared.isOfflineMode && !isPlaylistDownloading(playlistId) {
+        // 2. Fehlende oder neu hinzugekommene Songs herunterladen (wenn online, WLAN erlaubt & nicht bereits laufend)
+        if SessionManager.shared.allowsDownloads && !isPlaylistDownloading(playlistId) {
             let hasMissing = latestTracks.contains { !isDownloaded(trackId: $0.id) }
             if hasMissing {
                 downloadPlaylist(
@@ -821,7 +855,7 @@ public final class OfflineDownloadManager: ObservableObject {
 
     public func syncSavedPlaylistsOnReconnect(serverURL: String, token: String?) async {
         let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        guard !base.isEmpty, !SessionManager.shared.isOfflineMode else { return }
+        guard !base.isEmpty, SessionManager.shared.allowsDownloads else { return }
 
         let markedMetas = playlistMetas.values.filter(\.autoSync)
         guard !markedMetas.isEmpty else { return }
@@ -830,7 +864,7 @@ public final class OfflineDownloadManager: ObservableObject {
         let stateById = Dictionary(uniqueKeysWithValues: statePlaylists.map { ($0.id, $0) })
 
         for meta in markedMetas {
-            if SessionManager.shared.isOfflineMode { break }
+            if !SessionManager.shared.allowsDownloads { break }
 
             if meta.id == "liked_songs" {
                 let favs = await MusicService.shared.fetchFavorites(serverURL: base, token: token)
@@ -1065,13 +1099,13 @@ public final class OfflineDownloadManager: ObservableObject {
 
     public func repairMissingLyricsIfNeeded(serverURL: String, token: String?) async {
         let base = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        guard !base.isEmpty, !SessionManager.shared.isOfflineMode else { return }
+        guard !base.isEmpty, SessionManager.shared.allowsOnlineRequests else { return }
 
         let missingRecords = records.values.filter { localLyrics(for: $0.track.id) == nil }
         guard !missingRecords.isEmpty else { return }
 
         for rec in missingRecords {
-            if SessionManager.shared.isOfflineMode { break }
+            if !SessionManager.shared.allowsOnlineRequests { break }
             let safeId = safeTrackId(for: rec.track.id)
             if let lrcName = await fetchAndPersistLyrics(track: rec.track, safeTrackId: safeId, serverURL: base, token: token),
                let latestRecord = records[rec.track.id] {

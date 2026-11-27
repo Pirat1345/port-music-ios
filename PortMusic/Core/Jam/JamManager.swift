@@ -398,7 +398,8 @@ public final class JamManager: ObservableObject {
                 ])
             }
 
-            if !activeServerURL.isEmpty, let url = URL(string: "\(activeServerURL)/api/jams/leave"),
+            if SessionManager.shared.allowsOnlineRequests,
+               !activeServerURL.isEmpty, let url = URL(string: "\(activeServerURL)/api/jams/leave"),
                let body = try? JSONSerialization.data(withJSONObject: ["jamId": jamId]) {
                 let req = authorizedRequest(url: url, method: "POST", body: body)
                 Task.detached {
@@ -428,9 +429,21 @@ public final class JamManager: ObservableObject {
 
         AudioPlayerManager.shared.applyJamExited()
 
-        if !activeServerURL.isEmpty {
+        if SessionManager.shared.allowsOnlineRequests, !activeServerURL.isEmpty {
             let srv = activeServerURL
             Task { await fetchActiveJams(serverURL: srv) }
+        }
+    }
+
+    public func disconnectForOfflinePolicyIfNeeded() {
+        guard !SessionManager.shared.allowsOnlineRequests else { return }
+        reconnectWorkItem?.cancel()
+        isIntentionalDisconnect = true
+        if isInJam {
+            leaveJam()
+        } else {
+            closeWebSocketOnly()
+            engine.stopAll()
         }
     }
 
@@ -488,7 +501,10 @@ public final class JamManager: ObservableObject {
     }
 
     private func connectWebSocket() {
-        guard isInJam, !isIntentionalDisconnect, let wsURL = buildWebSocketURL() else { return }
+        guard isInJam,
+              !isIntentionalDisconnect,
+              SessionManager.shared.allowsOnlineRequests,
+              let wsURL = buildWebSocketURL() else { return }
 
         closeWebSocketOnly()
         connectionState = reconnectAttempts > 0 ? .reconnecting : .connecting
@@ -501,7 +517,7 @@ public final class JamManager: ObservableObject {
         }
 
         let config = URLSessionConfiguration.default
-        config.waitsForConnectivity = false
+        PortNetworkFirewall.applyPolicy(to: config)
         let proxy = JamWebSocketDelegate(
             onOpen: { [weak self] openedTask in
                 Task { @MainActor [weak self] in

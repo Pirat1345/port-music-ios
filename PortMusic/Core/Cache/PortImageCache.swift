@@ -12,6 +12,13 @@ public final class PortImageCache {
 
     private let lock = NSLock()
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
+    private let imageSession: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 8.0
+        cfg.timeoutIntervalForResource = 15.0
+        PortNetworkFirewall.applyPolicy(to: cfg)
+        return URLSession(configuration: cfg)
+    }()
 
     private init() {
         memoryCache.totalCostLimit = 150 * 1024 * 1024 // 150 MB
@@ -158,9 +165,14 @@ public final class PortImageCache {
         }
 
         // 2. Network Download (mit Auth-Header fuer lokale Server-Cover unter /api/...)
+        guard PortNetworkFirewall.shared.allowsOnlineRequests else {
+            return nil
+        }
+
         var request = URLRequest(url: url)
         request.timeoutInterval = 8.0
         request.cachePolicy = .returnCacheDataElseLoad
+        request.allowsCellularAccess = PortNetworkFirewall.shared.allowsCellularTraffic
         if url.path.hasPrefix("/api/") || url.path.contains("/files/") {
             let token = KeychainHelper.shared.getToken() ?? UserDefaults.standard.string(forKey: "portmusic_auth_token")
             if let tok = token, !tok.isEmpty {
@@ -170,7 +182,7 @@ public final class PortImageCache {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await imageSession.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode),
                   let rawImage = UIImage(data: data) else {

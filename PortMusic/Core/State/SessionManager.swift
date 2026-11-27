@@ -25,6 +25,11 @@ public final class SessionManager: ObservableObject {
     @Published public var isRestoringSession: Bool = false
     @Published public var isOfflineMode: Bool = false
 
+    @Published public private(set) var isManualOfflineMode: Bool = false
+    @Published public private(set) var cellularStreamingMode: CellularStreamingMode = .dataSaver
+    @Published public private(set) var offlineWifiOnly: Bool = true
+    @Published public private(set) var wifiAudioQuality: String = "high"
+
     @Published public private(set) var isPathSatisfied: Bool = true
     @Published public private(set) var networkInterface: NetworkInterfaceKind = .other
     @Published public private(set) var isExpensiveConnection: Bool = false
@@ -32,9 +37,30 @@ public final class SessionManager: ObservableObject {
     @Published public private(set) var networkStatusRaw: String = "wird geprüft"
     @Published public private(set) var lastNetworkUpdate: Date = Date()
 
+    public var allowsOnlineRequests: Bool {
+        !isManualOfflineMode
+            && isPathSatisfied
+            && !(networkInterface == .cellular && cellularStreamingMode == .offlineOnly)
+    }
+
+    public var isDataSaverActive: Bool {
+        allowsOnlineRequests
+            && networkInterface == .cellular
+            && (cellularStreamingMode == .dataSaver || isConstrainedConnection)
+    }
+
+    public var effectiveAudioQuality: String {
+        isDataSaverActive ? "low" : wifiAudioQuality
+    }
+
+    public var allowsDownloads: Bool {
+        allowsOnlineRequests && !(offlineWifiOnly && networkInterface == .cellular)
+    }
+
     private let pathMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "com.portmusic.network.monitor")
     private var lastPathSatisfied: Bool = true
+    private var lastPolicyBlocked: Bool = false
     private var isProbingReconnect: Bool = false
 
     public var currentToken: String? {
@@ -52,6 +78,28 @@ public final class SessionManager: ObservableObject {
     private let tokenBackupKey = "portmusic_auth_token"
 
     public init() {
+        let ud = UserDefaults.standard
+        let manualOffline = ud.bool(forKey: PortNetworkFirewall.manualOfflineKey)
+        let rawCellular = ud.string(forKey: PortNetworkFirewall.cellularModeKey) ?? CellularStreamingMode.dataSaver.rawValue
+        let cellMode = CellularStreamingMode(rawValue: rawCellular) ?? .dataSaver
+        let wifiOnly = (ud.object(forKey: PortNetworkFirewall.wifiOnlyDownloadsKey) as? Bool) ?? true
+        let rawQual = ud.string(forKey: PortNetworkFirewall.audioQualityKey) ?? "high"
+        let wifiQual = (rawQual == "low" || rawQual == "normal") ? "low" : "high"
+
+        self.isManualOfflineMode = manualOffline
+        self.cellularStreamingMode = cellMode
+        self.offlineWifiOnly = wifiOnly
+        self.wifiAudioQuality = wifiQual
+        self.isOfflineMode = manualOffline
+        self.lastPolicyBlocked = manualOffline
+
+        PortNetworkFirewall.shared.update(
+            manualOfflineMode: manualOffline,
+            cellularMode: cellMode,
+            wifiAudioQuality: wifiQual,
+            offlineWifiOnly: wifiOnly
+        )
+
         let storedURL = UserDefaults.standard.string(forKey: serverURLStorageKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let url = storedURL, !url.isEmpty {
@@ -78,6 +126,89 @@ public final class SessionManager: ObservableObject {
         }
 
         startNetworkMonitoring()
+    }
+
+    public func setManualOfflineMode(_ enabled: Bool) {
+        guard self.isManualOfflineMode != enabled else { return }
+        UserDefaults.standard.set(enabled, forKey: PortNetworkFirewall.manualOfflineKey)
+        PortNetworkFirewall.shared.update(manualOfflineMode: enabled)
+        self.isManualOfflineMode = enabled
+        DebugLogStore.shared.log(
+            tag: "net:offline",
+            category: .system,
+            message: enabled ? "Manueller 100%-Offline-Modus aktiviert (0 Bytes)" : "Manueller Offline-Modus deaktiviert"
+        )
+        evaluatePolicyAndEnforceTransitions()
+    }
+
+    public func setCellularStreamingMode(_ mode: CellularStreamingMode) {
+        guard self.cellularStreamingMode != mode else { return }
+        UserDefaults.standard.set(mode.rawValue, forKey: PortNetworkFirewall.cellularModeKey)
+        PortNetworkFirewall.shared.update(cellularMode: mode)
+        self.cellularStreamingMode = mode
+        DebugLogStore.shared.log(
+            tag: "net:cellular",
+            category: .system,
+            message: "Mobilfunk-Modus geändert: \(mode.title)"
+        )
+        evaluatePolicyAndEnforceTransitions()
+    }
+
+    public func setOfflineWifiOnly(_ wifiOnly: Bool) {
+        guard self.offlineWifiOnly != wifiOnly else { return }
+        UserDefaults.standard.set(wifiOnly, forKey: PortNetworkFirewall.wifiOnlyDownloadsKey)
+        PortNetworkFirewall.shared.update(offlineWifiOnly: wifiOnly)
+        self.offlineWifiOnly = wifiOnly
+        if !self.allowsDownloads {
+            OfflineDownloadManager.shared.cancelAllActiveDownloads(keepUserMarks: true)
+        }
+    }
+
+    public func setWifiAudioQuality(_ quality: String) {
+        let normalized = (quality == "low" || quality == "normal") ? "low" : "high"
+        UserDefaults.standard.set(normalized, forKey: PortNetworkFirewall.audioQualityKey)
+        PortNetworkFirewall.shared.update(wifiAudioQuality: normalized)
+        self.wifiAudioQuality = normalized
+    }
+
+    private func performHardNetworkCut() {
+        OfflineDownloadManager.shared.cancelAllActiveDownloads(keepUserMarks: true)
+        AudioPlayerManager.shared.enforceHardOfflineCutIfNeeded()
+        JamManager.shared.disconnectForOfflinePolicyIfNeeded()
+    }
+
+    private func evaluatePolicyAndEnforceTransitions() {
+        PortNetworkFirewall.shared.update(
+            manualOfflineMode: isManualOfflineMode,
+            cellularMode: cellularStreamingMode,
+            wifiAudioQuality: wifiAudioQuality,
+            offlineWifiOnly: offlineWifiOnly,
+            isPathSatisfied: isPathSatisfied,
+            isCellular: networkInterface == .cellular,
+            isConstrained: isConstrainedConnection
+        )
+
+        let policyBlocksNetwork = !allowsOnlineRequests
+        let wasBlocked = lastPolicyBlocked
+        lastPolicyBlocked = policyBlocksNetwork
+
+        if policyBlocksNetwork {
+            if !self.isOfflineMode {
+                self.isOfflineMode = true
+            }
+            performHardNetworkCut()
+            return
+        }
+
+        if !allowsDownloads {
+            OfflineDownloadManager.shared.cancelAllActiveDownloads(keepUserMarks: true)
+        }
+
+        if (wasBlocked || self.isOfflineMode) && self.isAuthenticated {
+            Task { @MainActor [weak self] in
+                _ = await self?.retryConnection()
+            }
+        }
     }
 
     private func startNetworkMonitoring() {
@@ -126,10 +257,25 @@ public final class SessionManager: ObservableObject {
                 let wasUnsatisfied = !self.lastPathSatisfied
                 self.lastPathSatisfied = satisfied
 
-                if !satisfied {
-                    self.setOfflineMode(true)
-                } else if (wasUnsatisfied || self.isOfflineMode) && self.isAuthenticated {
-                    _ = await self.retryConnection()
+                PortNetworkFirewall.shared.update(
+                    isPathSatisfied: satisfied,
+                    isCellular: iface == .cellular,
+                    isConstrained: constrained
+                )
+
+                if !self.allowsOnlineRequests {
+                    self.lastPolicyBlocked = true
+                    self.isOfflineMode = true
+                    self.performHardNetworkCut()
+                } else {
+                    let wasBlocked = self.lastPolicyBlocked
+                    self.lastPolicyBlocked = false
+                    if !self.allowsDownloads {
+                        OfflineDownloadManager.shared.cancelAllActiveDownloads(keepUserMarks: true)
+                    }
+                    if (wasUnsatisfied || wasBlocked || self.isOfflineMode) && self.isAuthenticated {
+                        _ = await self.retryConnection()
+                    }
                 }
             }
         }
@@ -179,6 +325,12 @@ public final class SessionManager: ObservableObject {
             return
         }
 
+        guard allowsOnlineRequests else {
+            self.isOfflineMode = true
+            performHardNetworkCut()
+            return
+        }
+
         do {
             let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token, timeout: 3.5)
             self.currentUser = profile
@@ -210,6 +362,10 @@ public final class SessionManager: ObservableObject {
 
     @discardableResult
     public func retryConnection() async -> Bool {
+        guard allowsOnlineRequests else {
+            self.isOfflineMode = true
+            return false
+        }
         guard !isProbingReconnect,
               let storedURL = serverURL, !storedURL.isEmpty,
               let token = currentToken, !token.isEmpty else {
@@ -220,6 +376,10 @@ public final class SessionManager: ObservableObject {
 
         do {
             let profile = try await AuthService.shared.checkAuth(serverURL: storedURL, token: token, timeout: 4.0)
+            guard allowsOnlineRequests else {
+                self.isOfflineMode = true
+                return false
+            }
             let wasOffline = self.isOfflineMode
             self.currentUser = profile
             self.isAuthenticated = true
@@ -246,17 +406,23 @@ public final class SessionManager: ObservableObject {
     }
 
     private func handleOnlineSyncAfterReconnect(serverURL: String, token: String) async {
+        guard allowsOnlineRequests else { return }
         await FavoritesManager.shared.syncPendingWithServer(serverURL: serverURL, token: token)
         _ = await MusicService.shared.fetchFavorites(serverURL: serverURL, token: token)
-        await OfflineDownloadManager.shared.syncSavedPlaylistsOnReconnect(serverURL: serverURL, token: token)
+        if allowsDownloads {
+            await OfflineDownloadManager.shared.syncSavedPlaylistsOnReconnect(serverURL: serverURL, token: token)
+        }
         await OfflineDownloadManager.shared.repairMissingLyricsIfNeeded(serverURL: serverURL, token: token)
     }
 
     public func setOfflineMode(_ offline: Bool) {
-        if self.isOfflineMode != offline {
-            let becameOnline = (self.isOfflineMode == true && offline == false)
-            self.isOfflineMode = offline
-            if becameOnline, let url = serverURL, let tok = currentToken, !url.isEmpty, !tok.isEmpty {
+        let effectiveOffline = offline || !allowsOnlineRequests
+        if self.isOfflineMode != effectiveOffline {
+            let becameOnline = (self.isOfflineMode == true && effectiveOffline == false)
+            self.isOfflineMode = effectiveOffline
+            if effectiveOffline {
+                performHardNetworkCut()
+            } else if becameOnline, let url = serverURL, let tok = currentToken, !url.isEmpty, !tok.isEmpty {
                 Task {
                     await handleOnlineSyncAfterReconnect(serverURL: url, token: tok)
                     NotificationCenter.default.post(name: .portMusicDidReconnect, object: nil)
@@ -277,7 +443,7 @@ public final class SessionManager: ObservableObject {
         if let err = error, Self.isCancellationError(err) {
             return
         }
-        if !isPathSatisfied {
+        if !allowsOnlineRequests {
             setOfflineMode(true)
             return
         }
@@ -320,6 +486,7 @@ public final class SessionManager: ObservableObject {
     }
 
     public func refreshUserProfile() async {
+        guard allowsOnlineRequests else { return }
         guard let storedURL = serverURL ?? UserDefaults.standard.string(forKey: serverURLStorageKey),
               let token = currentToken, !token.isEmpty else { return }
         do {

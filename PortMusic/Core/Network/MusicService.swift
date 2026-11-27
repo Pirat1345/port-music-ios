@@ -17,11 +17,13 @@ public final class MusicService {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 6.0
         config.timeoutIntervalForResource = 15.0
+        PortNetworkFirewall.applyPolicy(to: config)
         self.session = URLSession(configuration: config)
 
         let discConfig = URLSessionConfiguration.default
         discConfig.timeoutIntervalForRequest = 20.0
         discConfig.timeoutIntervalForResource = 35.0
+        PortNetworkFirewall.applyPolicy(to: discConfig)
         self.discoverySession = URLSession(configuration: discConfig)
     }
 
@@ -84,9 +86,7 @@ public final class MusicService {
         if track.durationSeconds > 0 {
             items.append(URLQueryItem(name: "duration", value: "\(track.durationSeconds)"))
         }
-        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
-        let normalizedStored = (storedQuality == "low" || storedQuality == "normal") ? "low" : "high"
-        let effectiveQuality = qualityOverride ?? normalizedStored
+        let effectiveQuality = qualityOverride ?? PortNetworkFirewall.shared.effectiveAudioQuality
         if !effectiveQuality.isEmpty {
             items.append(URLQueryItem(name: "quality", value: effectiveQuality))
         }
@@ -96,7 +96,10 @@ public final class MusicService {
 
     /// Wärmt den Stream-Resolver & Server-Disk-Cache für nachfolgende Queue-Titel im Voraus auf.
     public func prefetchStream(for track: Track, serverURL: String) {
-        guard !track.isLive, !serverURL.isEmpty else {
+        guard !track.isLive,
+              !serverURL.isEmpty,
+              PortNetworkFirewall.shared.allowsOnlineRequests,
+              !PortNetworkFirewall.shared.isDataSaverActive else {
             return
         }
         let base = cleanURL(serverURL)
@@ -110,8 +113,7 @@ public final class MusicService {
         if let album = track.album, !album.isEmpty {
             items.append(URLQueryItem(name: "album", value: album))
         }
-        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
-        let effectiveQuality = (storedQuality == "low" || storedQuality == "normal") ? "low" : "high"
+        let effectiveQuality = PortNetworkFirewall.shared.effectiveAudioQuality
         items.append(URLQueryItem(name: "quality", value: effectiveQuality))
         comps.queryItems = items
         guard let url = comps.url else { return }

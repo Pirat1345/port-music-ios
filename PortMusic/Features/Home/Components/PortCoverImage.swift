@@ -423,9 +423,11 @@ public struct PortUserAvatarView: View {
 
         // 3b. Falls es sich um eine SVG-Datei handelt, direkt abrufen (PortImageCache kann kein SVG dekodieren)
         if url.pathExtension.lowercased() == "svg" || raw.contains(".svg") {
+            guard PortNetworkFirewall.shared.allowsOnlineRequests else { return }
             do {
                 var req = URLRequest(url: url)
                 req.timeoutInterval = 8.0
+                req.allowsCellularAccess = PortNetworkFirewall.shared.allowsCellularTraffic
                 if let token = SessionManager.shared.currentToken, !token.isEmpty {
                     req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 }
@@ -459,9 +461,11 @@ public struct PortUserAvatarView: View {
         }
 
         // 3e. Direkte HTTP-Abfrage für sonstige Bilder
+        guard PortNetworkFirewall.shared.allowsOnlineRequests else { return }
         do {
             var req = URLRequest(url: url)
             req.timeoutInterval = 8.0
+            req.allowsCellularAccess = PortNetworkFirewall.shared.allowsCellularTraffic
             if let token = SessionManager.shared.currentToken, !token.isEmpty {
                 req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }

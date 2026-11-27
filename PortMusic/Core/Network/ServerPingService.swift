@@ -34,7 +34,7 @@ public final class ServerPingService {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 4.0
         config.timeoutIntervalForResource = 5.0
-        config.waitsForConnectivity = false
+        PortNetworkFirewall.applyPolicy(to: config)
         let session = URLSession(configuration: config)
 
         let candidates = [
