@@ -265,7 +265,7 @@ public final class SessionManager: ObservableObject {
         }
     }
 
-    public static func isCancellationError(_ error: Error) -> Bool {
+    nonisolated public static func isCancellationError(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         let nsErr = error as NSError
         return nsErr.domain == NSURLErrorDomain && nsErr.code == NSURLErrorCancelled
