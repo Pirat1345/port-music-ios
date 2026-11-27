@@ -111,7 +111,6 @@ public struct MainTabView: View {
     }
 
     @State private var showFullscreenPlayer: Bool = false
-    @State private var playerDismissProgress: CGFloat = 1.0
     @State private var showUserProfileSheet: Bool = false
     @State private var homePath: [AppRoute] = []
     @State private var libraryPath: [AppRoute] = []
@@ -245,10 +244,8 @@ public struct MainTabView: View {
                             serverURL: serverURL,
                             isInline: isMinimized,
                             onOpenFullscreen: {
-                                playerDismissProgress = 1.0
                                 withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
                                     showFullscreenPlayer = true
-                                    playerDismissProgress = 0.0
                                 }
                             },
                             onLongPress: {
@@ -316,28 +313,19 @@ public struct MainTabView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, isMinimized ? minimizedBarBottomPadding : miniPlayerBottomPadding)
-                .scaleEffect(showFullscreenPlayer ? (0.90 + 0.10 * playerDismissProgress) : 1.0, anchor: .bottom)
-                .offset(y: showFullscreenPlayer ? (38.0 * (1.0 - playerDismissProgress)) : 0.0)
-                .opacity(showFullscreenPlayer ? Double(min(1.0, max(0.0, playerDismissProgress * 1.45))) : 1.0)
+                .scaleEffect(showFullscreenPlayer ? 0.94 : 1.0, anchor: .bottom)
+                .opacity(showFullscreenPlayer ? 0.0 : 1.0)
                 .allowsHitTesting(!showFullscreenPlayer)
                 .animation(.spring(response: 0.34, dampingFraction: 0.84), value: isMinimized)
+                .animation(.spring(response: 0.30, dampingFraction: 0.88), value: showFullscreenPlayer)
             }
 
-            // ── Fullscreen Player Modal (Apple-Music-Morph-Übergang zur Now Playing Bar) ──
+            // ── Fullscreen Player Modal (Flüssiger Drag-to-Dismiss ohne TabView-Redraw) ──
             if showFullscreenPlayer {
-                Color.black.opacity(0.45 * Double(max(0.0, 1.0 - playerDismissProgress)))
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-
                 FullscreenPlayerView(
                     serverURL: serverURL,
-                    onDragProgressChanged: { progress in
-                        playerDismissProgress = progress
-                    },
                     onClose: {
-                        withAnimation(.easeOut(duration: 0.16)) {
-                            playerDismissProgress = 1.0
+                        withAnimation(.easeOut(duration: 0.14)) {
                             showFullscreenPlayer = false
                         }
                     }

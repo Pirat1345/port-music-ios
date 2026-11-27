@@ -18,7 +18,6 @@ private struct PortAirPlayRouteButton: UIViewRepresentable {
 public struct FullscreenPlayerView: View {
     @ObservedObject private var player = AudioPlayerManager.shared
     @ObservedObject private var volumeManager = SystemVolumeManager.shared
-    @ObservedObject private var progress = AudioPlayerProgress.shared
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
     @ObservedObject private var sessionManager = SessionManager.shared
     public let serverURL: String
@@ -27,15 +26,14 @@ public struct FullscreenPlayerView: View {
 
     @AppStorage("playback_autoplay_enabled") private var autoplayEnabled: Bool = true
     @State private var isScrubbing: Bool = false
-    @State private var scrubPosition: Double = 0.0
+    @State private var isAdjustingVolume: Bool = false
     @State private var showQueueSheet: Bool = false
     @State private var isFavorite: Bool = false
     @State private var showLyrics: Bool = false
     @State private var showInlineQueue: Bool = false
     @State private var isQueueCompactHeaderCollapsed: Bool = false
     @State private var sidePanelMode: SidePanelMode = .none
-    @State private var dragOffset: CGFloat = 0.0
-    @State private var isDismissing: Bool = false
+    @State private var dismissTrigger: Int = 0
     @State private var volume: Float = 0.7
     @State private var artworkDragOffset: CGFloat = 0.0
 
@@ -60,52 +58,26 @@ public struct FullscreenPlayerView: View {
         self.onClose = onClose
     }
 
-    private func triggerDismiss(fullHeight: CGFloat) {
-        guard !isDismissing else { return }
-        isDismissing = true
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-
-        withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
-            dragOffset = fullHeight * 0.68
-            onDragProgressChanged?(1.0)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            onClose()
-        }
-    }
-
-    private var activeProgress: Double {
-        if isScrubbing {
-            return scrubPosition
-        }
-        return progress.currentTime
-    }
-
-    private var currentLyricId: String? {
-        guard !lyricsLines.isEmpty else { return nil }
-        let time = activeProgress
-        guard let first = lyricsLines.first, time >= first.time - 0.4 else {
-            return nil
-        }
-        return lyricsLines.last(where: { $0.time <= time + 0.15 })?.id
-    }
-
     public var body: some View {
         GeometryReader { geo in
             let safeTop = geo.safeAreaInsets.top
             let isTablet = (UIDevice.current.userInterfaceIdiom == .pad) && (geo.size.width >= 768)
             let fullWidth = geo.size.width
             let fullHeight = geo.size.height
+            let resolvedBackgroundCoverURL: URL? = {
+                guard player.nowPlayingArtwork == nil else { return nil }
+                let offlineCover = player.currentTrack.flatMap { offlineManager.localCoverFileURL(for: $0.id) }
+                return offlineCover ?? resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
+            }()
 
-            let pullProgress = min(1.0, max(0.0, dragOffset / max(1.0, fullHeight * 0.56)))
-            let dynamicCornerRadius: CGFloat = dragOffset > 0 ? min(44.0, pullProgress * 56.0) : 0.0
-            let dismissScale: CGFloat = max(0.84, 1.0 - (pullProgress * 0.14))
-            let dismissOpacity: Double = dragOffset > 0 ? Double(max(0.0, 1.0 - max(0.0, (pullProgress - 0.62) / 0.38))) : 1.0
-
-            ZStack(alignment: .top) {
-                backgroundLayer(width: fullWidth, height: fullHeight)
-                    .compositingGroup()
+            let playerContent = ZStack(alignment: .top) {
+                FullscreenBackgroundLayer(
+                    artwork: player.nowPlayingArtwork,
+                    coverURL: resolvedBackgroundCoverURL,
+                    width: fullWidth,
+                    height: fullHeight
+                )
+                .equatable()
 
                 VStack(spacing: 0) {
                     topBarSection(safeTop: safeTop, fullHeight: fullHeight)
@@ -122,59 +94,20 @@ public struct FullscreenPlayerView: View {
                 }
                 .frame(width: fullWidth)
             }
-            .frame(width: fullWidth, height: fullHeight)
-            .clipShape(RoundedRectangle(cornerRadius: dynamicCornerRadius, style: .continuous))
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8, coordinateSpace: .global)
-                    .onChanged { val in
-                        guard !isDismissing else { return }
-                        if (showInlineQueue || showLyrics) && val.startLocation.y > (max(safeTop, deviceSafeTop) + 120) {
-                            return
-                        }
-                        let dy = val.translation.height
-                        if dy > 0 {
-                            let progress = min(1.0, max(0.0, dy / max(1.0, fullHeight * 0.56)))
-                            var transaction = Transaction()
-                            transaction.animation = nil
-                            withTransaction(transaction) {
-                                dragOffset = dy
-                                onDragProgressChanged?(progress)
-                            }
-                        } else {
-                            let damped = dy * 0.15
-                            var transaction = Transaction()
-                            transaction.animation = nil
-                            withTransaction(transaction) {
-                                dragOffset = damped
-                                onDragProgressChanged?(0.0)
-                            }
-                        }
-                    }
-                    .onEnded { val in
-                        guard !isDismissing else { return }
-                        if (showInlineQueue || showLyrics) && dragOffset <= 0 {
-                            return
-                        }
-                        let dy = val.translation.height
-                        let velocityY = val.predictedEndTranslation.height - val.translation.height
-                        if dy > 120 || (dy > 60 && velocityY > 150) {
-                            triggerDismiss(fullHeight: fullHeight)
-                        } else {
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
-                                dragOffset = 0
-                                onDragProgressChanged?(0.0)
-                            }
-                        }
-                    }
+
+            DraggablePlayerSheet(
+                fullWidth: fullWidth,
+                fullHeight: fullHeight,
+                restrictDragToTopBar: (!isTablet && (showInlineQueue || (showLyrics && !lyricsLines.isEmpty))),
+                safeTopArea: max(safeTop, deviceSafeTop),
+                isSliderActive: isScrubbing || isAdjustingVolume,
+                dismissTrigger: dismissTrigger,
+                onDismiss: {
+                    onDragProgressChanged?(1.0)
+                    onClose()
+                },
+                content: playerContent
             )
-            .scaleEffect(dismissScale, anchor: .bottom)
-            .opacity(dismissOpacity)
-            .shadow(
-                color: Color.black.opacity(dragOffset > 0 ? (pullProgress * 0.55) : 0.0),
-                radius: dragOffset > 0 ? (pullProgress * 32) : 0,
-                y: dragOffset > 0 ? (pullProgress * 16) : 0
-            )
-            .offset(y: max(0, dragOffset))
             .sheet(isPresented: $showQueueSheet) {
                 QueueSheetView(serverURL: serverURL, onClose: { showQueueSheet = false })
             }
@@ -187,80 +120,12 @@ public struct FullscreenPlayerView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            dragOffset = 0
-            isDismissing = false
             volumeManager.syncVolume()
             self.volume = volumeManager.volume
             if let track = player.currentTrack {
                 self.isFavorite = FavoritesManager.shared.isFavorite(trackId: track.id)
             }
         }
-    }
-
-    // MARK: - Weichgezeichneter Album-Hintergrund (1/4-Res Blur + GPU RasterCache für 120fps)
-    public func backgroundLayer(width: CGFloat, height: CGFloat) -> some View {
-        let lowW = max(1, width * 0.25)
-        let lowH = max(1, height * 0.25)
-
-        return ZStack {
-            Color(hex: "#121215")
-                .frame(width: width, height: height)
-
-            Group {
-                if let artwork = player.nowPlayingArtwork {
-                    Image(uiImage: artwork)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: lowW, height: lowH)
-                        .blur(radius: 16)
-                        .opacity(0.56)
-                        .scaleEffect(4.6)
-                } else {
-                    let offlineCover = player.currentTrack.flatMap { offlineManager.localCoverFileURL(for: $0.id) }
-                    let resolved = offlineCover ?? resolveCoverURL(player.currentTrack?.coverUrl, serverURL: serverURL)
-                    PortCachedAsyncImage(url: resolved) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: lowW, height: lowH)
-                            .blur(radius: 16)
-                            .opacity(0.56)
-                            .scaleEffect(4.6)
-                    } placeholder: {
-                        Color.clear
-                    }
-                }
-            }
-            .frame(width: width, height: height)
-            .clipped()
-
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0.28), location: 0.0),
-                    .init(color: Color.black.opacity(0.42), location: 0.48),
-                    .init(color: Color.black.opacity(0.76), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(width: width, height: height)
-        }
-        .frame(width: width, height: height)
-        .drawingGroup(opaque: true)
-        .clipped()
-    }
-
-    // MARK: - Safe Area & Kopfleisten-Abstand
-    private var deviceSafeTop: CGFloat {
-        if let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first {
-            let top = window.safeAreaInsets.top
-            if top > 0 { return top }
-        }
-        let isPad = (UIDevice.current.userInterfaceIdiom == .pad)
-        return isPad ? 24 : 50
     }
 
     // MARK: - Obere Kopfleiste (Drag-Griff zentriert zum Herunterziehen)
@@ -278,10 +143,23 @@ public struct FullscreenPlayerView: View {
                 .padding(.bottom, 14)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    triggerDismiss(fullHeight: fullHeight)
+                    dismissTrigger += 1
                 }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Safe Area Hilfswert
+    private var deviceSafeTop: CGFloat {
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first {
+            let top = window.safeAreaInsets.top
+            if top > 0 { return top }
+        }
+        let isPad = (UIDevice.current.userInterfaceIdiom == .pad)
+        return isPad ? 24 : 50
     }
 
     // MARK: - Drag Handle
@@ -696,14 +574,18 @@ public struct FullscreenPlayerView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { val in
-                    guard isLarge, !isDismissing else { return }
-                    if abs(val.translation.width) > abs(val.translation.height) * 1.5 {
-                        artworkDragOffset = val.translation.width
+                    guard isLarge else { return }
+                    if abs(val.translation.width) > abs(val.translation.height) * 1.4 {
+                        var tx = Transaction()
+                        tx.animation = nil
+                        withTransaction(tx) {
+                            artworkDragOffset = val.translation.width
+                        }
                     }
                 }
                 .onEnded { val in
-                    guard isLarge, !isDismissing else { return }
-                    if abs(val.translation.width) > abs(val.translation.height) * 1.5 {
+                    guard isLarge else { return }
+                    if abs(val.translation.width) > abs(val.translation.height) * 1.4 {
                         let dx = val.translation.width
                         let velocityX = val.predictedEndTranslation.width - val.translation.width
                         if dx < -45 || velocityX < -60 {
@@ -716,8 +598,10 @@ public struct FullscreenPlayerView: View {
                             player.previous(serverURL: serverURL)
                         }
                     }
-                    withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                        artworkDragOffset = 0
+                    if artworkDragOffset != 0 {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                            artworkDragOffset = 0
+                        }
                     }
                 }
         )
@@ -854,148 +738,10 @@ public struct FullscreenPlayerView: View {
 
     @ViewBuilder
     private func scrubberContent(fixedWidth: CGFloat?) -> some View {
-        if player.currentTrack?.isLive == true {
-            VStack(spacing: 10) {
-                HStack(spacing: 12) {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.22))
-                        .frame(height: 1.5)
-
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Color(hex: "#ff3b30"))
-                            .frame(width: 7, height: 7)
-                            .shadow(color: Color(hex: "#ff3b30").opacity(0.75), radius: 4)
-
-                        Text("LIVE")
-                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                            .tracking(1.6)
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.12))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.6)
-                            )
-                    )
-
-                    Rectangle()
-                        .fill(Color.white.opacity(0.22))
-                        .frame(height: 1.5)
-                }
-
-                let subtitle = player.currentTrack?.album?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                Text(subtitle.isEmpty || subtitle == "Radio" ? "Live-Übertragung" : subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.62))
-                    .lineLimit(1)
-            }
-            .frame(width: fixedWidth)
-            .padding(.vertical, 2)
-        } else {
-            VStack(spacing: 8) {
-                if let w = fixedWidth {
-                    scrubberBar(width: w)
-                } else {
-                    GeometryReader { geo in
-                        scrubberBar(width: geo.size.width)
-                    }
-                    .frame(height: 24)
-                }
-
-                // Links vergangen, Mitte exakt zentrierter Qualitäts-Chip ("High" / "Offline"), Rechts verbleibend (-M:SS)
-                ZStack(alignment: .center) {
-                    HStack {
-                        Text(formatSeconds(activeProgress))
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.60))
-
-                        Spacer()
-
-                        let remaining = max(0, player.duration - activeProgress)
-                        Text("-" + formatSeconds(remaining))
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.60))
-                    }
-
-                    let isOfflineTrack = player.isPlayingOffline || (player.currentTrack.map { offlineManager.isDownloaded(trackId: $0.id) } ?? false)
-                    if isOfflineTrack {
-                        HStack(spacing: 5) {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(hex: "#10b981"))
-                            Text("Offline · Lokal")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(Color.white.opacity(0.92))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3.5)
-                        .background(
-                            Capsule()
-                                .fill(Color(hex: "#10b981").opacity(0.18))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color(hex: "#10b981").opacity(0.35), lineWidth: 0.6)
-                                )
-                        )
-                    } else {
-                        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
-                        let qualityTitle = (storedQuality == "low" || storedQuality == "normal") ? "Low" : "High"
-                        Text(qualityTitle)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.85))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule()
-                                    .fill(Color.white.opacity(0.14))
-                                    .overlay(
-                                        Capsule()
-                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                                    )
-                            )
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .frame(width: fixedWidth)
-        }
-    }
-
-    private func scrubberBar(width: CGFloat) -> some View {
-        let maxDur = max(player.duration, 1.0)
-        let pct = min(1.0, max(0.0, activeProgress / maxDur))
-        let barHeight: CGFloat = isScrubbing ? 9 : 6
-
-        return ZStack(alignment: .leading) {
-            Capsule()
-                .fill(Color.white.opacity(0.22))
-                .frame(height: barHeight)
-
-            Capsule()
-                .fill(Color.white.opacity(0.92))
-                .frame(width: max(0, width * CGFloat(pct)), height: barHeight)
-        }
-        .animation(.easeOut(duration: 0.14), value: isScrubbing)
-        .frame(width: width, height: 24)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { val in
-                    isScrubbing = true
-                    let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
-                    scrubPosition = progressRatio * maxDur
-                }
-                .onEnded { val in
-                    let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
-                    let target = progressRatio * maxDur
-                    player.seek(to: target)
-                    isScrubbing = false
-                }
+        FullscreenScrubberView(
+            isScrubbing: $isScrubbing,
+            fixedWidth: fixedWidth,
+            serverURL: serverURL
         )
     }
 
@@ -1150,10 +896,14 @@ public struct FullscreenPlayerView: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { val in
+                            isAdjustingVolume = true
                             let pct = Float(max(0.0, min(1.0, val.location.x / vWidth)))
                             volume = pct
                             volumeManager.setVolume(pct)
                             player.setVolume(pct)
+                        }
+                        .onEnded { _ in
+                            isAdjustingVolume = false
                         }
                 )
             }
@@ -1187,53 +937,15 @@ public struct FullscreenPlayerView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Color.white.opacity(0.75))
                         .multilineTextAlignment(.center)
-                    Text("Für diesen Titel liegen aktuell keine Songtexte vor.")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color.white.opacity(0.45))
-                        .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 20) {
-                            ForEach(lyricsLines) { line in
-                                let isCurrent = currentLyricId == line.id
-                                Text(line.text)
-                                    .font(.system(size: 22 * lyricsSizeScale, weight: isCurrent ? .bold : .medium))
-                                    .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.32))
-                                    .lineSpacing(4)
-                                    .id(line.id)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        player.seek(to: line.time)
-                                    }
-                                    .animation(.easeInOut(duration: 0.25), value: isCurrent)
-                            }
-                        }
-                        .padding(.vertical, 80)
-                    }
-                    .mask(
-                        LinearGradient(
-                            gradient: Gradient(stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: .black, location: 0.12),
-                                .init(color: .black, location: 0.88),
-                                .init(color: .clear, location: 1.0)
-                            ]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .onChange(of: currentLyricId) { newId in
-                        if let id = newId {
-                            withAnimation(.easeInOut(duration: 0.35)) {
-                                proxy.scrollTo(id, anchor: .center)
-                            }
-                        }
-                    }
-                }
+                FullscreenSyncedLyricsScrollView(
+                    lyricsLines: lyricsLines,
+                    lyricsSizeScale: lyricsSizeScale,
+                    onSeek: { player.seek(to: $0) }
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1349,20 +1061,10 @@ public struct FullscreenPlayerView: View {
                     .foregroundColor(Color.white.opacity(0.50))
                     .padding(.vertical, 16)
             } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(lyricsLines) { line in
-                        let isCurrent = currentLyricId == line.id
-                        Text(line.text)
-                            .font(.system(size: 18, weight: isCurrent ? .bold : .medium))
-                            .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.32))
-                            .lineSpacing(4)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                player.seek(to: line.time)
-                            }
-                            .animation(.easeInOut(duration: 0.25), value: isCurrent)
-                    }
-                }
+                FullscreenSyncedLyricsCompactList(
+                    lyricsLines: lyricsLines,
+                    onSeek: { player.seek(to: $0) }
+                )
                 .padding(.vertical, 8)
             }
         }
@@ -1450,12 +1152,437 @@ public struct FullscreenPlayerView: View {
             )
         }
     }
+}
 
-    private func formatSeconds(_ seconds: Double) -> String {
-        let sec = Int(max(0, seconds))
-        let m = sec / 60
-        let s = sec % 60
-        return String(format: "%d:%02d", m, s)
+private func formatPlayerSeconds(_ seconds: Double) -> String {
+    let sec = Int(max(0, seconds))
+    let m = sec / 60
+    let s = sec % 60
+    return String(format: "%d:%02d", m, s)
+}
+
+private func activeLyricLineId(in lines: [LyricLine], at time: Double) -> String? {
+    guard !lines.isEmpty, let first = lines.first, time >= first.time - 0.4 else {
+        return nil
+    }
+    return lines.last(where: { $0.time <= time + 0.15 })?.id
+}
+
+// MARK: - Weichgezeichneter Album-Hintergrund (Equatable isoliert: 0 Redraws während Drag)
+private struct FullscreenBackgroundLayer: View, Equatable {
+    let artwork: UIImage?
+    let coverURL: URL?
+    let width: CGFloat
+    let height: CGFloat
+
+    static func == (lhs: FullscreenBackgroundLayer, rhs: FullscreenBackgroundLayer) -> Bool {
+        lhs.artwork === rhs.artwork &&
+        lhs.coverURL == rhs.coverURL &&
+        lhs.width == rhs.width &&
+        lhs.height == rhs.height
+    }
+
+    var body: some View {
+        let lowW = max(1, width * 0.25)
+        let lowH = max(1, height * 0.25)
+
+        ZStack {
+            Color(hex: "#121215")
+                .frame(width: width, height: height)
+
+            Group {
+                if let artwork = artwork {
+                    Image(uiImage: artwork)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: lowW, height: lowH)
+                        .blur(radius: 16)
+                        .opacity(0.56)
+                        .scaleEffect(4.6)
+                } else {
+                    PortCachedAsyncImage(url: coverURL) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: lowW, height: lowH)
+                            .blur(radius: 16)
+                            .opacity(0.56)
+                            .scaleEffect(4.6)
+                    } placeholder: {
+                        Color.clear
+                    }
+                }
+            }
+            .frame(width: width, height: height)
+            .clipped()
+
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.28), location: 0.0),
+                    .init(color: Color.black.opacity(0.42), location: 0.48),
+                    .init(color: Color.black.opacity(0.76), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(width: width, height: height)
+        }
+        .frame(width: width, height: height)
+        .drawingGroup(opaque: true)
+        .clipped()
+    }
+}
+
+// MARK: - GPU-isolierter Drag-to-Dismiss Container (O(1) Transform ohne Content- oder TabView-Redraw)
+private struct DraggablePlayerSheet<Content: View>: View {
+    let fullWidth: CGFloat
+    let fullHeight: CGFloat
+    let restrictDragToTopBar: Bool
+    let safeTopArea: CGFloat
+    let isSliderActive: Bool
+    let dismissTrigger: Int
+    let onDismiss: () -> Void
+    let content: Content
+
+    private enum AxisLock {
+        case undecided
+        case vertical
+        case ignored
+    }
+
+    @State private var dragOffset: CGFloat = 0.0
+    @State private var isDismissing: Bool = false
+    @State private var axisLock: AxisLock = .undecided
+    @State private var anchorOffsetY: CGFloat = 0.0
+
+    private func performDismiss() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.90)) {
+            dragOffset = fullHeight + 48
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            onDismiss()
+        }
+    }
+
+    var body: some View {
+        let isActivelyPulled = dragOffset > 0.5
+        let backdropProgress = min(1.0, max(0.0, dragOffset / max(1.0, fullHeight * 0.65)))
+        let backdropOpacity = isActivelyPulled ? (0.48 * Double(1.0 - backdropProgress)) : 0.0
+
+        ZStack(alignment: .top) {
+            Color.black
+                .opacity(backdropOpacity)
+                .frame(width: fullWidth, height: fullHeight)
+                .allowsHitTesting(false)
+
+            content
+                .frame(width: fullWidth, height: fullHeight)
+                .clipShape(RoundedRectangle(cornerRadius: isActivelyPulled ? 40.0 : 0.0, style: .continuous))
+                .offset(y: max(0.0, dragOffset))
+        }
+        .frame(width: fullWidth, height: fullHeight)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                .onChanged { val in
+                    guard !isDismissing else { return }
+                    if isSliderActive {
+                        axisLock = .ignored
+                        return
+                    }
+
+                    let dx = val.translation.width
+                    let dy = val.translation.height
+
+                    if axisLock == .undecided {
+                        if restrictDragToTopBar && val.startLocation.y > (safeTopArea + 130) {
+                            axisLock = .ignored
+                            return
+                        }
+                        let dist = hypot(dx, dy)
+                        guard dist >= 10 else { return }
+                        if dy > 0 && abs(dy) > abs(dx) * 1.15 {
+                            axisLock = .vertical
+                            anchorOffsetY = dy
+                        } else {
+                            axisLock = .ignored
+                            return
+                        }
+                    }
+
+                    guard axisLock == .vertical else { return }
+                    let adjusted = max(0.0, dy - anchorOffsetY)
+                    var transaction = Transaction()
+                    transaction.animation = nil
+                    withTransaction(transaction) {
+                        dragOffset = adjusted
+                    }
+                }
+                .onEnded { val in
+                    defer {
+                        axisLock = .undecided
+                        anchorOffsetY = 0.0
+                    }
+                    guard !isDismissing, axisLock == .vertical else { return }
+                    let dy = max(0.0, val.translation.height - anchorOffsetY)
+                    let velocityY = val.predictedEndTranslation.height - val.translation.height
+                    if dy > 110 || (dy > 48 && velocityY > 140) {
+                        performDismiss()
+                    } else {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+                            dragOffset = 0.0
+                        }
+                    }
+                }
+        )
+        .onChange(of: dismissTrigger) { _ in
+            performDismiss()
+        }
+        .onAppear {
+            dragOffset = 0.0
+            isDismissing = false
+            axisLock = .undecided
+            anchorOffsetY = 0.0
+        }
+    }
+}
+
+// MARK: - Isolierter Scrubber (Progress-Ticks triggern nur diese kleine Teilansicht)
+private struct FullscreenScrubberView: View {
+    @ObservedObject private var player = AudioPlayerManager.shared
+    @ObservedObject private var progress = AudioPlayerProgress.shared
+    @ObservedObject private var offlineManager = OfflineDownloadManager.shared
+
+    @Binding var isScrubbing: Bool
+    @State private var scrubPosition: Double = 0.0
+    let fixedWidth: CGFloat?
+    let serverURL: String
+
+    private var activeProgress: Double {
+        isScrubbing ? scrubPosition : progress.currentTime
+    }
+
+    var body: some View {
+        if player.currentTrack?.isLive == true {
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(height: 1.5)
+
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(hex: "#ff3b30"))
+                            .frame(width: 7, height: 7)
+                            .shadow(color: Color(hex: "#ff3b30").opacity(0.75), radius: 4)
+
+                        Text("LIVE")
+                            .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                            .tracking(1.6)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.12))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.6)
+                            )
+                    )
+
+                    Rectangle()
+                        .fill(Color.white.opacity(0.22))
+                        .frame(height: 1.5)
+                }
+
+                let subtitle = player.currentTrack?.album?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                Text(subtitle.isEmpty || subtitle == "Radio" ? "Live-Übertragung" : subtitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color.white.opacity(0.62))
+                    .lineLimit(1)
+            }
+            .frame(width: fixedWidth)
+            .padding(.vertical, 2)
+        } else {
+            VStack(spacing: 8) {
+                if let w = fixedWidth {
+                    scrubberBar(width: w)
+                } else {
+                    GeometryReader { geo in
+                        scrubberBar(width: geo.size.width)
+                    }
+                    .frame(height: 24)
+                }
+
+                ZStack(alignment: .center) {
+                    HStack {
+                        Text(formatPlayerSeconds(activeProgress))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.60))
+
+                        Spacer()
+
+                        let remaining = max(0, player.duration - activeProgress)
+                        Text("-" + formatPlayerSeconds(remaining))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.60))
+                    }
+
+                    let isOfflineTrack = player.isPlayingOffline || (player.currentTrack.map { offlineManager.isDownloaded(trackId: $0.id) } ?? false)
+                    if isOfflineTrack {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color(hex: "#10b981"))
+                            Text("Offline · Lokal")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(Color.white.opacity(0.92))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            Capsule()
+                                .fill(Color(hex: "#10b981").opacity(0.18))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color(hex: "#10b981").opacity(0.35), lineWidth: 0.6)
+                                )
+                        )
+                    } else {
+                        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
+                        let qualityTitle = (storedQuality == "low" || storedQuality == "normal") ? "Low" : "High"
+                        Text(qualityTitle)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(Color.white.opacity(0.85))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill(Color.white.opacity(0.14))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                    )
+                            )
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .frame(width: fixedWidth)
+        }
+    }
+
+    private func scrubberBar(width: CGFloat) -> some View {
+        let maxDur = max(player.duration, 1.0)
+        let pct = min(1.0, max(0.0, activeProgress / maxDur))
+        let barHeight: CGFloat = isScrubbing ? 9 : 6
+
+        return ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.white.opacity(0.22))
+                .frame(height: barHeight)
+
+            Capsule()
+                .fill(Color.white.opacity(0.92))
+                .frame(width: max(0, width * CGFloat(pct)), height: barHeight)
+        }
+        .animation(.easeOut(duration: 0.14), value: isScrubbing)
+        .frame(width: width, height: 24)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { val in
+                    isScrubbing = true
+                    let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
+                    scrubPosition = progressRatio * maxDur
+                }
+                .onEnded { val in
+                    let progressRatio = max(0.0, min(1.0, Double(val.location.x / width)))
+                    let target = progressRatio * maxDur
+                    player.seek(to: target)
+                    isScrubbing = false
+                }
+        )
+    }
+}
+
+private struct FullscreenSyncedLyricsScrollView: View {
+    @ObservedObject private var progress = AudioPlayerProgress.shared
+    let lyricsLines: [LyricLine]
+    let lyricsSizeScale: CGFloat
+    let onSeek: (Double) -> Void
+
+    var body: some View {
+        let currentId = activeLyricLineId(in: lyricsLines, at: progress.currentTime)
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    ForEach(lyricsLines) { line in
+                        let isCurrent = currentId == line.id
+                        Text(line.text)
+                            .font(.system(size: 22 * lyricsSizeScale, weight: isCurrent ? .bold : .medium))
+                            .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.32))
+                            .lineSpacing(4)
+                            .id(line.id)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onSeek(line.time)
+                            }
+                            .animation(.easeInOut(duration: 0.25), value: isCurrent)
+                    }
+                }
+                .padding(.vertical, 80)
+            }
+            .mask(
+                LinearGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 0.12),
+                        .init(color: .black, location: 0.88),
+                        .init(color: .clear, location: 1.0)
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .onChange(of: currentId) { newId in
+                if let id = newId {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct FullscreenSyncedLyricsCompactList: View {
+    @ObservedObject private var progress = AudioPlayerProgress.shared
+    let lyricsLines: [LyricLine]
+    let onSeek: (Double) -> Void
+
+    var body: some View {
+        let currentId = activeLyricLineId(in: lyricsLines, at: progress.currentTime)
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(lyricsLines) { line in
+                let isCurrent = currentId == line.id
+                Text(line.text)
+                    .font(.system(size: 18, weight: isCurrent ? .bold : .medium))
+                    .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.32))
+                    .lineSpacing(4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onSeek(line.time)
+                    }
+                    .animation(.easeInOut(duration: 0.25), value: isCurrent)
+            }
+        }
     }
 }
 
