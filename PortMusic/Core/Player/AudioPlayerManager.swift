@@ -306,7 +306,7 @@ public final class AudioPlayerManager: ObservableObject {
             if track.isLive {
                 JamManager.shared.leaveJam()
             } else {
-                JamManager.shared.playTrackInJam(track, queue: contextQueue)
+                JamManager.shared.playTrackInJam(track, queue: contextQueue, startAt: startAt ?? 0.0)
                 return
             }
         }

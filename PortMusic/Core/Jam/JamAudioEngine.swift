@@ -3,23 +3,23 @@ import AVFoundation
 import CoreMedia
 
 /// Progressive Streaming-Audio-Engine für Port Music Jam auf Basis von Hardware-AVPlayer:
-/// - Streamt per HTTP Range-Requests (minimaler mobiler Datenverbrauch, Start unter 250 ms)
-/// - Synchronisiert über `setRate(_:time:atHostTime:)` direkt gegen die CoreAudio Host-Clock
+/// - Streamt per HTTP Range-Requests (minimaler mobiler Datenverbrauch, zuverlässiger iOS-Start)
+/// - Synchronisiert Start-Zeitpunkte mit Preroll + Server-Timeline-Anker
 /// - Hält alle Geräte über sanfte, tonhöhenerhaltende Tempo-Anpassung (PLL 0.985x–1.015x) dauerhaft im Takt
 @MainActor
 public final class JamAudioEngine {
     public static let shared = JamAudioEngine()
 
     public static let maxTrustworthyOutputLatencyMs: Double = 100.0
-    private static let lookaheadSeconds: Double = 0.06
+    private static let lookaheadSeconds: Double = 0.05
     private static let preferredForwardBufferSec: TimeInterval = 8.0
 
     private var player: AVPlayer? = nil
     private var playerItem: AVPlayerItem? = nil
     private var timeObserverToken: Any? = nil
     private var itemStatusObserver: NSKeyValueObservation? = nil
-    private var itemBufferObserver: NSKeyValueObservation? = nil
     private var itemDurationObserver: NSKeyValueObservation? = nil
+    private var itemRateObserver: NSKeyValueObservation? = nil
 
     private var currentTrackId: String? = nil
     private var loadingTrackId: String? = nil
@@ -34,13 +34,15 @@ public final class JamAudioEngine {
     private var anchorPositionSeconds: Double = 0.0
     private var lastAnchorTrackId: String? = nil
     private var currentNudgeMs: Double = 0.0
-    private var lastEstimatedOffsetMs: Double = 0.0
     private var lastHardSeekUptimeMs: Double = 0.0
 
     private var loadGeneration: UInt64 = 0
+    private var playCommandGeneration: UInt64 = 0
     private var readyContinuation: CheckedContinuation<Double?, Never>? = nil
     private var readyTimeoutWorkItem: DispatchWorkItem? = nil
+    private var scheduledPlayWorkItem: DispatchWorkItem? = nil
     private var scheduledPauseWorkItem: DispatchWorkItem? = nil
+    private var playWatchdogWorkItem: DispatchWorkItem? = nil
     private var lastPlaybackEmitUptimeMs: Double = 0.0
 
     private var pendingPlayCommand: (
@@ -81,6 +83,9 @@ public final class JamAudioEngine {
                 guard let self = self else { return }
                 if type == .ended {
                     self.configureAudioSession()
+                    if self.isPlayingState {
+                        self.player?.play()
+                    }
                 }
             }
         }
@@ -113,7 +118,7 @@ public final class JamAudioEngine {
     }
 
     public func hasTrackLoaded(_ trackId: String) -> Bool {
-        return currentTrackId == trackId && isItemReady && playerItem != nil
+        return currentTrackId == trackId && isItemReady && playerItem != nil && playerItem?.status == .readyToPlay
     }
 
     public func isTrackLoading(_ trackId: String) -> Bool {
@@ -147,16 +152,20 @@ public final class JamAudioEngine {
         serverURL: String,
         token: String?
     ) async -> Double? {
-        if currentTrackId == trackId && isItemReady, let existing = playerItem {
+        if currentTrackId == trackId && isItemReady,
+           let existing = playerItem,
+           existing.status == .readyToPlay {
             let dur = existing.duration.seconds
             let resolved = (dur.isFinite && dur > 0) ? dur : currentDurationSeconds
             return resolved
         }
 
         loadGeneration &+= 1
+        playCommandGeneration &+= 1
         let myGen = loadGeneration
         finishReadyContinuation(with: nil)
 
+        cancelScheduledPlay()
         cancelScheduledPause()
         pendingPlayCommand = nil
         cleanupItemObservers()
@@ -167,12 +176,15 @@ public final class JamAudioEngine {
         self.isPlayingState = false
         self.lastReportedPositionSeconds = 0.0
         self.currentDurationSeconds = 0.0
+        self.anchorServerExecMs = 0.0
+        self.anchorPositionSeconds = 0.0
+        self.lastAnchorTrackId = nil
 
         configureAudioSession()
 
-        let asset: AVURLAsset
+        let item: AVPlayerItem
         if let localOffline = OfflineDownloadManager.shared.localAudioFileURL(for: trackId) {
-            asset = AVURLAsset(url: localOffline)
+            item = AVPlayerItem(asset: AVURLAsset(url: localOffline))
         } else {
             guard let resolvedURL = buildIOSCompatibleStreamURL(
                 trackId: trackId,
@@ -184,30 +196,32 @@ public final class JamAudioEngine {
                 }
                 return nil
             }
-            var headers: [String: String] = [
-                "User-Agent": "PortMusic-iOS/1.0"
-            ]
-            if let tok = token, !tok.isEmpty {
-                headers["Authorization"] = "Bearer \(tok)"
-                headers["x-session-token"] = tok
+            // User-Agent niemals manuell in AVURLAssetHTTPHeaderFieldsKey überschreiben:
+            // CFNetwork nutzt automatisch nativen AppleCoreMedia-Agent, den der Backend-Stream benötigt.
+            if resolvedURL.path.hasPrefix("/api/files/audio/"),
+               let tok = token, !tok.isEmpty {
+                let headers: [String: String] = [
+                    "Authorization": "Bearer \(tok)",
+                    "x-session-token": tok
+                ]
+                item = AVPlayerItem(asset: AVURLAsset(url: resolvedURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers]))
+            } else {
+                item = AVPlayerItem(url: resolvedURL)
             }
-            asset = AVURLAsset(url: resolvedURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         }
 
-        let item = AVPlayerItem(asset: asset)
         item.audioTimePitchAlgorithm = .timeDomain
         item.preferredForwardBufferDuration = Self.preferredForwardBufferSec
         self.playerItem = item
 
         if let existingPlayer = self.player {
             existingPlayer.pause()
-            existingPlayer.rate = 0.0
-            existingPlayer.automaticallyWaitsToMinimizeStalling = false
+            existingPlayer.automaticallyWaitsToMinimizeStalling = true
             existingPlayer.volume = Float(globalVolume)
             existingPlayer.replaceCurrentItem(with: item)
         } else {
             let newPlayer = AVPlayer(playerItem: item)
-            newPlayer.automaticallyWaitsToMinimizeStalling = false
+            newPlayer.automaticallyWaitsToMinimizeStalling = true
             newPlayer.volume = Float(globalVolume)
             self.player = newPlayer
             setupTimeObserver(for: newPlayer)
@@ -263,21 +277,15 @@ public final class JamAudioEngine {
                     }
                 }
             }
-
-            self.itemBufferObserver = item.observe(\.isPlaybackLikelyToKeepUp, options: [.initial, .new]) { [weak self] observed, _ in
-                Task { @MainActor [weak self] in
-                    guard let self = self, myGen == self.loadGeneration else { return }
-                    self.handleItemReadyCheck(observed, trackId: trackId, loadGen: myGen)
-                }
-            }
         }
     }
 
     private func handleItemReadyCheck(_ observed: AVPlayerItem, trackId: String, loadGen myGen: UInt64) {
         guard myGen == self.loadGeneration else { return }
         guard observed.status == .readyToPlay, !self.isItemReady else { return }
-        guard observed.isPlaybackLikelyToKeepUp || !observed.loadedTimeRanges.isEmpty else { return }
 
+        // Sobald AVPlayerItem .readyToPlay meldet, sofort freigeben (ohne auf isPlaybackLikelyToKeepUp
+        // im pausierten Zustand zu blockieren, da HTTP-Streams oft erst mit player.play() weiterbuffern).
         self.isItemReady = true
         self.loadingTrackId = nil
         let itemDur = observed.duration.seconds
@@ -308,7 +316,87 @@ public final class JamAudioEngine {
         }
     }
 
-    // MARK: - Sample-Accurate Scheduled Playback via CMClock Host Time
+    // MARK: - Sofortige optimistische lokale Steuerung (Null-Latenz-UI + Audio)
+
+    public func playOptimisticLocal(trackId: String, at positionSeconds: Double) {
+        guard currentTrackId == trackId else { return }
+        cancelScheduledPause()
+        isPlayingState = true
+        let clamped = clampPosition(positionSeconds)
+        lastReportedPositionSeconds = clamped
+
+        if let player = player, let item = playerItem, item.status == .readyToPlay {
+            configureAudioSession()
+            player.automaticallyWaitsToMinimizeStalling = true
+            player.volume = Float(globalVolume)
+            let curPos = item.currentTime().seconds
+            if !curPos.isFinite || abs(curPos - clamped) > 0.6 {
+                let cm = CMTime(seconds: clamped, preferredTimescale: 600)
+                let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
+                player.seek(to: cm, toleranceBefore: tol, toleranceAfter: tol) { [weak self, weak player] _ in
+                    Task { @MainActor [weak self, weak player] in
+                        guard let self = self, let player = player, self.isPlayingState, self.currentTrackId == trackId else { return }
+                        player.play()
+                    }
+                }
+            } else {
+                player.play()
+            }
+        } else {
+            pendingPlayCommand = (
+                trackId: trackId,
+                serverTimeToExecuteMs: 0,
+                positionSeconds: clamped,
+                estimatedServerTimeMs: serverTimeProvider?() ?? 0,
+                nudgeMs: currentNudgeMs
+            )
+        }
+
+        onPlaybackStateChanged?(true, clamped, currentDurationSeconds, true)
+    }
+
+    public func pauseOptimisticLocal(at positionSeconds: Double) {
+        cancelScheduledPlay()
+        cancelScheduledPause()
+        pendingPlayCommand = nil
+        isPlayingState = false
+        let clamped = clampPosition(positionSeconds)
+        lastReportedPositionSeconds = clamped
+        player?.pause()
+        onPlaybackStateChanged?(false, clamped, currentDurationSeconds, true)
+    }
+
+    public func seekOptimisticLocal(to positionSeconds: Double) {
+        let clamped = clampPosition(positionSeconds)
+        lastReportedPositionSeconds = clamped
+        lastHardSeekUptimeMs = ProcessInfo.processInfo.systemUptime * 1000.0
+        if let player = player, let item = playerItem, item.status == .readyToPlay {
+            let cm = CMTime(seconds: clamped, preferredTimescale: 600)
+            let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
+            player.seek(to: cm, toleranceBefore: tol, toleranceAfter: tol) { [weak self, weak player] _ in
+                Task { @MainActor [weak self, weak player] in
+                    guard let self = self, let player = player else { return }
+                    if self.isPlayingState {
+                        player.play()
+                    }
+                }
+            }
+        }
+        onPlaybackStateChanged?(isPlayingState, clamped, currentDurationSeconds, true)
+    }
+
+    public func prepareSeekWhilePaused(trackId: String, to positionSeconds: Double) {
+        guard currentTrackId == trackId, !isPlayingState else { return }
+        let clamped = clampPosition(positionSeconds)
+        lastReportedPositionSeconds = clamped
+        if let player = player, let item = playerItem, item.status == .readyToPlay {
+            let cm = CMTime(seconds: clamped, preferredTimescale: 600)
+            let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
+            player.seek(to: cm, toleranceBefore: tol, toleranceAfter: tol)
+        }
+    }
+
+    // MARK: - Zuverlässige zeitgesteuerte Synchronisation + Preroll + Watchdog
 
     public func schedulePlay(
         trackId: String,
@@ -318,6 +406,7 @@ public final class JamAudioEngine {
         nudgeMs: Double
     ) {
         cancelScheduledPause()
+        cancelScheduledPlay()
         self.currentNudgeMs = nudgeMs
 
         if loadingTrackId == trackId && !hasTrackLoaded(trackId) {
@@ -328,6 +417,9 @@ public final class JamAudioEngine {
                 estimatedServerTimeMs: estimatedServerTimeMs,
                 nudgeMs: nudgeMs
             )
+            self.isPlayingState = true
+            self.lastReportedPositionSeconds = max(0.0, positionSeconds)
+            onPlaybackStateChanged?(true, self.lastReportedPositionSeconds, currentDurationSeconds, true)
             return
         }
 
@@ -343,74 +435,135 @@ public final class JamAudioEngine {
                 estimatedServerTimeMs: estimatedServerTimeMs,
                 nudgeMs: nudgeMs
             )
+            self.isPlayingState = true
+            self.lastReportedPositionSeconds = max(0.0, positionSeconds)
+            onPlaybackStateChanged?(true, self.lastReportedPositionSeconds, currentDurationSeconds, true)
             return
         }
 
         pendingPlayCommand = nil
+        playCommandGeneration &+= 1
+        let myPlayGen = playCommandGeneration
+
         configureAudioSession()
-        player.automaticallyWaitsToMinimizeStalling = false
+        player.automaticallyWaitsToMinimizeStalling = true
         player.volume = Float(globalVolume)
 
-        // Anker unverändert merken, damit der PLL stets exakt gegen den Server-Zeitstrahl arbeitet
-        self.anchorServerExecMs = serverTimeToExecuteMs > 0 ? serverTimeToExecuteMs : estimatedServerTimeMs
+        let effectiveExecMs = serverTimeToExecuteMs > 0 ? serverTimeToExecuteMs : estimatedServerTimeMs
+        self.anchorServerExecMs = effectiveExecMs
         self.anchorPositionSeconds = max(0.0, positionSeconds)
         self.lastAnchorTrackId = trackId
 
         let outputLatencyMs = currentOutputLatencyMs()
-        let waitTimeMs = (self.anchorServerExecMs - estimatedServerTimeMs) - outputLatencyMs + nudgeMs
+        let waitTimeMs = (effectiveExecMs - estimatedServerTimeMs) - outputLatencyMs + nudgeMs
 
         let clampedTargetPos: Double
-        let hostDelaySeconds: Double
+        let startDelaySeconds: Double
 
-        if waitTimeMs > (Self.lookaheadSeconds * 1000.0) {
+        if waitTimeMs > (Self.lookaheadSeconds * 1000.0) && waitTimeMs < 5000.0 {
             clampedTargetPos = clampPosition(positionSeconds)
-            hostDelaySeconds = waitTimeMs / 1000.0
+            startDelaySeconds = waitTimeMs / 1000.0
         } else {
             let overdueSec = waitTimeMs < 0 ? (-waitTimeMs / 1000.0) : 0.0
-            hostDelaySeconds = Self.lookaheadSeconds
-            clampedTargetPos = clampPosition(positionSeconds + overdueSec + Self.lookaheadSeconds)
+            startDelaySeconds = 0.0
+            clampedTargetPos = clampPosition(positionSeconds + overdueSec)
         }
-
-        let targetCMTime = CMTime(seconds: clampedTargetPos, preferredTimescale: 600)
-        let hostClock = CMClockGetHostTimeClock()
-        let nowHost = CMClockGetTime(hostClock)
-        let scheduledHostEpochSec = CMTimeGetSeconds(nowHost) + hostDelaySeconds
 
         self.lastReportedPositionSeconds = clampedTargetPos
         self.isPlayingState = true
         self.lastHardSeekUptimeMs = ProcessInfo.processInfo.systemUptime * 1000.0
 
-        player.pause()
-        player.seek(to: targetCMTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
-            Task { @MainActor [weak self, weak player] in
-                guard let self = self, let player = player, self.isPlayingState, self.currentTrackId == trackId else {
-                    return
-                }
-                let updatedHost = CMClockGetTime(CMClockGetHostTimeClock())
-                let remainingSec = scheduledHostEpochSec - CMTimeGetSeconds(updatedHost)
-                if remainingSec > 0.01 {
-                    let itemCM = CMTime(seconds: clampedTargetPos, preferredTimescale: 600)
-                    let hostCM = CMTimeAdd(updatedHost, CMTime(seconds: remainingSec, preferredTimescale: 1_000_000_000))
-                    player.setRate(1.0, time: itemCM, atHostTime: hostCM)
-                } else {
-                    let recomputedExpected = self.expectedServerPositionNow()
-                    let snapped = self.clampPosition(recomputedExpected + 0.04)
-                    let snapCM = CMTime(seconds: snapped, preferredTimescale: 600)
-                    player.seek(to: snapCM, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                        Task { @MainActor [weak self, weak player] in
-                            guard let self = self, let player = player, self.isPlayingState, self.currentTrackId == trackId else {
-                                return
-                            }
-                            let hNow = CMClockGetTime(CMClockGetHostTimeClock())
-                            let nearHost = CMTimeAdd(hNow, CMTime(seconds: 0.03, preferredTimescale: 1_000_000_000))
-                            player.setRate(1.0, time: CMTime(seconds: snapped, preferredTimescale: 600), atHostTime: nearHost)
+        onPlaybackStateChanged?(true, clampedTargetPos, currentDurationSeconds, true)
+
+        let curItemSec = item.currentTime().seconds
+        let expectedAtExec = clampPosition(expectedServerPositionNow())
+        let alreadyPlayingNearTarget = (player.timeControlStatus == .playing || player.rate > 0.05)
+            && curItemSec.isFinite
+            && abs(curItemSec - expectedAtExec) < 0.25
+            && startDelaySeconds < 0.25
+
+        if alreadyPlayingNearTarget {
+            // Bereits optimistisch gestartet: kein hartes Pause/Seek-Stottern, PLL zieht nahtlos auf <25 ms ein
+            self.schedulePlayWatchdog(trackId: trackId, playGen: myPlayGen)
+            return
+        }
+
+        let needsSeek = !curItemSec.isFinite || abs(curItemSec - clampedTargetPos) > 0.35
+
+        let startPlaybackBlock: () -> Void = { [weak self, weak player] in
+            guard let self = self,
+                  let player = player,
+                  self.isPlayingState,
+                  self.currentTrackId == trackId,
+                  self.playCommandGeneration == myPlayGen else {
+                return
+            }
+
+            if startDelaySeconds > 0.03 {
+                player.pause()
+                player.preroll(atRate: 1.0) { _ in }
+
+                let fireAt = DispatchTime.now() + .milliseconds(Int((startDelaySeconds * 1000.0).rounded()))
+                let startWork = DispatchWorkItem { [weak self, weak player] in
+                    Task { @MainActor [weak self, weak player] in
+                        guard let self = self,
+                              let player = player,
+                              self.isPlayingState,
+                              self.currentTrackId == trackId,
+                              self.playCommandGeneration == myPlayGen else {
+                            return
                         }
+                        player.play()
+                        self.schedulePlayWatchdog(trackId: trackId, playGen: myPlayGen)
                     }
                 }
+                self.scheduledPlayWorkItem = startWork
+                DispatchQueue.main.asyncAfter(deadline: fireAt, execute: startWork)
+            } else {
+                player.play()
+                self.schedulePlayWatchdog(trackId: trackId, playGen: myPlayGen)
             }
         }
 
-        onPlaybackStateChanged?(true, clampedTargetPos, currentDurationSeconds, true)
+        if needsSeek {
+            if startDelaySeconds > 0.03 {
+                player.pause()
+            }
+            let targetCMTime = CMTime(seconds: clampedTargetPos, preferredTimescale: 600)
+            let tolerance = CMTime(seconds: 0.08, preferredTimescale: 600)
+            player.seek(to: targetCMTime, toleranceBefore: tolerance, toleranceAfter: tolerance) { _ in
+                Task { @MainActor [weak self] in
+                    guard let self = self, self.playCommandGeneration == myPlayGen else { return }
+                    startPlaybackBlock()
+                }
+            }
+        } else {
+            startPlaybackBlock()
+        }
+    }
+
+    private func schedulePlayWatchdog(trackId: String, playGen: UInt64) {
+        playWatchdogWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self = self,
+                      self.isPlayingState,
+                      self.currentTrackId == trackId,
+                      self.playCommandGeneration == playGen,
+                      let player = self.player,
+                      let item = self.playerItem,
+                      item.status == .readyToPlay else {
+                    return
+                }
+                // Sicherheitsnetz: Falls CoreAudio/AVPlayer nach Seek/Preroll bei rate == 0 stehen blieb, sofort anstoßen
+                if player.timeControlStatus == .paused || player.rate == 0.0 {
+                    self.configureAudioSession()
+                    player.play()
+                }
+            }
+        }
+        playWatchdogWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(350), execute: work)
     }
 
     public func schedulePause(
@@ -420,7 +573,9 @@ public final class JamAudioEngine {
         nudgeMs: Double
     ) {
         cancelScheduledPause()
+        cancelScheduledPlay()
         pendingPlayCommand = nil
+        playCommandGeneration &+= 1
         self.currentNudgeMs = nudgeMs
 
         let outputLatencyMs = currentOutputLatencyMs()
@@ -428,7 +583,7 @@ public final class JamAudioEngine {
             ? (serverTimeToExecuteMs - estimatedServerTimeMs) - outputLatencyMs + nudgeMs
             : 0.0
 
-        if waitTimeMs > 20.0 && waitTimeMs < 5000.0 {
+        if waitTimeMs > 25.0 && waitTimeMs < 5000.0 {
             let work = DispatchWorkItem { [weak self] in
                 Task { @MainActor [weak self] in
                     self?.executePauseNow(positionSeconds: positionSeconds)
@@ -449,9 +604,14 @@ public final class JamAudioEngine {
 
         if let player = player {
             player.pause()
-            player.rate = 0.0
-            let cm = CMTime(seconds: clamped, preferredTimescale: 600)
-            player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero)
+            if let item = playerItem, item.status == .readyToPlay {
+                let curPos = item.currentTime().seconds
+                if !curPos.isFinite || abs(curPos - clamped) > 0.35 {
+                    let cm = CMTime(seconds: clamped, preferredTimescale: 600)
+                    let tol = CMTime(seconds: 0.08, preferredTimescale: 600)
+                    player.seek(to: cm, toleranceBefore: tol, toleranceAfter: tol)
+                }
+            }
         }
 
         onPlaybackStateChanged?(false, clamped, currentDurationSeconds, true)
@@ -464,10 +624,11 @@ public final class JamAudioEngine {
         if abs(deltaMs) >= 40.0 {
             let expected = clampPosition(expectedServerPositionNow())
             let targetCM = CMTime(seconds: expected, preferredTimescale: 600)
-            player.seek(to: targetCM, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+            let tol = CMTime(seconds: 0.05, preferredTimescale: 600)
+            player.seek(to: targetCM, toleranceBefore: tol, toleranceAfter: tol) { [weak self, weak player] _ in
                 Task { @MainActor [weak self, weak player] in
                     guard let self = self, let player = player, self.isPlayingState else { return }
-                    player.rate = 1.0
+                    player.play()
                 }
             }
         } else {
@@ -494,6 +655,11 @@ public final class JamAudioEngine {
             return
         }
 
+        if player.timeControlStatus == .paused || player.rate == 0.0 {
+            player.play()
+            return
+        }
+
         let actual = item.currentTime().seconds
         guard actual.isFinite else { return }
 
@@ -506,22 +672,21 @@ public final class JamAudioEngine {
         let absDrift = abs(driftSec)
         let nowUptime = ProcessInfo.processInfo.systemUptime * 1000.0
 
-        if absDrift > 0.45 {
-            // Größerer Versatz (z. B. nach Hintergrund-Pause oder Netz-Stall): einmaliger präziser Sprung
-            if nowUptime - lastHardSeekUptimeMs < 2000.0 {
+        if absDrift > 0.55 {
+            if nowUptime - lastHardSeekUptimeMs < 2500.0 {
                 return
             }
             lastHardSeekUptimeMs = nowUptime
             let target = clampPosition(expected)
             let cm = CMTime(seconds: target, preferredTimescale: 600)
-            player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+            let tol = CMTime(seconds: 0.08, preferredTimescale: 600)
+            player.seek(to: cm, toleranceBefore: tol, toleranceAfter: tol) { [weak self, weak player] _ in
                 Task { @MainActor [weak self, weak player] in
                     guard let self = self, let player = player, self.isPlayingState else { return }
-                    player.rate = 1.0
+                    player.play()
                 }
             }
         } else if absDrift > 0.025 {
-            // Sanftes Pitch-preserving Pull: 1.5% schneller/langsamer bis unter 25 ms Abweichung
             let targetRate: Float = driftSec > 0 ? 0.985 : 1.015
             if abs(player.rate - targetRate) > 0.002 {
                 player.rate = targetRate
@@ -541,7 +706,7 @@ public final class JamAudioEngine {
             timeObserverToken = nil
         }
 
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let interval = CMTime(seconds: 0.4, preferredTimescale: 600)
         timeObserverToken = targetPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
@@ -556,7 +721,7 @@ public final class JamAudioEngine {
                 }
 
                 let nowUptime = ProcessInfo.processInfo.systemUptime * 1000.0
-                if nowUptime - self.lastPlaybackEmitUptimeMs >= 450.0 {
+                if nowUptime - self.lastPlaybackEmitUptimeMs >= 400.0 {
                     self.lastPlaybackEmitUptimeMs = nowUptime
                     self.onPlaybackStateChanged?(self.isPlayingState, self.lastReportedPositionSeconds, self.currentDurationSeconds, false)
                 }
@@ -586,7 +751,9 @@ public final class JamAudioEngine {
 
     public func stopAll() {
         loadGeneration &+= 1
+        playCommandGeneration &+= 1
         finishReadyContinuation(with: nil)
+        cancelScheduledPlay()
         cancelScheduledPause()
         pendingPlayCommand = nil
         cleanupItemObservers()
@@ -612,6 +779,13 @@ public final class JamAudioEngine {
         lastAnchorTrackId = nil
     }
 
+    private func cancelScheduledPlay() {
+        scheduledPlayWorkItem?.cancel()
+        scheduledPlayWorkItem = nil
+        playWatchdogWorkItem?.cancel()
+        playWatchdogWorkItem = nil
+    }
+
     private func cancelScheduledPause() {
         scheduledPauseWorkItem?.cancel()
         scheduledPauseWorkItem = nil
@@ -620,10 +794,10 @@ public final class JamAudioEngine {
     private func cleanupItemObservers() {
         itemStatusObserver?.invalidate()
         itemStatusObserver = nil
-        itemBufferObserver?.invalidate()
-        itemBufferObserver = nil
         itemDurationObserver?.invalidate()
         itemDurationObserver = nil
+        itemRateObserver?.invalidate()
+        itemRateObserver = nil
     }
 
     private func clampPosition(_ sec: Double) -> Double {
@@ -656,7 +830,6 @@ public final class JamAudioEngine {
 
         guard var comps = URLComponents(string: resolvedString) else { return nil }
         if comps.path.contains("/api/stream/") {
-            // Im Mobilfunknetz bzw. für schnelles Jam-Buffering Low-Quality AAC verwenden
             if SessionManager.shared.isExpensiveConnection || SessionManager.shared.isConstrainedConnection {
                 var items = comps.queryItems ?? []
                 items.removeAll { $0.name.lowercased() == "quality" }

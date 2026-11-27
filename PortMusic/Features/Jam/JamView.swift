@@ -798,6 +798,12 @@ private struct JamNowPlayingCard: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            if !jam.canControlPlayback {
+                Text("Nur der Host kann in diesem Modus die Wiedergabe steuern.")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color.white.opacity(0.55))
+            }
         }
         .padding(16)
         .glassCard(cornerRadius: 18)
