@@ -85,9 +85,10 @@ public final class MusicService {
             items.append(URLQueryItem(name: "duration", value: "\(track.durationSeconds)"))
         }
         let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
-        let effectiveQuality = qualityOverride ?? ((storedQuality == "low" || storedQuality == "normal") ? "low" : nil)
-        if let q = effectiveQuality, !q.isEmpty {
-            items.append(URLQueryItem(name: "quality", value: q))
+        let normalizedStored = (storedQuality == "low" || storedQuality == "normal") ? "low" : "high"
+        let effectiveQuality = qualityOverride ?? normalizedStored
+        if !effectiveQuality.isEmpty {
+            items.append(URLQueryItem(name: "quality", value: effectiveQuality))
         }
         components.queryItems = items
         return components.url
@@ -110,9 +111,8 @@ public final class MusicService {
             items.append(URLQueryItem(name: "album", value: album))
         }
         let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
-        if storedQuality == "low" || storedQuality == "normal" {
-            items.append(URLQueryItem(name: "quality", value: "low"))
-        }
+        let effectiveQuality = (storedQuality == "low" || storedQuality == "normal") ? "low" : "high"
+        items.append(URLQueryItem(name: "quality", value: effectiveQuality))
         comps.queryItems = items
         guard let url = comps.url else { return }
 

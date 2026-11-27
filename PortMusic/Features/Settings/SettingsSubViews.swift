@@ -245,11 +245,11 @@ public struct SettingsPlaybackView: View {
             Section(
                 header: Text("Streaming-Qualität"),
                 footer: Text(normalizedQuality == "high"
-                             ? "High Quality liefert bis zu 256 kbps AAC / HiFi (höherer Datenverbrauch)."
-                             : "Low nutzt AAC mit bis zu 130 kbps (datensparend unterwegs).")
+                             ? "High Quality liefert maximal verfügbare AAC/MP4-Qualität (128–256 kbps)."
+                             : "Low Quality nutzt gezielt den sparsamen Low-Bitrate-Stream (~48–64 kbps HE-AAC).")
             ) {
-                qualityRow(id: "high", title: "High", subtitle: "Beste Klangqualität (bis zu 256 kbps / HiFi)")
-                qualityRow(id: "low", title: "Low", subtitle: "Datensparend (AAC bis zu 130 kbps)")
+                qualityRow(id: "high", title: "High", subtitle: "Beste Klangqualität (128–256 kbps AAC)")
+                qualityRow(id: "low", title: "Low", subtitle: "Datensparend (~48–64 kbps HE-AAC)")
             }
             .listRowBackground(Color(white: 0.11))
         }
