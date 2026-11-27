@@ -265,6 +265,27 @@ public final class SessionManager: ObservableObject {
         }
     }
 
+    public static func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        let nsErr = error as NSError
+        return nsErr.domain == NSURLErrorDomain && nsErr.code == NSURLErrorCancelled
+    }
+
+    /// Vermeidet falschen Offline-Modus bei abgebrochenen Tasks oder einzelnen fehlerhaften Streams,
+    /// solange iOS noch aktive Netzwerkverbindung meldet — prüft stattdessen zuerst /api/auth/check.
+    public func reportSuspectedConnectionFailure(_ error: Error? = nil) {
+        if let err = error, Self.isCancellationError(err) {
+            return
+        }
+        if !isPathSatisfied {
+            setOfflineMode(true)
+            return
+        }
+        Task { @MainActor [weak self] in
+            _ = await self?.retryConnection()
+        }
+    }
+
     // MARK: - Anmeldung & Abmeldung
 
     public func loginSuccess(user: UserProfile, token: String, serverURL: String) {
@@ -308,10 +329,10 @@ public final class SessionManager: ObservableObject {
             cacheUserProfile(profile)
         } catch let error as AuthError {
             if case .networkError = error {
-                self.isOfflineMode = true
+                self.reportSuspectedConnectionFailure(error)
             }
         } catch {
-            self.isOfflineMode = true
+            self.reportSuspectedConnectionFailure(error)
         }
     }
 

@@ -150,9 +150,12 @@ public final class JamAudioEngine {
         trackId: String,
         streamURLString: String,
         serverURL: String,
-        token: String?
+        token: String?,
+        forceLowQuality: Bool = false
     ) async -> Double? {
-        if currentTrackId == trackId && isItemReady,
+        if !forceLowQuality,
+           currentTrackId == trackId,
+           isItemReady,
            let existing = playerItem,
            existing.status == .readyToPlay {
             let dur = existing.duration.seconds
@@ -189,7 +192,8 @@ public final class JamAudioEngine {
             guard let resolvedURL = buildIOSCompatibleStreamURL(
                 trackId: trackId,
                 rawStreamURL: streamURLString,
-                serverURL: serverURL
+                serverURL: serverURL,
+                forceLowQuality: forceLowQuality
             ) else {
                 if myGen == loadGeneration {
                     loadingTrackId = nil
@@ -267,6 +271,27 @@ public final class JamAudioEngine {
                         self.handleItemReadyCheck(observed, trackId: trackId, loadGen: myGen)
                     case .failed:
                         print("[JamAudioEngine] AVPlayerItem failed for \(trackId): \(String(describing: observed.error))")
+                        if !forceLowQuality && OfflineDownloadManager.shared.localAudioFileURL(for: trackId) == nil {
+                            self.readyTimeoutWorkItem?.cancel()
+                            self.readyTimeoutWorkItem = nil
+                            let preservedContinuation = self.readyContinuation
+                            self.readyContinuation = nil
+                            Task { @MainActor [weak self] in
+                                guard let self = self, myGen == self.loadGeneration else {
+                                    preservedContinuation?.resume(returning: nil)
+                                    return
+                                }
+                                let retryDur = await self.loadTrack(
+                                    trackId: trackId,
+                                    streamURLString: streamURLString,
+                                    serverURL: serverURL,
+                                    token: token,
+                                    forceLowQuality: true
+                                )
+                                preservedContinuation?.resume(returning: retryDur)
+                            }
+                            return
+                        }
                         self.loadingTrackId = nil
                         self.isItemReady = false
                         self.finishReadyContinuation(with: nil)
@@ -808,7 +833,12 @@ public final class JamAudioEngine {
         return low
     }
 
-    private func buildIOSCompatibleStreamURL(trackId: String, rawStreamURL: String, serverURL: String) -> URL? {
+    private func buildIOSCompatibleStreamURL(
+        trackId: String,
+        rawStreamURL: String,
+        serverURL: String,
+        forceLowQuality: Bool = false
+    ) -> URL? {
         var cleanServer = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !cleanServer.hasPrefix("http://") && !cleanServer.hasPrefix("https://") {
             cleanServer = "http://" + cleanServer
@@ -830,7 +860,13 @@ public final class JamAudioEngine {
 
         guard var comps = URLComponents(string: resolvedString) else { return nil }
         if comps.path.contains("/api/stream/") {
-            if SessionManager.shared.isExpensiveConnection || SessionManager.shared.isConstrainedConnection {
+            let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
+            let wantsLow = forceLowQuality
+                || storedQuality == "low"
+                || storedQuality == "normal"
+                || SessionManager.shared.isExpensiveConnection
+                || SessionManager.shared.isConstrainedConnection
+            if wantsLow {
                 var items = comps.queryItems ?? []
                 items.removeAll { $0.name.lowercased() == "quality" }
                 items.append(URLQueryItem(name: "quality", value: "low"))

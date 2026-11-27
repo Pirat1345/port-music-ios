@@ -34,7 +34,7 @@ public final class MusicService {
     }
 
     // MARK: - Stream URL Builder
-    public func streamURL(for track: Track, serverURL: String) -> URL? {
+    public func streamURL(for track: Track, serverURL: String, qualityOverride: String? = nil) -> URL? {
         let base = cleanURL(serverURL)
 
         // Live-Radio-Sender explizit ueber /api/radio/stream routen (HLS .m3u8 direkt fuer AVPlayer)
@@ -83,6 +83,11 @@ public final class MusicService {
         }
         if track.durationSeconds > 0 {
             items.append(URLQueryItem(name: "duration", value: "\(track.durationSeconds)"))
+        }
+        let storedQuality = UserDefaults.standard.string(forKey: "portmusic_audio_quality")
+        let effectiveQuality = qualityOverride ?? ((storedQuality == "low" || storedQuality == "normal") ? "low" : nil)
+        if let q = effectiveQuality, !q.isEmpty {
+            items.append(URLQueryItem(name: "quality", value: q))
         }
         components.queryItems = items
         return components.url
@@ -1280,7 +1285,9 @@ public final class MusicService {
                     }
                 }
             } catch {
-                hadTransportError = true
+                if !SessionManager.isCancellationError(error) {
+                    hadTransportError = true
+                }
             }
         }
 
@@ -1296,7 +1303,7 @@ public final class MusicService {
         } else {
             if hadTransportError {
                 await MainActor.run {
-                    SessionManager.shared.setOfflineMode(true)
+                    SessionManager.shared.reportSuspectedConnectionFailure()
                 }
             }
             return await cachedPlaylistsMergedWithOffline()
@@ -1416,7 +1423,9 @@ public final class MusicService {
                     }
                 }
             } catch {
-                hadTransportError = true
+                if !SessionManager.isCancellationError(error) {
+                    hadTransportError = true
+                }
             }
         }
 
@@ -1428,7 +1437,7 @@ public final class MusicService {
         } else {
             return await MainActor.run {
                 if hadTransportError {
-                    SessionManager.shared.setOfflineMode(true)
+                    SessionManager.shared.reportSuspectedConnectionFailure()
                 }
                 return FavoritesManager.shared.cachedFavoriteTracks
             }
@@ -1590,7 +1599,7 @@ public final class MusicService {
             }
         } else {
             await MainActor.run {
-                SessionManager.shared.setOfflineMode(true)
+                SessionManager.shared.reportSuspectedConnectionFailure()
             }
         }
         return true
@@ -2003,7 +2012,7 @@ public final class MusicService {
         } catch {
             print("MusicService.fetchLibraryCollections error: \(error)")
             await MainActor.run {
-                SessionManager.shared.setOfflineMode(true)
+                SessionManager.shared.reportSuspectedConnectionFailure(error)
             }
             return await cachedLibraryCollections()
         }

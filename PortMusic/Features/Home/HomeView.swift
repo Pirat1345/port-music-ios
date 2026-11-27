@@ -1366,7 +1366,7 @@ public struct HomeView: View {
             await enrichPersonalizedShelves(discovery: response, favorites: favsRes, token: token)
         } else {
             await MainActor.run {
-                SessionManager.shared.setOfflineMode(true)
+                SessionManager.shared.reportSuspectedConnectionFailure()
                 self.errorMessage = "Keine Verbindung zum Server auf \(serverURL)."
                 self.isLoading = false
             }

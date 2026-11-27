@@ -42,7 +42,19 @@ public final class AudioPlayerManager: ObservableObject {
     private var lastPreviousTapTime: Date? = nil
     private var isNavigatingBackward: Bool = false
     private var pendingSeekTime: Double? = nil
+    private var activeQualityOverride: String? = nil
+    private var didAttemptQualityFallbackForCurrentTrack: Bool = false
+    private var consecutiveFailureSkips: Int = 0
+    private var isAdvancingAfterFailure: Bool = false
+    private var skipTimerWorkItem: DispatchWorkItem? = nil
     private let recentTracksStorageKey = "port_music_recent_tracks"
+
+    private var configuredSkipTimeoutSeconds: Int {
+        if UserDefaults.standard.object(forKey: "playback_skip_timeout") != nil {
+            return max(0, UserDefaults.standard.integer(forKey: "playback_skip_timeout"))
+        }
+        return 10
+    }
 
     // MARK: - Internal Player Properties
     private var avPlayer: AVPlayer? = nil
@@ -299,6 +311,24 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     public func play(track: Track, from contextQueue: [Track] = [], serverURL: String? = nil, startAt: Double? = nil) {
+        startPlayback(
+            track: track,
+            from: contextQueue,
+            serverURL: serverURL,
+            startAt: startAt,
+            qualityOverride: nil,
+            isQualityRetry: false
+        )
+    }
+
+    private func startPlayback(
+        track: Track,
+        from contextQueue: [Track],
+        serverURL: String?,
+        startAt: Double?,
+        qualityOverride: String?,
+        isQualityRetry: Bool
+    ) {
         if let sUrl = serverURL, !sUrl.isEmpty {
             self.currentServerURL = sUrl
         }
@@ -310,6 +340,19 @@ public final class AudioPlayerManager: ObservableObject {
                 return
             }
         }
+        skipTimerWorkItem?.cancel()
+        skipTimerWorkItem = nil
+        if !isQualityRetry {
+            self.activeQualityOverride = nil
+            self.didAttemptQualityFallbackForCurrentTrack = false
+            if !self.isAdvancingAfterFailure {
+                self.consecutiveFailureSkips = 0
+            }
+        } else {
+            self.activeQualityOverride = qualityOverride
+            self.didAttemptQualityFallbackForCurrentTrack = true
+        }
+
         let effectiveServerURL = (serverURL != nil && !serverURL!.isEmpty) ? serverURL! : (self.currentServerURL ?? SessionManager.shared.serverURL ?? "")
         let token = SessionManager.shared.currentToken
 
@@ -322,42 +365,44 @@ public final class AudioPlayerManager: ObservableObject {
         let track = resolvedOffline.track
         let contextQueue = resolvedOffline.queue
 
-        // Track-Historie fuer Rueckwaerts-Springen fuehren (nur bei Vorwaerts-Wiedergabe)
-        if !isNavigatingBackward, let current = self.currentTrack, current.id != track.id {
-            if !self.pastTracks.contains(where: { $0.id == current.id }) {
-                self.pastTracks.append(current)
-                if self.pastTracks.count > 50 {
-                    self.pastTracks.removeFirst()
+        if !isQualityRetry {
+            // Track-Historie fuer Rueckwaerts-Springen fuehren (nur bei Vorwaerts-Wiedergabe)
+            if !isNavigatingBackward, let current = self.currentTrack, current.id != track.id {
+                if !self.pastTracks.contains(where: { $0.id == current.id }) {
+                    self.pastTracks.append(current)
+                    if self.pastTracks.count > 50 {
+                        self.pastTracks.removeFirst()
+                    }
                 }
             }
-        }
 
-        // Queue aktualisieren
-        if contextQueue.count > 1 {
-            self.queue = contextQueue
-            if let idx = contextQueue.firstIndex(where: { $0.id == track.id }) {
-                self.queueIndex = idx
+            // Queue aktualisieren
+            if contextQueue.count > 1 {
+                self.queue = contextQueue
+                if let idx = contextQueue.firstIndex(where: { $0.id == track.id }) {
+                    self.queueIndex = idx
+                } else {
+                    self.queue.insert(track, at: 0)
+                    self.queueIndex = 0
+                }
+            } else if contextQueue.count == 1 {
+                // When a single track is passed, DO NOT wipe existing queue
+                if self.queue.isEmpty {
+                    self.queue = [track]
+                    self.queueIndex = 0
+                } else if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
+                    self.queueIndex = idx
+                } else {
+                    self.queue.insert(track, at: self.queueIndex + 1)
+                    self.queueIndex += 1
+                }
             } else {
-                self.queue.insert(track, at: 0)
-                self.queueIndex = 0
-            }
-        } else if contextQueue.count == 1 {
-            // When a single track is passed, DO NOT wipe existing queue
-            if self.queue.isEmpty {
-                self.queue = [track]
-                self.queueIndex = 0
-            } else if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
-                self.queueIndex = idx
-            } else {
-                self.queue.insert(track, at: self.queueIndex + 1)
-                self.queueIndex += 1
-            }
-        } else {
-            if !self.queue.contains(where: { $0.id == track.id }) {
-                self.queue.append(track)
-                self.queueIndex = self.queue.count - 1
-            } else if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
-                self.queueIndex = idx
+                if !self.queue.contains(where: { $0.id == track.id }) {
+                    self.queue.append(track)
+                    self.queueIndex = self.queue.count - 1
+                } else if let idx = self.queue.firstIndex(where: { $0.id == track.id }) {
+                    self.queueIndex = idx
+                }
             }
         }
 
@@ -365,7 +410,7 @@ public final class AudioPlayerManager: ObservableObject {
         DebugLogStore.shared.log(
             tag: track.isLive ? "play:live" : "call:play",
             category: .stream,
-            message: "\(track.title) (\(track.artist)) offline=\(OfflineDownloadManager.shared.localAudioFileURL(for: track.id) != nil)"
+            message: "\(track.title) (\(track.artist)) offline=\(OfflineDownloadManager.shared.localAudioFileURL(for: track.id) != nil) quality=\(qualityOverride ?? "default")"
         )
         let initialSeek = (startAt ?? 0.0) > 1.0 && !track.isLive ? startAt : nil
         self.pendingSeekTime = initialSeek
@@ -423,7 +468,7 @@ public final class AudioPlayerManager: ObservableObject {
             self.isBuffering = false
             self.isPlaying = false
             return
-        } else if let streamURL = MusicService.shared.streamURL(for: track, serverURL: effectiveServerURL) {
+        } else if let streamURL = MusicService.shared.streamURL(for: track, serverURL: effectiveServerURL, qualityOverride: qualityOverride) {
             playbackURL = streamURL
             self.isPlayingOffline = false
         } else {
@@ -466,6 +511,8 @@ public final class AudioPlayerManager: ObservableObject {
             name: .AVPlayerItemFailedToPlayToEndTime,
             object: playerItem
         )
+
+        armSkipTimeoutIfNeeded(for: track, item: playerItem)
     }
 
     public func mergeServerHistory(_ serverList: [Track]) {
@@ -549,6 +596,8 @@ public final class AudioPlayerManager: ObservableObject {
             return
         }
         guard let player = avPlayer else { return }
+        skipTimerWorkItem?.cancel()
+        skipTimerWorkItem = nil
         self.isPlaying = false
         player.pause()
         if let track = currentTrack {
@@ -964,6 +1013,9 @@ public final class AudioPlayerManager: ObservableObject {
                 guard let self = self else { return }
                 switch observedItem.status {
                 case .readyToPlay:
+                    self.skipTimerWorkItem?.cancel()
+                    self.skipTimerWorkItem = nil
+                    self.consecutiveFailureSkips = 0
                     self.isBuffering = false
                     let dur = observedItem.duration.seconds
                     if self.currentTrack?.isLive != true {
@@ -978,29 +1030,12 @@ public final class AudioPlayerManager: ObservableObject {
                     }
                     self.updateNowPlayingInfo()
                 case .failed:
+                    self.skipTimerWorkItem?.cancel()
+                    self.skipTimerWorkItem = nil
                     self.isBuffering = false
                     print("AudioPlayerManager: Item failed to play: \(String(describing: observedItem.error))")
-                    guard self.isPlaying else { return }
-                    if !self.isPlayingOffline && self.isConnectionFailureError(observedItem.error) {
-                        SessionManager.shared.setOfflineMode(true)
-                    }
-                    let downloader = OfflineDownloadManager.shared
-                    let hasOfflineTracks = self.queue.contains(where: { downloader.isDownloaded(trackId: $0.id) })
-                        || !downloader.allDownloadedTracks().isEmpty
-                    if !SessionManager.shared.isOfflineMode || hasOfflineTracks {
-                        if let track = self.currentTrack {
-                PodcastProgressStore.shared.recordProgress(
-                    track: track,
-                    positionSeconds: self.duration,
-                    durationSeconds: self.duration,
-                    isCompleted: true,
-                    forcePersist: true
-                )
-            }
-            self.next()
-                    } else {
-                        self.isPlaying = false
-                    }
+                    guard self.isPlaying, let failedTrack = self.currentTrack else { return }
+                    self.handlePlaybackFailure(failedTrack: failedTrack, error: observedItem.error)
                 case .unknown:
                     break
                 @unknown default:
@@ -1060,12 +1095,93 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     private func cleanupCurrentItem() {
+        skipTimerWorkItem?.cancel()
+        skipTimerWorkItem = nil
         itemStatusObserver?.invalidate()
         itemStatusObserver = nil
         itemDurationObserver?.invalidate()
         itemDurationObserver = nil
         itemBufferObserver?.invalidate()
         itemBufferObserver = nil
+    }
+
+    private func armSkipTimeoutIfNeeded(for track: Track, item: AVPlayerItem) {
+        skipTimerWorkItem?.cancel()
+        skipTimerWorkItem = nil
+        guard !isPlayingOffline, !track.isLive else { return }
+        let skipSec = configuredSkipTimeoutSeconds
+        guard skipSec > 0 else { return }
+
+        let targetId = track.id
+        let work = DispatchWorkItem { [weak self, weak item] in
+            Task { @MainActor [weak self, weak item] in
+                guard let self = self,
+                      let item = item,
+                      self.isPlaying,
+                      self.currentTrack?.id == targetId else {
+                    return
+                }
+                let playedSec = self.currentTime
+                if item.status == .readyToPlay && playedSec > 0.5 && !self.isBuffering {
+                    return
+                }
+                self.handlePlaybackFailure(failedTrack: track, error: item.error)
+            }
+        }
+        skipTimerWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(skipSec), execute: work)
+    }
+
+    private func handlePlaybackFailure(failedTrack: Track, error: Error?) {
+        // 1. Einmaliger AAC/MP4-Codec-Fallback (quality=low), falls High-Quality auf älterem Server WebM geliefert hat
+        if !isPlayingOffline && !failedTrack.isLive && !SessionManager.shared.isOfflineMode && !didAttemptQualityFallbackForCurrentTrack {
+            let resumePos = currentTime
+            startPlayback(
+                track: failedTrack,
+                from: [],
+                serverURL: currentServerURL,
+                startAt: resumePos > 1.0 ? resumePos : nil,
+                qualityOverride: "low",
+                isQualityRetry: true
+            )
+            return
+        }
+
+        // 2. Bei aktiver Netzwerkverbindung nicht blind in den Offline-Modus wechseln
+        if !isPlayingOffline && isConnectionFailureError(error) {
+            SessionManager.shared.reportSuspectedConnectionFailure(error)
+        }
+
+        // 3. Benutzer-Einstellung "Defekte Songs überspringen" ("playback_skip_timeout") respektieren:
+        // Wert 0 ("Aus") stoppt sauber am aktuellen Song, statt andere Titel durchzuskippen.
+        guard configuredSkipTimeoutSeconds > 0 else {
+            self.isPlaying = false
+            self.isBuffering = false
+            self.updateNowPlayingInfo()
+            return
+        }
+
+        // 4. Endlos-Skip-Kaskade auf maximal 3 Versuche begrenzen
+        guard consecutiveFailureSkips < 3 else {
+            self.consecutiveFailureSkips = 0
+            self.isPlaying = false
+            self.isBuffering = false
+            self.updateNowPlayingInfo()
+            return
+        }
+
+        let downloader = OfflineDownloadManager.shared
+        let hasOfflineNextInQueue = queue.contains(where: { $0.id != failedTrack.id && downloader.isDownloaded(trackId: $0.id) })
+        if !SessionManager.shared.isOfflineMode || hasOfflineNextInQueue {
+            consecutiveFailureSkips += 1
+            isAdvancingAfterFailure = true
+            next()
+            isAdvancingAfterFailure = false
+        } else {
+            self.isPlaying = false
+            self.isBuffering = false
+            self.updateNowPlayingInfo()
+        }
     }
 
     @objc private func playerItemDidReachEnd() {
@@ -1111,7 +1227,7 @@ public final class AudioPlayerManager: ObservableObject {
         Task { @MainActor in
             let failError = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             if !self.isPlayingOffline && self.isConnectionFailureError(failError) {
-                SessionManager.shared.setOfflineMode(true)
+                SessionManager.shared.reportSuspectedConnectionFailure(failError)
             }
             guard self.isPlaying else {
                 print("AudioPlayerManager: Stream failed while paused, skipping ignored")
@@ -1122,32 +1238,39 @@ public final class AudioPlayerManager: ObservableObject {
                     print("AudioPlayerManager: fMP4-Timescale-Verdopplung bei Stream-Ende erkannt (\(self.currentTime)/\(self.duration)). Korrigiere und springe weiter.")
                     self.duration = self.currentTime
                     if let track = self.currentTrack {
-                PodcastProgressStore.shared.recordProgress(
-                    track: track,
-                    positionSeconds: self.duration,
-                    durationSeconds: self.duration,
-                    isCompleted: true,
-                    forcePersist: true
-                )
-            }
-            self.next()
+                        PodcastProgressStore.shared.recordProgress(
+                            track: track,
+                            positionSeconds: self.duration,
+                            durationSeconds: self.duration,
+                            isCompleted: true,
+                            forcePersist: true
+                        )
+                    }
+                    self.next()
                     return
                 }
-                if SessionManager.shared.isOfflineMode && !self.isPlayingOffline {
+                if SessionManager.shared.isOfflineMode && !self.isPlayingOffline && self.configuredSkipTimeoutSeconds > 0 {
                     print("AudioPlayerManager: Verbindung während Wiedergabe unterbrochen, wechsle auf nächsten Offline-Song.")
                     if let track = self.currentTrack {
-                PodcastProgressStore.shared.recordProgress(
-                    track: track,
-                    positionSeconds: self.duration,
-                    durationSeconds: self.duration,
-                    isCompleted: true,
-                    forcePersist: true
-                )
-            }
-            self.next()
+                        PodcastProgressStore.shared.recordProgress(
+                            track: track,
+                            positionSeconds: self.duration,
+                            durationSeconds: self.duration,
+                            isCompleted: true,
+                            forcePersist: true
+                        )
+                    }
+                    self.isAdvancingAfterFailure = true
+                    self.next()
+                    self.isAdvancingAfterFailure = false
                     return
                 }
                 print("AudioPlayerManager: Premature stream failure at \(self.currentTime)/\(self.duration), skipping ignored")
+                if self.configuredSkipTimeoutSeconds == 0 {
+                    self.isPlaying = false
+                    self.isBuffering = false
+                    self.updateNowPlayingInfo()
+                }
                 return
             }
             if let track = self.currentTrack {
@@ -1164,7 +1287,7 @@ public final class AudioPlayerManager: ObservableObject {
     }
 
     private func isConnectionFailureError(_ error: Error?) -> Bool {
-        guard let nsErr = error as NSError? else { return true }
+        guard let nsErr = error as NSError? else { return false }
         if nsErr.domain == NSURLErrorDomain {
             let offlineCodes: Set<Int> = [
                 NSURLErrorNotConnectedToInternet,
@@ -1178,7 +1301,7 @@ public final class AudioPlayerManager: ObservableObject {
             ]
             return offlineCodes.contains(nsErr.code)
         }
-        return SessionManager.shared.isOfflineMode
+        return false
     }
 
     // MARK: - Lock Screen & Control Center (MPNowPlayingInfoCenter)
