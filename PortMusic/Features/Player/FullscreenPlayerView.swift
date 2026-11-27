@@ -1357,6 +1357,7 @@ private struct FullscreenScrubberView: View {
     @ObservedObject private var progress = AudioPlayerProgress.shared
     @ObservedObject private var offlineManager = OfflineDownloadManager.shared
 
+    @ObservedObject private var sessionManager = SessionManager.shared
     @Binding var isScrubbing: Bool
     @State private var scrubPosition: Double = 0.0
     let fixedWidth: CGFloat?
