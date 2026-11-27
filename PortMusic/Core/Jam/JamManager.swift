@@ -6,15 +6,16 @@ import UIKit
 public final class JamManager: ObservableObject {
     public static let shared = JamManager()
 
-    // MARK: - BeatSync Timing Constants
-    public static let maxNTPMeasurements: Int = 16
-    public static let initialNTPIntervalMs: Double = 50.0
-    public static let steadyNTPIntervalMs: Double = 2500.0
+    // MARK: - BeatSync NTP Konstanten (Schlank ohne UI-Lag oder Datenspitzen)
+    public static let maxNTPMeasurements: Int = 12
+    public static let burstProbeCount: Int = 6
+    public static let initialNTPIntervalMs: Double = 250.0
+    public static let steadyNTPIntervalMs: Double = 4000.0
     public static let probeGapMs: Double = 25.0
-    public static let probeGapToleranceMs: Double = 5.0
-    public static let staleResponseTimeoutMs: Double = 3750.0
+    public static let probeGapToleranceMs: Double = 8.0
+    public static let staleResponseTimeoutMs: Double = 10_000.0
 
-    // MARK: - Published UI State
+    // MARK: - Low-Frequency Session State (keine Timer-Updates hierauf!)
     @Published public private(set) var isInJam: Bool = false
     @Published public private(set) var currentJamId: String? = nil
     @Published public private(set) var currentJamName: String? = nil
@@ -28,16 +29,8 @@ public final class JamManager: ObservableObject {
     @Published public private(set) var queueTracks: [Track] = []
     @Published public private(set) var currentTrack: Track? = nil
     @Published public private(set) var isPlaying: Bool = false
-    @Published public private(set) var currentPosition: Double = 0.0
-    @Published public private(set) var trackDuration: Double = 0.0
     @Published public var globalVolume: Double = 1.0
     @Published public private(set) var nudgeMs: Double = 0.0
-
-    // Telemetry
-    @Published public private(set) var clockOffsetMs: Double = 0.0
-    @Published public private(set) var minRttMs: Double = 0.0
-    @Published public private(set) var pureProbeCount: Int = 0
-    @Published public private(set) var impureProbeCount: Int = 0
     @Published public var errorMessage: String? = nil
 
     public let clientId: String
@@ -54,7 +47,12 @@ public final class JamManager: ObservableObject {
         return members.first(where: { $0.clientId == clientId })?.isAdmin ?? false
     }
 
-    // MARK: - Internal Socket & Monotonic Clock State
+    public var canControlPlayback: Bool {
+        if jamMode != "master" { return true }
+        return isClockMaster
+    }
+
+    // MARK: - Interne Clock & Socket State
     private var webSocketTask: URLSessionWebSocketTask? = nil
     private var wsSession: URLSession? = nil
     private var wsDelegateProxy: JamWebSocketDelegate? = nil
@@ -63,23 +61,29 @@ public final class JamManager: ObservableObject {
     private var reconnectAttempts: Int = 0
     private var reconnectWorkItem: DispatchWorkItem? = nil
     private var ntpTimerWorkItem: DispatchWorkItem? = nil
+    private var volumeThrottleWorkItem: DispatchWorkItem? = nil
+    private var pendingVolumeToSend: Double? = nil
 
-    // Monotonic clock base (免疫 gegen OS-Wandzeit-Sprünge)
     private let clockAnchorWallMs: Double
     private let clockAnchorUptimeMs: Double
 
-    // Coded Probe Pair Engine
     private var probeGroupCounter: UInt64 = 0
     private var pendingProbes: [String: Double] = [:]
     private var pendingFirstProbe: JamNTPMeasurement? = nil
     private var pendingFirstProbeGroupId: UInt64? = nil
     private var measurements: [JamNTPMeasurement] = []
     private var rawMinRttMs: Double = .infinity
+    private var internalClockOffsetMs: Double = 0.0
+    private var internalMinRttMs: Double = 0.0
+    private var pureCount: Int = 0
+    private var impureCount: Int = 0
+    private var lastTelemetryPublishUptimeMs: Double = 0.0
     private var lastProbeSentUptimeMs: Double = 0.0
     private var lastLoadedPlaybackSignature: String? = nil
 
     private let nudgeStorageKey = "port_music_jam_nudge_ms"
     private let engine = JamAudioEngine.shared
+    private let progressStore = JamProgressStore.shared
 
     private init() {
         self.clientId = "ios_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
@@ -98,25 +102,32 @@ public final class JamManager: ObservableObject {
     }
 
     private func setupAudioEngineCallbacks() {
+        engine.serverTimeProvider = { [weak self] in
+            self?.estimatedServerTimeMs() ?? (Date().timeIntervalSince1970 * 1000.0)
+        }
         engine.onTrackEnded = { [weak self] finishedTrackId in
             Task { @MainActor [weak self] in
                 self?.handleLocalTrackEnded(finishedTrackId: finishedTrackId)
             }
         }
-        engine.onPlaybackStateChanged = { [weak self] playing, pos, dur in
+        engine.onPlaybackStateChanged = { [weak self] playing, pos, dur, isMilestone in
             Task { @MainActor [weak self] in
                 guard let self = self, self.isInJam else { return }
-                self.isPlaying = playing
-                self.currentPosition = pos
+                let playingChanged = (self.isPlaying != playing)
+                if playingChanged {
+                    self.isPlaying = playing
+                }
+                self.progressStore.currentPosition = pos
                 if dur > 0 {
-                    self.trackDuration = dur
+                    self.progressStore.duration = dur
                 }
                 AudioPlayerManager.shared.applyJamExternalPlaybackState(
                     track: self.currentTrack,
                     isPlaying: playing,
                     currentTime: pos,
                     duration: dur > 0 ? dur : (self.currentTrack?.durationSeconds ?? 0),
-                    queue: self.queueTracks
+                    queue: self.queueTracks,
+                    shouldUpdateNowPlaying: isMilestone || playingChanged
                 )
             }
         }
@@ -167,7 +178,7 @@ public final class JamManager: ObservableObject {
     }
 
     public func estimatedServerTimeMs() -> Double {
-        return monotonicEpochNowMs() + clockOffsetMs
+        return monotonicEpochNowMs() + internalClockOffsetMs
     }
 
     // MARK: - REST API (/api/jams)
@@ -254,7 +265,6 @@ public final class JamManager: ObservableObject {
             }
             let created = try JSONDecoder().decode(CreateJamResponse.self, from: data)
 
-            // Snapshot aktuellen Song/Queue für nahtlose Übergabe an den neuen Jam
             let handoffTrack = AudioPlayerManager.shared.currentTrack
             let handoffQueue = AudioPlayerManager.shared.queue
 
@@ -269,7 +279,6 @@ public final class JamManager: ObservableObject {
 
             await fetchActiveJams(serverURL: base)
 
-            // Falls bereits lokal ein Track geladen war, nach kurzem Connect-Delay in den Jam übernehmen
             if let track = handoffTrack, !track.isLive {
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 250_000_000)
@@ -337,6 +346,9 @@ public final class JamManager: ObservableObject {
         stopNTPTimers()
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
+        volumeThrottleWorkItem?.cancel()
+        volumeThrottleWorkItem = nil
+        pendingVolumeToSend = nil
 
         if let jamId = currentJamId {
             sendJSON([
@@ -357,6 +369,7 @@ public final class JamManager: ObservableObject {
         closeWebSocketOnly()
         engine.stopAll()
         resetNTPState()
+        progressStore.reset()
 
         self.isInJam = false
         self.currentJamId = nil
@@ -366,10 +379,9 @@ public final class JamManager: ObservableObject {
         self.queueTracks = []
         self.currentTrack = nil
         self.isPlaying = false
-        self.currentPosition = 0.0
-        self.trackDuration = 0.0
         self.lastLoadedPlaybackSignature = nil
         self.connectionState = .disconnected
+        self.errorMessage = nil
 
         AudioPlayerManager.shared.applyJamExited()
 
@@ -546,7 +558,7 @@ public final class JamManager: ObservableObject {
         }
     }
 
-    // MARK: - Huygens Coded Probe Pairs NTP
+    // MARK: - Schlankes NTP (6 Probes Burst -> 4 s Steady, ohne UI-Flooding)
 
     private func resetNTPState() {
         pendingProbes.removeAll()
@@ -554,10 +566,11 @@ public final class JamManager: ObservableObject {
         pendingFirstProbeGroupId = nil
         measurements.removeAll()
         rawMinRttMs = .infinity
-        minRttMs = 0.0
-        clockOffsetMs = 0.0
-        pureProbeCount = 0
-        impureProbeCount = 0
+        internalClockOffsetMs = 0.0
+        internalMinRttMs = 0.0
+        pureCount = 0
+        impureCount = 0
+        lastTelemetryPublishUptimeMs = 0.0
         lastProbeSentUptimeMs = 0.0
     }
 
@@ -568,6 +581,8 @@ public final class JamManager: ObservableObject {
 
     public func resyncClock() {
         resetNTPState()
+        progressStore.minRttMs = 0.0
+        progressStore.clockOffsetMs = 0.0
         startNTPCalibration()
         requestSync()
     }
@@ -581,7 +596,7 @@ public final class JamManager: ObservableObject {
 
     private func scheduleNextNTPProbe() {
         guard isInJam, webSocketTask != nil else { return }
-        let intervalMs = measurements.count < Self.maxNTPMeasurements
+        let intervalMs = measurements.count < Self.burstProbeCount
             ? Self.initialNTPIntervalMs
             : Self.steadyNTPIntervalMs
 
@@ -602,7 +617,7 @@ public final class JamManager: ObservableObject {
         let nowUptimeMs = ProcessInfo.processInfo.systemUptime * 1000.0
         if lastProbeSentUptimeMs > 0.0,
            (nowUptimeMs - lastProbeSentUptimeMs) > Self.staleResponseTimeoutMs {
-            print("[JamManager] NTP stale timeout (>3750ms), reconnecting...")
+            print("[JamManager] NTP stale timeout (>10s), reconnecting...")
             lastProbeSentUptimeMs = 0.0
             closeWebSocketOnly()
             scheduleReconnect()
@@ -614,7 +629,6 @@ public final class JamManager: ObservableObject {
         let groupId = probeGroupCounter
         let totalCompMs = max(0.0, engine.currentOutputLatencyMs() - nudgeMs)
 
-        // Probe 0
         let t0First = monotonicEpochNowMs()
         pendingProbes["\(groupId)_0"] = t0First
         var msg0: [String: Any] = [
@@ -628,7 +642,6 @@ public final class JamManager: ObservableObject {
         if totalCompMs > 0 { msg0["client_compensation_ms"] = totalCompMs }
         sendJSON(msg0)
 
-        // Probe 1 nach genau 25ms
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(Self.probeGapMs))) { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self = self, self.webSocketTask != nil else { return }
@@ -648,7 +661,17 @@ public final class JamManager: ObservableObject {
         }
     }
 
-    // MARK: - Incoming WS Message Handling
+    private func publishTelemetryIfDue(force: Bool = false) {
+        let nowUptime = ProcessInfo.processInfo.systemUptime * 1000.0
+        guard force || (nowUptime - lastTelemetryPublishUptimeMs) >= 2000.0 else { return }
+        lastTelemetryPublishUptimeMs = nowUptime
+        progressStore.minRttMs = internalMinRttMs
+        progressStore.clockOffsetMs = internalClockOffsetMs
+        progressStore.pureProbeCount = pureCount
+        progressStore.impureProbeCount = impureCount
+    }
+
+    // MARK: - Incoming WS Handling
 
     private func handleIncomingText(_ text: String) {
         guard let data = text.data(using: .utf8),
@@ -678,11 +701,11 @@ public final class JamManager: ObservableObject {
                 roundTripDelayMs: rtt
             )
 
-            // Sofortiger Erst-Seed für direkte Spielbereitschaft
             if measurements.isEmpty && rtt >= 0 {
                 rawMinRttMs = rtt
-                minRttMs = rtt
-                clockOffsetMs = offset
+                internalMinRttMs = rtt
+                internalClockOffsetMs = offset
+                publishTelemetryIfDue(force: true)
             }
 
             if index == 0 {
@@ -699,11 +722,11 @@ public final class JamManager: ObservableObject {
             let serverGap = measurement.t1 - first.t1
             let gapDrift = abs(serverGap - clientGap)
             guard gapDrift <= Self.probeGapToleranceMs else {
-                impureProbeCount += 1
+                impureCount += 1
                 return
             }
 
-            pureProbeCount += 1
+            pureCount += 1
             let best = first.roundTripDelayMs <= measurement.roundTripDelayMs ? first : measurement
             measurements.append(best)
             if measurements.count > Self.maxNTPMeasurements {
@@ -711,15 +734,16 @@ public final class JamManager: ObservableObject {
             }
 
             var bestRtt = Double.infinity
-            var bestOffset = clockOffsetMs
+            var bestOffset = internalClockOffsetMs
             for m in measurements where m.roundTripDelayMs >= 0 && m.roundTripDelayMs < bestRtt {
                 bestRtt = m.roundTripDelayMs
                 bestOffset = m.clockOffsetMs
             }
             if bestRtt.isFinite {
                 rawMinRttMs = bestRtt
-                minRttMs = bestRtt
-                clockOffsetMs = bestOffset
+                internalMinRttMs = bestRtt
+                internalClockOffsetMs = bestOffset
+                publishTelemetryIfDue()
             }
 
         case "ROOM_STATE":
@@ -749,7 +773,7 @@ public final class JamManager: ObservableObject {
                let qData = try? JSONSerialization.data(withJSONObject: qRaw),
                let qDecoded = try? JSONDecoder().decode([JamQueueTrack].self, from: qData) {
                 self.queueTracks = qDecoded.map { $0.toTrack() }
-                syncDisplayToPlayerManager()
+                syncDisplayToPlayerManager(forceNowPlaying: false)
             }
 
         case "GLOBAL_VOLUME_CONFIG":
@@ -777,23 +801,26 @@ public final class JamManager: ObservableObject {
             let title = (json["title"] as? String) ?? "Jam Track"
             let artist = (json["artist"] as? String) ?? "Unbekannt"
             let coverUrl = json["cover_url"] as? String
+            let knownQueueTrack = queueTracks.first(where: { $0.id == trackId })
 
             let track = Track(
                 id: trackId,
                 title: title,
                 artist: artist,
-                album: "Jam",
-                duration: "0:00",
-                durationSeconds: 0,
-                coverUrl: coverUrl,
+                album: knownQueueTrack?.album ?? "Jam",
+                duration: knownQueueTrack?.duration ?? "0:00",
+                durationSeconds: knownQueueTrack?.durationSeconds ?? 0,
+                coverUrl: coverUrl ?? knownQueueTrack?.coverUrl,
                 isLive: false,
                 isExplicit: false,
                 sourceUrl: streamUrl
             )
+            self.errorMessage = nil
             self.currentTrack = track
             self.isPlaying = false
-            self.currentPosition = 0.0
-            syncDisplayToPlayerManager()
+            self.progressStore.currentPosition = 0.0
+            self.progressStore.duration = track.durationSeconds
+            syncDisplayToPlayerManager(forceNowPlaying: true)
 
             let jamIdSnap = currentJamId
             Task { @MainActor [weak self] in
@@ -806,20 +833,22 @@ public final class JamManager: ObservableObject {
                 )
                 guard self.isInJam, self.currentJamId == jamIdSnap else { return }
                 if let dur = loadedDur, dur > 0 {
-                    self.trackDuration = dur
+                    let existingDur = self.currentTrack?.durationSeconds ?? 0
+                    let resolvedDur = (existingDur > 10 && dur > existingDur * 1.7) ? existingDur : dur
+                    self.progressStore.duration = resolvedDur
                     self.currentTrack = Track(
                         id: track.id,
                         title: track.title,
                         artist: track.artist,
                         album: track.album,
-                        duration: Self.formatDuration(dur),
-                        durationSeconds: dur,
+                        duration: Self.formatDuration(resolvedDur),
+                        durationSeconds: resolvedDur,
                         coverUrl: track.coverUrl,
                         isLive: false,
                         isExplicit: false,
                         sourceUrl: track.sourceUrl
                     )
-                    self.syncDisplayToPlayerManager()
+                    self.syncDisplayToPlayerManager(forceNowPlaying: true)
                 }
                 self.notifyAudioLoaded(trackId: trackId)
             }
@@ -830,27 +859,17 @@ public final class JamManager: ObservableObject {
             let pos = (json["track_position_seconds"] as? NSNumber)?.doubleValue ?? 0.0
             lastLoadedPlaybackSignature = "\(trackId)_\(execTime)_\(pos)"
 
-            if engine.hasTrackLoaded(trackId) {
-                engine.schedulePlay(
-                    trackId: trackId,
-                    serverTimeToExecuteMs: execTime,
-                    positionSeconds: pos,
-                    estimatedServerTimeMs: estimatedServerTimeMs(),
-                    nudgeMs: nudgeMs
-                )
-            } else {
-                engine.schedulePlay(
-                    trackId: trackId,
-                    serverTimeToExecuteMs: execTime,
-                    positionSeconds: pos,
-                    estimatedServerTimeMs: estimatedServerTimeMs(),
-                    nudgeMs: nudgeMs
-                )
-                if !engine.isTrackLoading(trackId) {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                        Task { @MainActor [weak self] in
-                            self?.requestSync()
-                        }
+            engine.schedulePlay(
+                trackId: trackId,
+                serverTimeToExecuteMs: execTime,
+                positionSeconds: pos,
+                estimatedServerTimeMs: estimatedServerTimeMs(),
+                nudgeMs: nudgeMs
+            )
+            if !engine.hasTrackLoaded(trackId) && !engine.isTrackLoading(trackId) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                    Task { @MainActor [weak self] in
+                        self?.requestSync()
                     }
                 }
             }
@@ -877,21 +896,22 @@ public final class JamManager: ObservableObject {
         }
 
         guard let trackId = pb.trackId, !trackId.isEmpty else {
-            syncDisplayToPlayerManager()
+            syncDisplayToPlayerManager(forceNowPlaying: false)
             return
         }
 
         let streamUrl = pb.streamUrl ?? "/api/stream/\(trackId)"
         let title = pb.title ?? "Jam Audio"
         let artist = pb.artist ?? "Live Session"
+        let matchedQueue = queueTracks.first(where: { $0.id == trackId })
         let track = Track(
             id: trackId,
             title: title,
             artist: artist,
-            album: "Jam",
-            duration: "0:00",
-            durationSeconds: 0,
-            coverUrl: pb.coverUrl,
+            album: matchedQueue?.album ?? "Jam",
+            duration: matchedQueue?.duration ?? "0:00",
+            durationSeconds: matchedQueue?.durationSeconds ?? 0,
+            coverUrl: pb.coverUrl ?? matchedQueue?.coverUrl,
             isLive: false,
             isExplicit: false,
             sourceUrl: streamUrl
@@ -899,13 +919,16 @@ public final class JamManager: ObservableObject {
 
         let signature = "\(pb.status)_\(trackId)_\(pb.serverTimeToExecute)_\(pb.trackPositionSeconds)"
         if lastLoadedPlaybackSignature == signature && engine.hasTrackLoaded(trackId) {
-            syncDisplayToPlayerManager()
+            syncDisplayToPlayerManager(forceNowPlaying: false)
             return
         }
         lastLoadedPlaybackSignature = signature
 
         self.currentTrack = track
-        syncDisplayToPlayerManager()
+        if track.durationSeconds > 0 {
+            self.progressStore.duration = track.durationSeconds
+        }
+        syncDisplayToPlayerManager(forceNowPlaying: true)
 
         let jamIdSnap = currentJamId
         Task { @MainActor [weak self] in
@@ -920,14 +943,16 @@ public final class JamManager: ObservableObject {
                   self.currentJamId == jamIdSnap,
                   self.lastLoadedPlaybackSignature == signature else { return }
             if let dur = dur, dur > 0 {
-                self.trackDuration = dur
+                let existingDur = self.currentTrack?.durationSeconds ?? 0
+                let resolvedDur = (existingDur > 10 && dur > existingDur * 1.7) ? existingDur : dur
+                self.progressStore.duration = resolvedDur
                 self.currentTrack = Track(
                     id: track.id,
                     title: track.title,
                     artist: track.artist,
                     album: track.album,
-                    duration: Self.formatDuration(dur),
-                    durationSeconds: dur,
+                    duration: Self.formatDuration(resolvedDur),
+                    durationSeconds: resolvedDur,
                     coverUrl: track.coverUrl,
                     isLive: false,
                     isExplicit: false,
@@ -952,13 +977,13 @@ public final class JamManager: ObservableObject {
                     )
                 }
                 self.isPlaying = false
-                self.currentPosition = pb.trackPositionSeconds
-                self.syncDisplayToPlayerManager()
+                self.progressStore.currentPosition = pb.trackPositionSeconds
+                self.syncDisplayToPlayerManager(forceNowPlaying: true)
             }
         }
     }
 
-    // MARK: - Playback Control Commands
+    // MARK: - Playback & Queue Commands (Spotify-Like Synchronized Controls)
 
     public func playTrackInJam(_ track: Track, queue: [Track] = []) {
         guard isInJam, let jamId = currentJamId else { return }
@@ -966,9 +991,14 @@ public final class JamManager: ObservableObject {
             self.errorMessage = "Nur der Host kann im Host-Modus die Wiedergabe steuern."
             return
         }
+        self.errorMessage = nil
 
         if !queue.isEmpty {
             syncQueue(queue)
+        } else if !queueTracks.contains(where: { $0.id == track.id }) {
+            var updated = queueTracks
+            updated.insert(track, at: 0)
+            syncQueue(updated)
         }
 
         let streamPath = buildJamStreamPath(for: track)
@@ -1028,12 +1058,18 @@ public final class JamManager: ObservableObject {
     }
 
     public func togglePlayPause() {
-        guard isInJam, canControlPlayback else { return }
-        let pos = engine.getIsPlaying() ? engine.currentPositionSeconds() : currentPosition
+        guard isInJam else { return }
+        if !canControlPlayback {
+            self.errorMessage = "Nur der Host kann im Host-Modus die Wiedergabe steuern."
+            return
+        }
+        let pos = engine.getIsPlaying() ? engine.currentPositionSeconds() : progressStore.currentPosition
         if isPlaying {
             requestPause(at: pos)
         } else if let cur = currentTrack {
             requestPlay(trackId: cur.id, at: pos)
+        } else if let first = queueTracks.first {
+            playTrackInJam(first, queue: queueTracks)
         }
     }
 
@@ -1043,7 +1079,7 @@ public final class JamManager: ObservableObject {
             "type": "PLAY",
             "room_id": jamId,
             "track_id": trackId,
-            "position_seconds": positionSeconds
+            "position_seconds": max(0.0, positionSeconds)
         ])
     }
 
@@ -1052,37 +1088,59 @@ public final class JamManager: ObservableObject {
         sendJSON([
             "type": "PAUSE",
             "room_id": jamId,
-            "position_seconds": positionSeconds
+            "position_seconds": max(0.0, positionSeconds)
         ])
     }
 
     public func seek(to positionSeconds: Double) {
-        guard isInJam, let cur = currentTrack, canControlPlayback else { return }
-        let clamped = max(0.0, min(trackDuration > 0 ? trackDuration : 3600.0, positionSeconds))
-        requestPlay(trackId: cur.id, at: clamped)
+        guard isInJam, let jamId = currentJamId, currentTrack != nil else { return }
+        if !canControlPlayback {
+            self.errorMessage = "Nur der Host kann im Host-Modus spulen."
+            return
+        }
+        let maxDur = progressStore.duration > 0 ? progressStore.duration : 3600.0
+        let clamped = max(0.0, min(maxDur, positionSeconds))
+        progressStore.currentPosition = clamped
+        sendJSON([
+            "type": "SEEK",
+            "room_id": jamId,
+            "position_seconds": clamped
+        ])
     }
 
     public func nextTrack() {
-        guard isInJam, canControlPlayback else { return }
-        guard let cur = currentTrack else {
-            if let first = queueTracks.first {
-                playTrackInJam(first, queue: queueTracks)
-            }
+        guard isInJam else { return }
+        if !canControlPlayback {
+            self.errorMessage = "Nur der Host kann im Host-Modus Titel wechseln."
             return
         }
-        if let idx = queueTracks.firstIndex(where: { $0.id == cur.id }), idx + 1 < queueTracks.count {
+        guard !queueTracks.isEmpty else { return }
+        guard let cur = currentTrack, let idx = queueTracks.firstIndex(where: { $0.id == cur.id }) else {
+            playTrackInJam(queueTracks[0], queue: queueTracks)
+            return
+        }
+        if idx + 1 < queueTracks.count {
             playTrackInJam(queueTracks[idx + 1], queue: queueTracks)
+        } else {
+            playTrackInJam(queueTracks[0], queue: queueTracks)
         }
     }
 
     public func previousTrack() {
-        guard isInJam, canControlPlayback else { return }
+        guard isInJam else { return }
+        if !canControlPlayback {
+            self.errorMessage = "Nur der Host kann im Host-Modus Titel wechseln."
+            return
+        }
         if engine.currentPositionSeconds() > 3.0 {
             seek(to: 0.0)
             return
         }
-        guard let cur = currentTrack else { return }
-        if let idx = queueTracks.firstIndex(where: { $0.id == cur.id }), idx > 0 {
+        guard let cur = currentTrack, let idx = queueTracks.firstIndex(where: { $0.id == cur.id }) else {
+            seek(to: 0.0)
+            return
+        }
+        if idx > 0 {
             playTrackInJam(queueTracks[idx - 1], queue: queueTracks)
         } else {
             seek(to: 0.0)
@@ -1094,11 +1152,25 @@ public final class JamManager: ObservableObject {
         self.globalVolume = clamped
         engine.setGlobalVolume(clamped)
         guard isInJam, let jamId = currentJamId else { return }
-        sendJSON([
-            "type": "SET_GLOBAL_VOLUME",
-            "room_id": jamId,
-            "volume": clamped
-        ])
+
+        pendingVolumeToSend = clamped
+        guard volumeThrottleWorkItem == nil else { return }
+
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                self.volumeThrottleWorkItem = nil
+                guard let val = self.pendingVolumeToSend, self.isInJam else { return }
+                self.pendingVolumeToSend = nil
+                self.sendJSON([
+                    "type": "SET_GLOBAL_VOLUME",
+                    "room_id": jamId,
+                    "volume": val
+                ])
+            }
+        }
+        volumeThrottleWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(60), execute: work)
     }
 
     public func applyNudge(deltaMs: Double) {
@@ -1125,7 +1197,7 @@ public final class JamManager: ObservableObject {
         }
 
         if engine.getIsPlaying() && deltaMs != 0 {
-            engine.applyLiveNudge(deltaMs: deltaMs)
+            engine.applyLiveNudge(totalNudgeMs: totalMs, deltaMs: deltaMs)
         }
     }
 
@@ -1142,7 +1214,7 @@ public final class JamManager: ObservableObject {
             if let cov = t.coverUrl { dict["cover"] = cov }
             dict["duration"] = t.duration
             if t.durationSeconds > 0 { dict["duration_seconds"] = Int(t.durationSeconds.rounded()) }
-            if let src = t.sourceUrl { dict["source_url"] = src }
+            dict["source_url"] = buildJamStreamPath(for: t)
             return dict
         }
         sendJSON([
@@ -1167,11 +1239,6 @@ public final class JamManager: ObservableObject {
         ])
     }
 
-    public var canControlPlayback: Bool {
-        if jamMode != "master" { return true }
-        return isClockMaster
-    }
-
     private func handleLocalTrackEnded(finishedTrackId: String) {
         guard isInJam, canControlPlayback, currentTrack?.id == finishedTrackId else { return }
         if let idx = queueTracks.firstIndex(where: { $0.id == finishedTrackId }), idx + 1 < queueTracks.count {
@@ -1179,13 +1246,15 @@ public final class JamManager: ObservableObject {
         }
     }
 
-    private func syncDisplayToPlayerManager() {
+    private func syncDisplayToPlayerManager(forceNowPlaying: Bool) {
+        let dur = progressStore.duration > 0 ? progressStore.duration : (currentTrack?.durationSeconds ?? 0)
         AudioPlayerManager.shared.applyJamExternalPlaybackState(
             track: currentTrack,
             isPlaying: isPlaying,
-            currentTime: currentPosition,
-            duration: trackDuration > 0 ? trackDuration : (currentTrack?.durationSeconds ?? 0),
-            queue: queueTracks
+            currentTime: progressStore.currentPosition,
+            duration: dur,
+            queue: queueTracks,
+            shouldUpdateNowPlaying: forceNowPlaying
         )
     }
 
@@ -1226,4 +1295,3 @@ private final class JamWebSocketDelegate: NSObject, URLSessionWebSocketDelegate 
         onClose(webSocketTask)
     }
 }
-

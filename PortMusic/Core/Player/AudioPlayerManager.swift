@@ -258,9 +258,13 @@ public final class AudioPlayerManager: ObservableObject {
         isPlaying: Bool,
         currentTime: Double,
         duration: Double,
-        queue: [Track]
+        queue: [Track],
+        shouldUpdateNowPlaying: Bool = false
     ) {
         let trackChanged = (self.currentTrack?.id != track?.id)
+        let playingChanged = (self.isPlaying != isPlaying)
+        let durChanged = (duration > 0 && abs(self.duration - duration) > 1.0)
+
         if let tr = track {
             self.currentTrack = tr
         }
@@ -270,16 +274,20 @@ public final class AudioPlayerManager: ObservableObject {
                 self.queueIndex = idx
             }
         }
-        self.isPlaying = isPlaying
+        if playingChanged {
+            self.isPlaying = isPlaying
+        }
         self.isBuffering = false
         self.isPlayingOffline = false
         self.currentTime = max(0.0, currentTime)
         if duration > 0 {
             self.duration = duration
         }
+
         if trackChanged, let tr = track {
             loadArtwork(from: tr.coverUrl)
-        } else {
+        } else if shouldUpdateNowPlaying || playingChanged || durChanged {
+            // Niemals auf periodischen Time-Observer-Ticks MPNowPlayingInfoCenter XPC auslösen!
             updateNowPlayingInfo()
         }
     }
@@ -859,6 +867,9 @@ public final class AudioPlayerManager: ObservableObject {
         }
         let insertIndex = min(queueIndex + 1, queue.count)
         queue.insert(track, at: insertIndex)
+        if JamManager.shared.isInJam {
+            JamManager.shared.syncQueue(queue)
+        }
     }
 
     public func playNext(tracks: [Track], serverURL: String? = nil) {
@@ -869,6 +880,9 @@ public final class AudioPlayerManager: ObservableObject {
         }
         let insertIndex = min(queueIndex + 1, queue.count)
         queue.insert(contentsOf: tracks, at: insertIndex)
+        if JamManager.shared.isInJam {
+            JamManager.shared.syncQueue(queue)
+        }
     }
 
     public func addToQueue(track: Track) {
@@ -878,6 +892,9 @@ public final class AudioPlayerManager: ObservableObject {
             return
         }
         queue.append(track)
+        if JamManager.shared.isInJam {
+            JamManager.shared.syncQueue(queue)
+        }
     }
 
     public func moveUpcomingQueueItem(fromOffsets: IndexSet, toOffset: Int) {
@@ -886,11 +903,17 @@ public final class AudioPlayerManager: ObservableObject {
         var upcoming = Array(queue[startIdx...])
         upcoming.move(fromOffsets: fromOffsets, toOffset: toOffset)
         queue.replaceSubrange(startIdx..<queue.count, with: upcoming)
+        if JamManager.shared.isInJam {
+            JamManager.shared.syncQueue(queue)
+        }
     }
 
     public func removeUpcomingQueueItem(at queueArrayIndex: Int) {
         guard queueArrayIndex > queueIndex, queueArrayIndex < queue.count else { return }
         queue.remove(at: queueArrayIndex)
+        if JamManager.shared.isInJam {
+            JamManager.shared.syncQueue(queue)
+        }
     }
 
     public func pruneQueueToDownloadedOnly() {

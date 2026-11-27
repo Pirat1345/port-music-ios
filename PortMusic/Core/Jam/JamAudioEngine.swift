@@ -1,56 +1,60 @@
 import Foundation
 import AVFoundation
-import Darwin
+import CoreMedia
 
-/// Hardware-gekoppelte Sample-genaue Audio-Engine für Port Music Jam auf Basis von
-/// AVAudioEngine + AVAudioPlayerNode + AVAudioFile (spart RAM gegenüber Voll-Decode im Browser
-/// und plant Startzeiten über AVAudioTime(hostTime:) direkt gegen den CoreAudio-HAL).
+/// Progressive Streaming-Audio-Engine für Port Music Jam auf Basis von Hardware-AVPlayer:
+/// - Streamt per HTTP Range-Requests (minimaler mobiler Datenverbrauch, Start unter 250 ms)
+/// - Synchronisiert über `setRate(_:time:atHostTime:)` direkt gegen die CoreAudio Host-Clock
+/// - Hält alle Geräte über sanfte, tonhöhenerhaltende Tempo-Anpassung (PLL 0.985x–1.015x) dauerhaft im Takt
 @MainActor
 public final class JamAudioEngine {
     public static let shared = JamAudioEngine()
 
     public static let maxTrustworthyOutputLatencyMs: Double = 100.0
-    private static let lookaheadMs: Double = 25.0
-    private static let maxCachedFiles: Int = 4
+    private static let lookaheadSeconds: Double = 0.06
+    private static let preferredForwardBufferSec: TimeInterval = 8.0
 
-    private let engine = AVAudioEngine()
-    private let playerNode = AVAudioPlayerNode()
-    private let mixerNode = AVAudioMixerNode()
-    private var isEngineConfigured: Bool = false
-    private var connectedAudioFormat: AVAudioFormat? = nil
+    private var player: AVPlayer? = nil
+    private var playerItem: AVPlayerItem? = nil
+    private var timeObserverToken: Any? = nil
+    private var itemStatusObserver: NSKeyValueObservation? = nil
+    private var itemBufferObserver: NSKeyValueObservation? = nil
+    private var itemDurationObserver: NSKeyValueObservation? = nil
 
     private var currentTrackId: String? = nil
     private var loadingTrackId: String? = nil
-    private var activeAudioFile: AVAudioFile? = nil
+    private var isItemReady: Bool = false
     private var currentDurationSeconds: Double = 0.0
     private var isPlayingState: Bool = false
-    private var playbackOffsetSeconds: Double = 0.0
-    private var scheduledStartHostTicks: UInt64 = 0
-    private var segmentGeneration: UInt64 = 0
-    private var loadGeneration: UInt64 = 0
-    private var scheduledPauseWorkItem: DispatchWorkItem? = nil
-    private var progressTimer: Timer? = nil
+    private var lastReportedPositionSeconds: Double = 0.0
+    private var globalVolume: Double = 1.0
 
-    private var cachedFileOrder: [String] = []
-    private var cachedFilesByTrackId: [String: URL] = [:]
-    private var pendingPlayCommand: (trackId: String, serverTimeToExecuteMs: Double, positionSeconds: Double, estimatedServerTimeMs: Double, nudgeMs: Double)? = nil
+    // Server-Timeline-Anker für den kontinuierlichen Drift-Abgleich (PLL)
+    private var anchorServerExecMs: Double = 0.0
+    private var anchorPositionSeconds: Double = 0.0
+    private var lastAnchorTrackId: String? = nil
+    private var currentNudgeMs: Double = 0.0
+    private var lastEstimatedOffsetMs: Double = 0.0
+    private var lastHardSeekUptimeMs: Double = 0.0
+
+    private var loadGeneration: UInt64 = 0
+    private var readyContinuation: CheckedContinuation<Double?, Never>? = nil
+    private var readyTimeoutWorkItem: DispatchWorkItem? = nil
+    private var scheduledPauseWorkItem: DispatchWorkItem? = nil
+    private var lastPlaybackEmitUptimeMs: Double = 0.0
+
+    private var pendingPlayCommand: (
+        trackId: String,
+        serverTimeToExecuteMs: Double,
+        positionSeconds: Double,
+        estimatedServerTimeMs: Double,
+        nudgeMs: Double
+    )? = nil
 
     public var onTrackEnded: ((String) -> Void)?
-    public var onPlaybackStateChanged: ((Bool, Double, Double) -> Void)?
+    public var onPlaybackStateChanged: ((Bool, Double, Double, Bool) -> Void)?
     public var onAudioRouteChanged: (() -> Void)?
-
-    private lazy var cacheDirectoryURL: URL = {
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("JamAudioCache", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }()
-
-    private lazy var timebaseInfo: mach_timebase_info_data_t = {
-        var info = mach_timebase_info_data_t()
-        mach_timebase_info(&info)
-        return info
-    }()
+    public var serverTimeProvider: (() -> Double)?
 
     private init() {
         NotificationCenter.default.addObserver(
@@ -62,6 +66,7 @@ public final class JamAudioEngine {
                 self?.onAudioRouteChanged?()
             }
         }
+
         NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
@@ -75,13 +80,23 @@ public final class JamAudioEngine {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 if type == .ended {
-                    self.ensureEngineRunning()
+                    self.configureAudioSession()
                 }
             }
         }
     }
 
-    // MARK: - Clock & Hardware Latency Helpers
+    // MARK: - AudioSession & Output Latency
+
+    private func configureAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setActive(true)
+        } catch {
+            print("[JamAudioEngine] AudioSession error: \(error)")
+        }
+    }
 
     public func currentOutputLatencyMs() -> Double {
         let rawMs = AVAudioSession.sharedInstance().outputLatency * 1000.0
@@ -91,77 +106,40 @@ public final class JamAudioEngine {
         return rawMs
     }
 
-    private func nsToMachTicks(_ nanoseconds: Double) -> UInt64 {
-        guard nanoseconds > 0 else { return 0 }
-        let numer = Double(timebaseInfo.numer == 0 ? 1 : timebaseInfo.numer)
-        let denom = Double(timebaseInfo.denom == 0 ? 1 : timebaseInfo.denom)
-        return UInt64((nanoseconds * denom) / numer)
-    }
-
-    private func machTicksToSeconds(_ ticks: UInt64) -> Double {
-        guard ticks > 0 else { return 0 }
-        let numer = Double(timebaseInfo.numer == 0 ? 1 : timebaseInfo.numer)
-        let denom = Double(timebaseInfo.denom == 0 ? 1 : timebaseInfo.denom)
-        return (Double(ticks) * numer / denom) / 1_000_000_000.0
-    }
-
-    // MARK: - Engine Lifecycle
-
-    private func configureEngineIfNeeded(format: AVAudioFormat?) {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
-            try session.setActive(true)
-        } catch {
-            print("[JamAudioEngine] AudioSession error: \(error)")
-        }
-
-        if !isEngineConfigured {
-            engine.attach(playerNode)
-            engine.attach(mixerNode)
-            engine.connect(playerNode, to: mixerNode, format: format)
-            engine.connect(mixerNode, to: engine.mainMixerNode, format: nil)
-            connectedAudioFormat = format
-            engine.prepare()
-            isEngineConfigured = true
-        } else if let fmt = format, fmt != connectedAudioFormat {
-            playerNode.stop()
-            engine.disconnectNodeOutput(playerNode)
-            engine.connect(playerNode, to: mixerNode, format: fmt)
-            connectedAudioFormat = fmt
-        }
-
-        ensureEngineRunning()
-    }
-
-    private func ensureEngineRunning() {
-        if !isEngineConfigured {
-            configureEngineIfNeeded(format: nil)
-            return
-        }
-        if !engine.isRunning {
-            do {
-                try engine.start()
-            } catch {
-                print("[JamAudioEngine] Engine start failed: \(error)")
-            }
-        }
-    }
-
     public func setGlobalVolume(_ volume: Double) {
-        let clamped = Float(max(0.0, min(1.0, volume)))
-        mixerNode.outputVolume = clamped
+        let clamped = max(0.0, min(1.0, volume))
+        self.globalVolume = clamped
+        player?.volume = Float(clamped)
     }
-
-    // MARK: - Track Loading & Container Format Resolution
 
     public func hasTrackLoaded(_ trackId: String) -> Bool {
-        return currentTrackId == trackId && activeAudioFile != nil
+        return currentTrackId == trackId && isItemReady && playerItem != nil
     }
 
     public func isTrackLoading(_ trackId: String) -> Bool {
         return loadingTrackId == trackId
     }
+
+    public func currentPositionSeconds() -> Double {
+        guard let item = playerItem, item.status == .readyToPlay else {
+            return lastReportedPositionSeconds
+        }
+        let sec = item.currentTime().seconds
+        if sec.isFinite && sec >= 0 {
+            return currentDurationSeconds > 0 ? min(currentDurationSeconds, sec) : sec
+        }
+        return lastReportedPositionSeconds
+    }
+
+    public func currentDuration() -> Double {
+        return currentDurationSeconds
+    }
+
+    public func getIsPlaying() -> Bool {
+        return isPlayingState
+    }
+
+    // MARK: - Progressive Track Loading (HTTP Range Streaming + Offline Cache)
 
     public func loadTrack(
         trackId: String,
@@ -169,95 +147,491 @@ public final class JamAudioEngine {
         serverURL: String,
         token: String?
     ) async -> Double? {
+        if currentTrackId == trackId && isItemReady, let existing = playerItem {
+            let dur = existing.duration.seconds
+            let resolved = (dur.isFinite && dur > 0) ? dur : currentDurationSeconds
+            return resolved
+        }
+
         loadGeneration &+= 1
-        let myLoadGen = loadGeneration
-        loadingTrackId = trackId
+        let myGen = loadGeneration
+        finishReadyContinuation(with: nil)
 
-        // 1. Offline-Cache oder Jam-LRU-Cache zuerst prüfen (0 ms Start)
-        if let localOffline = OfflineDownloadManager.shared.localAudioFileURL(for: trackId),
-           let file = try? AVAudioFile(forReading: localOffline) {
-            return finalizeLoadedFile(file: file, trackId: trackId, loadGen: myLoadGen)
-        }
+        cancelScheduledPause()
+        pendingPlayCommand = nil
+        cleanupItemObservers()
 
-        if let cachedURL = cachedFilesByTrackId[trackId],
-           FileManager.default.fileExists(atPath: cachedURL.path),
-           let file = try? AVAudioFile(forReading: cachedURL) {
-            return finalizeLoadedFile(file: file, trackId: trackId, loadGen: myLoadGen)
-        }
+        self.loadingTrackId = trackId
+        self.currentTrackId = trackId
+        self.isItemReady = false
+        self.isPlayingState = false
+        self.lastReportedPositionSeconds = 0.0
+        self.currentDurationSeconds = 0.0
 
-        // 2. Kompatible Stream-URL bauen (iOS braucht AAC/M4A/MP3, niemals WebM/Opus)
-        guard let downloadURL = buildIOSCompatibleStreamURL(
-            trackId: trackId,
-            rawStreamURL: streamURLString,
-            serverURL: serverURL
-        ) else {
-            if myLoadGen == loadGeneration {
-                loadingTrackId = nil
-            }
-            return nil
-        }
+        configureAudioSession()
 
-        var request = URLRequest(url: downloadURL)
-        request.timeoutInterval = 30.0
-        request.setValue("PortMusic-iOS/1.0", forHTTPHeaderField: "User-Agent")
-        if let tok = token, !tok.isEmpty {
-            request.setValue("Bearer \(tok)", forHTTPHeaderField: "Authorization")
-            request.setValue(tok, forHTTPHeaderField: "x-session-token")
-        }
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard myLoadGen == loadGeneration else { return nil }
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
-                loadingTrackId = nil
+        let asset: AVURLAsset
+        if let localOffline = OfflineDownloadManager.shared.localAudioFileURL(for: trackId) {
+            asset = AVURLAsset(url: localOffline)
+        } else {
+            guard let resolvedURL = buildIOSCompatibleStreamURL(
+                trackId: trackId,
+                rawStreamURL: streamURLString,
+                serverURL: serverURL
+            ) else {
+                if myGen == loadGeneration {
+                    loadingTrackId = nil
+                }
                 return nil
             }
-
-            let contentType = (http.value(forHTTPHeaderField: "Content-Type") ?? "").lowercased()
-            let ext = resolveAudioExtension(contentType: contentType, data: data)
-            let safeName = trackId.replacingOccurrences(of: "[^a-zA-Z0-9._-]", with: "_", options: .regularExpression)
-            let destURL = cacheDirectoryURL.appendingPathComponent("\(safeName).\(ext)")
-
-            try? FileManager.default.removeItem(at: destURL)
-            try data.write(to: destURL, options: [.atomic])
-            recordCachedFile(trackId: trackId, url: destURL)
-
-            let file = try AVAudioFile(forReading: destURL)
-            return finalizeLoadedFile(file: file, trackId: trackId, loadGen: myLoadGen)
-        } catch {
-            if myLoadGen == loadGeneration {
-                loadingTrackId = nil
+            var headers: [String: String] = [
+                "User-Agent": "PortMusic-iOS/1.0"
+            ]
+            if let tok = token, !tok.isEmpty {
+                headers["Authorization"] = "Bearer \(tok)"
+                headers["x-session-token"] = tok
             }
-            print("[JamAudioEngine] Download/Open failed for \(trackId): \(error)")
-            return nil
+            asset = AVURLAsset(url: resolvedURL, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        }
+
+        let item = AVPlayerItem(asset: asset)
+        item.audioTimePitchAlgorithm = .timeDomain
+        item.preferredForwardBufferDuration = Self.preferredForwardBufferSec
+        self.playerItem = item
+
+        if let existingPlayer = self.player {
+            existingPlayer.pause()
+            existingPlayer.rate = 0.0
+            existingPlayer.automaticallyWaitsToMinimizeStalling = false
+            existingPlayer.volume = Float(globalVolume)
+            existingPlayer.replaceCurrentItem(with: item)
+        } else {
+            let newPlayer = AVPlayer(playerItem: item)
+            newPlayer.automaticallyWaitsToMinimizeStalling = false
+            newPlayer.volume = Float(globalVolume)
+            self.player = newPlayer
+            setupTimeObserver(for: newPlayer)
+        }
+
+        registerEndObservers(for: item)
+
+        return await withCheckedContinuation { [weak self] continuation in
+            guard let self = self, myGen == self.loadGeneration else {
+                continuation.resume(returning: nil)
+                return
+            }
+
+            self.readyContinuation = continuation
+
+            let timeoutWork = DispatchWorkItem { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self = self, myGen == self.loadGeneration else { return }
+                    if self.loadingTrackId == trackId {
+                        self.loadingTrackId = nil
+                    }
+                    self.finishReadyContinuation(with: self.currentDurationSeconds > 0 ? self.currentDurationSeconds : nil)
+                }
+            }
+            self.readyTimeoutWorkItem = timeoutWork
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8.0, execute: timeoutWork)
+
+            self.itemDurationObserver = item.observe(\.duration, options: [.initial, .new]) { [weak self] observed, _ in
+                Task { @MainActor [weak self] in
+                    guard let self = self, myGen == self.loadGeneration else { return }
+                    let d = observed.duration.seconds
+                    if d.isFinite && d > 1.0 && (self.currentDurationSeconds <= 0 || d < self.currentDurationSeconds) {
+                        self.currentDurationSeconds = d
+                    }
+                }
+            }
+
+            self.itemStatusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] observed, _ in
+                Task { @MainActor [weak self] in
+                    guard let self = self, myGen == self.loadGeneration else { return }
+                    switch observed.status {
+                    case .readyToPlay:
+                        self.handleItemReadyCheck(observed, trackId: trackId, loadGen: myGen)
+                    case .failed:
+                        print("[JamAudioEngine] AVPlayerItem failed for \(trackId): \(String(describing: observed.error))")
+                        self.loadingTrackId = nil
+                        self.isItemReady = false
+                        self.finishReadyContinuation(with: nil)
+                    case .unknown:
+                        break
+                    @unknown default:
+                        break
+                    }
+                }
+            }
+
+            self.itemBufferObserver = item.observe(\.isPlaybackLikelyToKeepUp, options: [.initial, .new]) { [weak self] observed, _ in
+                Task { @MainActor [weak self] in
+                    guard let self = self, myGen == self.loadGeneration else { return }
+                    self.handleItemReadyCheck(observed, trackId: trackId, loadGen: myGen)
+                }
+            }
         }
     }
 
-    private func finalizeLoadedFile(file: AVAudioFile, trackId: String, loadGen: UInt64) -> Double? {
-        guard loadGen == loadGeneration else { return nil }
+    private func handleItemReadyCheck(_ observed: AVPlayerItem, trackId: String, loadGen myGen: UInt64) {
+        guard myGen == self.loadGeneration else { return }
+        guard observed.status == .readyToPlay, !self.isItemReady else { return }
+        guard observed.isPlaybackLikelyToKeepUp || !observed.loadedTimeRanges.isEmpty else { return }
 
-        let sampleRate = file.processingFormat.sampleRate
-        let duration = sampleRate > 0 ? Double(file.length) / sampleRate : 0.0
-
-        configureEngineIfNeeded(format: file.processingFormat)
-        self.activeAudioFile = file
-        self.currentTrackId = trackId
+        self.isItemReady = true
         self.loadingTrackId = nil
-        self.currentDurationSeconds = duration
-        self.playbackOffsetSeconds = 0.0
+        let itemDur = observed.duration.seconds
+        if itemDur.isFinite && itemDur > 0 && self.currentDurationSeconds <= 0 {
+            self.currentDurationSeconds = itemDur
+        }
+        let finalDur = self.currentDurationSeconds > 0 ? self.currentDurationSeconds : nil
+        self.finishReadyContinuation(with: finalDur)
 
-        if let pending = pendingPlayCommand, pending.trackId == trackId {
+        if let pending = self.pendingPlayCommand, pending.trackId == trackId {
             self.pendingPlayCommand = nil
-            schedulePlay(
+            self.schedulePlay(
                 trackId: pending.trackId,
                 serverTimeToExecuteMs: pending.serverTimeToExecuteMs,
                 positionSeconds: pending.positionSeconds,
-                estimatedServerTimeMs: pending.estimatedServerTimeMs,
+                estimatedServerTimeMs: self.serverTimeProvider?() ?? pending.estimatedServerTimeMs,
                 nudgeMs: pending.nudgeMs
             )
         }
+    }
 
-        return duration
+    private func finishReadyContinuation(with duration: Double?) {
+        readyTimeoutWorkItem?.cancel()
+        readyTimeoutWorkItem = nil
+        if let cont = readyContinuation {
+            readyContinuation = nil
+            cont.resume(returning: duration)
+        }
+    }
+
+    // MARK: - Sample-Accurate Scheduled Playback via CMClock Host Time
+
+    public func schedulePlay(
+        trackId: String,
+        serverTimeToExecuteMs: Double,
+        positionSeconds: Double,
+        estimatedServerTimeMs: Double,
+        nudgeMs: Double
+    ) {
+        cancelScheduledPause()
+        self.currentNudgeMs = nudgeMs
+
+        if loadingTrackId == trackId && !hasTrackLoaded(trackId) {
+            pendingPlayCommand = (
+                trackId: trackId,
+                serverTimeToExecuteMs: serverTimeToExecuteMs,
+                positionSeconds: positionSeconds,
+                estimatedServerTimeMs: estimatedServerTimeMs,
+                nudgeMs: nudgeMs
+            )
+            return
+        }
+
+        guard let player = player, let item = playerItem, currentTrackId == trackId else {
+            return
+        }
+
+        guard item.status == .readyToPlay else {
+            pendingPlayCommand = (
+                trackId: trackId,
+                serverTimeToExecuteMs: serverTimeToExecuteMs,
+                positionSeconds: positionSeconds,
+                estimatedServerTimeMs: estimatedServerTimeMs,
+                nudgeMs: nudgeMs
+            )
+            return
+        }
+
+        pendingPlayCommand = nil
+        configureAudioSession()
+        player.automaticallyWaitsToMinimizeStalling = false
+        player.volume = Float(globalVolume)
+
+        // Anker unverändert merken, damit der PLL stets exakt gegen den Server-Zeitstrahl arbeitet
+        self.anchorServerExecMs = serverTimeToExecuteMs > 0 ? serverTimeToExecuteMs : estimatedServerTimeMs
+        self.anchorPositionSeconds = max(0.0, positionSeconds)
+        self.lastAnchorTrackId = trackId
+
+        let outputLatencyMs = currentOutputLatencyMs()
+        let waitTimeMs = (self.anchorServerExecMs - estimatedServerTimeMs) - outputLatencyMs + nudgeMs
+
+        let clampedTargetPos: Double
+        let hostDelaySeconds: Double
+
+        if waitTimeMs > (Self.lookaheadSeconds * 1000.0) {
+            clampedTargetPos = clampPosition(positionSeconds)
+            hostDelaySeconds = waitTimeMs / 1000.0
+        } else {
+            let overdueSec = waitTimeMs < 0 ? (-waitTimeMs / 1000.0) : 0.0
+            hostDelaySeconds = Self.lookaheadSeconds
+            clampedTargetPos = clampPosition(positionSeconds + overdueSec + Self.lookaheadSeconds)
+        }
+
+        let targetCMTime = CMTime(seconds: clampedTargetPos, preferredTimescale: 600)
+        let hostClock = CMClockGetHostTimeClock()
+        let nowHost = CMClockGetTime(hostClock)
+        let scheduledHostEpochSec = CMTimeGetSeconds(nowHost) + hostDelaySeconds
+
+        self.lastReportedPositionSeconds = clampedTargetPos
+        self.isPlayingState = true
+        self.lastHardSeekUptimeMs = ProcessInfo.processInfo.systemUptime * 1000.0
+
+        player.pause()
+        player.seek(to: targetCMTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+            Task { @MainActor [weak self, weak player] in
+                guard let self = self, let player = player, self.isPlayingState, self.currentTrackId == trackId else {
+                    return
+                }
+                let updatedHost = CMClockGetTime(CMClockGetHostTimeClock())
+                let remainingSec = scheduledHostEpochSec - CMTimeGetSeconds(updatedHost)
+                if remainingSec > 0.01 {
+                    let itemCM = CMTime(seconds: clampedTargetPos, preferredTimescale: 600)
+                    let hostCM = CMTimeAdd(updatedHost, CMTime(seconds: remainingSec, preferredTimescale: 1_000_000_000))
+                    player.setRate(1.0, time: itemCM, atHostTime: hostCM)
+                } else {
+                    let recomputedExpected = self.expectedServerPositionNow()
+                    let snapped = self.clampPosition(recomputedExpected + 0.04)
+                    let snapCM = CMTime(seconds: snapped, preferredTimescale: 600)
+                    player.seek(to: snapCM, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                        Task { @MainActor [weak self, weak player] in
+                            guard let self = self, let player = player, self.isPlayingState, self.currentTrackId == trackId else {
+                                return
+                            }
+                            let hNow = CMClockGetTime(CMClockGetHostTimeClock())
+                            let nearHost = CMTimeAdd(hNow, CMTime(seconds: 0.03, preferredTimescale: 1_000_000_000))
+                            player.setRate(1.0, time: CMTime(seconds: snapped, preferredTimescale: 600), atHostTime: nearHost)
+                        }
+                    }
+                }
+            }
+        }
+
+        onPlaybackStateChanged?(true, clampedTargetPos, currentDurationSeconds, true)
+    }
+
+    public func schedulePause(
+        positionSeconds: Double,
+        serverTimeToExecuteMs: Double,
+        estimatedServerTimeMs: Double,
+        nudgeMs: Double
+    ) {
+        cancelScheduledPause()
+        pendingPlayCommand = nil
+        self.currentNudgeMs = nudgeMs
+
+        let outputLatencyMs = currentOutputLatencyMs()
+        let waitTimeMs = serverTimeToExecuteMs > 0
+            ? (serverTimeToExecuteMs - estimatedServerTimeMs) - outputLatencyMs + nudgeMs
+            : 0.0
+
+        if waitTimeMs > 20.0 && waitTimeMs < 5000.0 {
+            let work = DispatchWorkItem { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.executePauseNow(positionSeconds: positionSeconds)
+                }
+            }
+            scheduledPauseWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(waitTimeMs.rounded())), execute: work)
+        } else {
+            executePauseNow(positionSeconds: positionSeconds)
+        }
+    }
+
+    private func executePauseNow(positionSeconds: Double) {
+        scheduledPauseWorkItem = nil
+        isPlayingState = false
+        let clamped = clampPosition(positionSeconds)
+        lastReportedPositionSeconds = clamped
+
+        if let player = player {
+            player.pause()
+            player.rate = 0.0
+            let cm = CMTime(seconds: clamped, preferredTimescale: 600)
+            player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+
+        onPlaybackStateChanged?(false, clamped, currentDurationSeconds, true)
+    }
+
+    public func applyLiveNudge(totalNudgeMs: Double, deltaMs: Double) {
+        self.currentNudgeMs = totalNudgeMs
+        guard isPlayingState, let player = player, playerItem?.status == .readyToPlay else { return }
+
+        if abs(deltaMs) >= 40.0 {
+            let expected = clampPosition(expectedServerPositionNow())
+            let targetCM = CMTime(seconds: expected, preferredTimescale: 600)
+            player.seek(to: targetCM, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+                Task { @MainActor [weak self, weak player] in
+                    guard let self = self, let player = player, self.isPlayingState else { return }
+                    player.rate = 1.0
+                }
+            }
+        } else {
+            performDriftCorrectionTick()
+        }
+    }
+
+    // MARK: - Continuous PLL Drift Lock (Ohne Ruckeln oder Neu-Buffering)
+
+    private func expectedServerPositionNow() -> Double {
+        let serverNow = serverTimeProvider?() ?? (Date().timeIntervalSince1970 * 1000.0)
+        let outputLatencyMs = currentOutputLatencyMs()
+        let elapsedMs = (serverNow - anchorServerExecMs) - outputLatencyMs + currentNudgeMs
+        return max(0.0, anchorPositionSeconds + (elapsedMs / 1000.0))
+    }
+
+    private func performDriftCorrectionTick() {
+        guard isPlayingState,
+              let player = player,
+              let item = playerItem,
+              item.status == .readyToPlay,
+              currentTrackId == lastAnchorTrackId,
+              anchorServerExecMs > 0 else {
+            return
+        }
+
+        let actual = item.currentTime().seconds
+        guard actual.isFinite else { return }
+
+        let expected = expectedServerPositionNow()
+        if currentDurationSeconds > 1.0 && expected >= currentDurationSeconds - 0.15 {
+            return
+        }
+
+        let driftSec = actual - expected
+        let absDrift = abs(driftSec)
+        let nowUptime = ProcessInfo.processInfo.systemUptime * 1000.0
+
+        if absDrift > 0.45 {
+            // Größerer Versatz (z. B. nach Hintergrund-Pause oder Netz-Stall): einmaliger präziser Sprung
+            if nowUptime - lastHardSeekUptimeMs < 2000.0 {
+                return
+            }
+            lastHardSeekUptimeMs = nowUptime
+            let target = clampPosition(expected)
+            let cm = CMTime(seconds: target, preferredTimescale: 600)
+            player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+                Task { @MainActor [weak self, weak player] in
+                    guard let self = self, let player = player, self.isPlayingState else { return }
+                    player.rate = 1.0
+                }
+            }
+        } else if absDrift > 0.025 {
+            // Sanftes Pitch-preserving Pull: 1.5% schneller/langsamer bis unter 25 ms Abweichung
+            let targetRate: Float = driftSec > 0 ? 0.985 : 1.015
+            if abs(player.rate - targetRate) > 0.002 {
+                player.rate = targetRate
+            }
+        } else {
+            if abs(player.rate - 1.0) > 0.002 {
+                player.rate = 1.0
+            }
+        }
+    }
+
+    // MARK: - Observers & Lifecycle
+
+    private func setupTimeObserver(for targetPlayer: AVPlayer) {
+        if let tok = timeObserverToken {
+            targetPlayer.removeTimeObserver(tok)
+            timeObserverToken = nil
+        }
+
+        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        timeObserverToken = targetPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let sec = time.seconds
+                guard sec.isFinite, sec >= 0 else { return }
+                self.lastReportedPositionSeconds = self.currentDurationSeconds > 0
+                    ? min(self.currentDurationSeconds, sec)
+                    : sec
+
+                if self.isPlayingState {
+                    self.performDriftCorrectionTick()
+                }
+
+                let nowUptime = ProcessInfo.processInfo.systemUptime * 1000.0
+                if nowUptime - self.lastPlaybackEmitUptimeMs >= 450.0 {
+                    self.lastPlaybackEmitUptimeMs = nowUptime
+                    self.onPlaybackStateChanged?(self.isPlayingState, self.lastReportedPositionSeconds, self.currentDurationSeconds, false)
+                }
+            }
+        }
+    }
+
+    private func registerEndObservers(for item: AVPlayerItem) {
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleItemDidEnd),
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: item
+        )
+    }
+
+    @objc private func handleItemDidEnd() {
+        Task { @MainActor [weak self] in
+            guard let self = self, self.isPlayingState, let tid = self.currentTrackId else { return }
+            self.isPlayingState = false
+            self.lastReportedPositionSeconds = self.currentDurationSeconds
+            self.onPlaybackStateChanged?(false, self.currentDurationSeconds, self.currentDurationSeconds, true)
+            self.onTrackEnded?(tid)
+        }
+    }
+
+    public func stopAll() {
+        loadGeneration &+= 1
+        finishReadyContinuation(with: nil)
+        cancelScheduledPause()
+        pendingPlayCommand = nil
+        cleanupItemObservers()
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+
+        if let tok = timeObserverToken, let p = player {
+            p.removeTimeObserver(tok)
+            timeObserverToken = nil
+        }
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
+        player = nil
+        playerItem = nil
+
+        currentTrackId = nil
+        loadingTrackId = nil
+        isItemReady = false
+        isPlayingState = false
+        lastReportedPositionSeconds = 0.0
+        currentDurationSeconds = 0.0
+        anchorServerExecMs = 0.0
+        anchorPositionSeconds = 0.0
+        lastAnchorTrackId = nil
+    }
+
+    private func cancelScheduledPause() {
+        scheduledPauseWorkItem?.cancel()
+        scheduledPauseWorkItem = nil
+    }
+
+    private func cleanupItemObservers() {
+        itemStatusObserver?.invalidate()
+        itemStatusObserver = nil
+        itemBufferObserver?.invalidate()
+        itemBufferObserver = nil
+        itemDurationObserver?.invalidate()
+        itemDurationObserver = nil
+    }
+
+    private func clampPosition(_ sec: Double) -> Double {
+        let low = max(0.0, sec)
+        if currentDurationSeconds > 1.0 {
+            return min(currentDurationSeconds, low)
+        }
+        return low
     }
 
     private func buildIOSCompatibleStreamURL(trackId: String, rawStreamURL: String, serverURL: String) -> URL? {
@@ -282,260 +656,14 @@ public final class JamAudioEngine {
 
         guard var comps = URLComponents(string: resolvedString) else { return nil }
         if comps.path.contains("/api/stream/") {
-            if var items = comps.queryItems {
+            // Im Mobilfunknetz bzw. für schnelles Jam-Buffering Low-Quality AAC verwenden
+            if SessionManager.shared.isExpensiveConnection || SessionManager.shared.isConstrainedConnection {
+                var items = comps.queryItems ?? []
                 items.removeAll { $0.name.lowercased() == "quality" }
                 items.append(URLQueryItem(name: "quality", value: "low"))
                 comps.queryItems = items
-            } else {
-                comps.queryItems = [URLQueryItem(name: "quality", value: "low")]
             }
         }
         return comps.url
-    }
-
-    private func resolveAudioExtension(contentType: String, data: Data) -> String {
-        if contentType.contains("mpeg") || contentType.contains("mp3") {
-            return "mp3"
-        }
-        if contentType.contains("wav") {
-            return "wav"
-        }
-        if contentType.contains("flac") {
-            return "flac"
-        }
-        if data.count >= 4 {
-            let magic = [UInt8](data.prefix(4))
-            if magic[0] == 0x49 && magic[1] == 0x44 && magic[2] == 0x33 { // ID3
-                return "mp3"
-            }
-            if magic[0] == 0xFF && (magic[1] & 0xE0) == 0xE0 {
-                return "mp3"
-            }
-        }
-        return "m4a"
-    }
-
-    private func recordCachedFile(trackId: String, url: URL) {
-        cachedFileOrder.removeAll { $0 == trackId }
-        cachedFileOrder.append(trackId)
-        cachedFilesByTrackId[trackId] = url
-
-        while cachedFileOrder.count > Self.maxCachedFiles {
-            let oldest = cachedFileOrder.removeFirst()
-            if oldest != currentTrackId, let oldURL = cachedFilesByTrackId.removeValue(forKey: oldest) {
-                try? FileManager.default.removeItem(at: oldURL)
-            }
-        }
-    }
-
-    // MARK: - Sample-Accurate Scheduled Playback
-
-    public func schedulePlay(
-        trackId: String,
-        serverTimeToExecuteMs: Double,
-        positionSeconds: Double,
-        estimatedServerTimeMs: Double,
-        nudgeMs: Double
-    ) {
-        cancelScheduledPause()
-
-        if loadingTrackId == trackId && !hasTrackLoaded(trackId) {
-            pendingPlayCommand = (
-                trackId: trackId,
-                serverTimeToExecuteMs: serverTimeToExecuteMs,
-                positionSeconds: positionSeconds,
-                estimatedServerTimeMs: estimatedServerTimeMs,
-                nudgeMs: nudgeMs
-            )
-            return
-        }
-
-        guard let file = activeAudioFile, currentTrackId == trackId else {
-            return
-        }
-
-        pendingPlayCommand = nil
-        ensureEngineRunning()
-
-        let outputLatencyMs = currentOutputLatencyMs()
-        // Einheitliches Vorzeichen: negatives nudge ("-ms früher") verkürzt Wartezeit bzw. springt weiter vor
-        let waitTimeMs = (serverTimeToExecuteMs - estimatedServerTimeMs) - outputLatencyMs + nudgeMs
-
-        let nowTicks = mach_absolute_time()
-        let targetHostTicks: UInt64
-        let startPositionSeconds: Double
-
-        if waitTimeMs > Self.lookaheadMs {
-            targetHostTicks = nowTicks + nsToMachTicks(waitTimeMs * 1_000_000.0)
-            startPositionSeconds = positionSeconds
-        } else {
-            let overdueSec = waitTimeMs < 0 ? (-waitTimeMs / 1000.0) : 0.0
-            let lookaheadSec = Self.lookaheadMs / 1000.0
-            targetHostTicks = nowTicks + nsToMachTicks(Self.lookaheadMs * 1_000_000.0)
-            startPositionSeconds = positionSeconds + overdueSec + lookaheadSec
-        }
-
-        startSegment(file: file, trackId: trackId, atPositionSeconds: startPositionSeconds, hostTicks: targetHostTicks)
-    }
-
-    private func startSegment(file: AVAudioFile, trackId: String, atPositionSeconds positionSec: Double, hostTicks: UInt64) {
-        let sampleRate = file.processingFormat.sampleRate
-        guard sampleRate > 0 else { return }
-
-        let totalFrames = AVAudioFramePosition(file.length)
-        let clampedSec = max(0.0, min(currentDurationSeconds, positionSec))
-        let startFrame = AVAudioFramePosition(clampedSec * sampleRate)
-
-        guard startFrame < totalFrames else {
-            stopNodeAndTimers(preserveOffset: currentDurationSeconds)
-            onTrackEnded?(trackId)
-            return
-        }
-
-        let remainingFrames = AVAudioFrameCount(totalFrames - startFrame)
-        guard remainingFrames > 0 else { return }
-
-        segmentGeneration &+= 1
-        let myGen = segmentGeneration
-
-        playerNode.stop()
-
-        playerNode.scheduleSegment(
-            file,
-            startingFrame: startFrame,
-            frameCount: remainingFrames,
-            at: nil,
-            completionCallbackType: .dataPlayedBack
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                guard myGen == self.segmentGeneration, self.isPlayingState, self.currentTrackId == trackId else {
-                    return
-                }
-                self.isPlayingState = false
-                self.playbackOffsetSeconds = self.currentDurationSeconds
-                self.stopProgressTimer()
-                self.onPlaybackStateChanged?(false, self.currentDurationSeconds, self.currentDurationSeconds)
-                self.onTrackEnded?(trackId)
-            }
-        }
-
-        let audioStartTime = AVAudioTime(hostTime: hostTicks)
-        playerNode.play(at: audioStartTime)
-
-        self.playbackOffsetSeconds = clampedSec
-        self.scheduledStartHostTicks = hostTicks
-        self.isPlayingState = true
-
-        startProgressTimer()
-        onPlaybackStateChanged?(true, clampedSec, currentDurationSeconds)
-    }
-
-    public func schedulePause(
-        positionSeconds: Double,
-        serverTimeToExecuteMs: Double,
-        estimatedServerTimeMs: Double,
-        nudgeMs: Double
-    ) {
-        cancelScheduledPause()
-        pendingPlayCommand = nil
-
-        let outputLatencyMs = currentOutputLatencyMs()
-        let waitTimeMs = serverTimeToExecuteMs > 0
-            ? (serverTimeToExecuteMs - estimatedServerTimeMs) - outputLatencyMs + nudgeMs
-            : 0.0
-
-        if waitTimeMs > 15.0 {
-            let work = DispatchWorkItem { [weak self] in
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    self.executePauseNow(positionSeconds: positionSeconds)
-                }
-            }
-            scheduledPauseWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(waitTimeMs.rounded())), execute: work)
-        } else {
-            executePauseNow(positionSeconds: positionSeconds)
-        }
-    }
-
-    private func executePauseNow(positionSeconds: Double) {
-        scheduledPauseWorkItem = nil
-        stopNodeAndTimers(preserveOffset: positionSeconds)
-        onPlaybackStateChanged?(false, playbackOffsetSeconds, currentDurationSeconds)
-    }
-
-    public func applyLiveNudge(deltaMs: Double) {
-        guard isPlayingState, let file = activeAudioFile, let trackId = currentTrackId else { return }
-        let curPos = currentPositionSeconds()
-        let lookaheadSec = Self.lookaheadMs / 1000.0
-        let adjustedPos = max(0.0, min(currentDurationSeconds, curPos - (deltaMs / 1000.0) + lookaheadSec))
-        let targetTicks = mach_absolute_time() + nsToMachTicks(Self.lookaheadMs * 1_000_000.0)
-        startSegment(file: file, trackId: trackId, atPositionSeconds: adjustedPos, hostTicks: targetTicks)
-    }
-
-    public func currentPositionSeconds() -> Double {
-        guard isPlayingState else {
-            return playbackOffsetSeconds
-        }
-        let nowTicks = mach_absolute_time()
-        guard nowTicks > scheduledStartHostTicks else {
-            return playbackOffsetSeconds
-        }
-        let elapsed = machTicksToSeconds(nowTicks - scheduledStartHostTicks)
-        return min(currentDurationSeconds, playbackOffsetSeconds + elapsed)
-    }
-
-    public func currentDuration() -> Double {
-        return currentDurationSeconds
-    }
-
-    public func getIsPlaying() -> Bool {
-        return isPlayingState
-    }
-
-    public func stopAll() {
-        cancelScheduledPause()
-        pendingPlayCommand = nil
-        loadGeneration &+= 1
-        loadingTrackId = nil
-        stopNodeAndTimers(preserveOffset: 0.0)
-        activeAudioFile = nil
-        currentTrackId = nil
-        currentDurationSeconds = 0.0
-        if engine.isRunning {
-            engine.stop()
-        }
-    }
-
-    private func cancelScheduledPause() {
-        scheduledPauseWorkItem?.cancel()
-        scheduledPauseWorkItem = nil
-    }
-
-    private func stopNodeAndTimers(preserveOffset: Double) {
-        segmentGeneration &+= 1
-        playerNode.stop()
-        stopProgressTimer()
-        isPlayingState = false
-        playbackOffsetSeconds = preserveOffset
-    }
-
-    private func startProgressTimer() {
-        stopProgressTimer()
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self, self.isPlayingState else { return }
-                let pos = self.currentPositionSeconds()
-                self.onPlaybackStateChanged?(true, pos, self.currentDurationSeconds)
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        progressTimer = timer
-    }
-
-    private func stopProgressTimer() {
-        progressTimer?.invalidate()
-        progressTimer = nil
     }
 }

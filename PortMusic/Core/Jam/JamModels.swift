@@ -164,3 +164,29 @@ public enum JamConnectionState: String, Equatable {
         }
     }
 }
+
+/// Ausgelagerter Hochfrequenz-Status für Position & NTP-Telemetrie,
+/// damit Views wie LibraryView oder MainTabView bei laufender Wiedergabe
+/// nicht unnötig neu gerendert werden und die iPhone-UI absolut flüssig bleibt.
+@MainActor
+public final class JamProgressStore: ObservableObject {
+    public static let shared = JamProgressStore()
+
+    @Published public var currentPosition: Double = 0.0
+    @Published public var duration: Double = 0.0
+    @Published public var clockOffsetMs: Double = 0.0
+    @Published public var minRttMs: Double = 0.0
+    @Published public var pureProbeCount: Int = 0
+    @Published public var impureProbeCount: Int = 0
+
+    private init() {}
+
+    public func reset() {
+        currentPosition = 0.0
+        duration = 0.0
+        clockOffsetMs = 0.0
+        minRttMs = 0.0
+        pureProbeCount = 0
+        impureProbeCount = 0
+    }
+}
