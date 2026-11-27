@@ -562,8 +562,24 @@ public struct PlaylistArtworkView: View {
             || trimmed == "/default-playlist.svg"
     }
 
+    private func normalizeCoverKey(_ raw: String?) -> String {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return ""
+        }
+        if let qIdx = trimmed.firstIndex(of: "?") {
+            return String(trimmed[..<qIdx]).lowercased()
+        }
+        return trimmed.lowercased()
+    }
+
     private var customCoverURL: URL? {
         guard !isDefaultCover(coverUrl), let coverUrl else { return nil }
+        if uniqueTrackCoverURLs.count >= 2, let trackCovers {
+            let plKey = normalizeCoverKey(coverUrl)
+            if trackCovers.contains(where: { normalizeCoverKey($0) == plKey }) {
+                return nil
+            }
+        }
         return resolveCoverURL(coverUrl, serverURL: serverURL)
     }
 
@@ -574,7 +590,8 @@ public struct PlaylistArtworkView: View {
         for raw in trackCovers {
             guard !isDefaultCover(raw) else { continue }
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if seen.insert(trimmed).inserted, let resolved = resolveCoverURL(trimmed, serverURL: serverURL) {
+            let key = normalizeCoverKey(trimmed)
+            if !key.isEmpty, seen.insert(key).inserted, let resolved = resolveCoverURL(trimmed, serverURL: serverURL) {
                 urls.append(resolved)
                 if urls.count >= 4 { break }
             }
@@ -596,18 +613,23 @@ public struct PlaylistArtworkView: View {
                 }
             } else {
                 let covers = uniqueTrackCoverURLs
-                if covers.count >= 4 {
+                if covers.count >= 2 {
+                    let grid: [URL] = covers.count >= 4
+                        ? Array(covers.prefix(4))
+                        : (covers.count == 3
+                            ? [covers[0], covers[1], covers[2], covers[0]]
+                            : [covers[0], covers[1], covers[1], covers[0]])
                     GeometryReader { geo in
                         let tileW = max(1, geo.size.width / 2)
                         let tileH = max(1, geo.size.height / 2)
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
-                                mosaicTile(url: covers[0], width: tileW, height: tileH)
-                                mosaicTile(url: covers[1], width: tileW, height: tileH)
+                                mosaicTile(url: grid[0], width: tileW, height: tileH)
+                                mosaicTile(url: grid[1], width: tileW, height: tileH)
                             }
                             HStack(spacing: 0) {
-                                mosaicTile(url: covers[2], width: tileW, height: tileH)
-                                mosaicTile(url: covers[3], width: tileW, height: tileH)
+                                mosaicTile(url: grid[2], width: tileW, height: tileH)
+                                mosaicTile(url: grid[3], width: tileW, height: tileH)
                             }
                         }
                         .frame(width: geo.size.width, height: geo.size.height)

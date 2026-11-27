@@ -384,7 +384,7 @@ public final class OfflineDownloadManager: ObservableObject {
         playlistMetas[playlistId]
     }
 
-    public func allDownloadedPlaylists() -> [DiscoveryPlaylist] {
+    public func allDownloadedPlaylists(includeLikedSongs: Bool = false) -> [DiscoveryPlaylist] {
         var playlistIds = Set(playlistMetas.keys)
         for rec in records.values {
             for pid in rec.playlistIds where !pid.isEmpty {
@@ -394,6 +394,12 @@ public final class OfflineDownloadManager: ObservableObject {
 
         var result: [(playlist: DiscoveryPlaylist, sortDate: Date)] = []
         for pid in playlistIds {
+            if pid == Self.singleManualMarker || pid == "favorites" {
+                continue
+            }
+            if !includeLikedSongs && pid == "liked_songs" {
+                continue
+            }
             let dlTracks = downloadedTracks(forPlaylistId: pid)
             let meta = playlistMetas[pid]
             // Nur Playlists anzeigen, die Metadaten oder mindestens einen geladenen Track besitzen
@@ -430,13 +436,21 @@ public final class OfflineDownloadManager: ObservableObject {
     }
 
     public func mergeOfflinePlaylists(with baseList: [DiscoveryPlaylist]) -> [DiscoveryPlaylist] {
-        let offline = allDownloadedPlaylists()
-        guard !offline.isEmpty else { return baseList }
+        // Lieblingssongs ("liked_songs") hat eine eigene dedizierte Karte in Bibliothek & Startseite
+        // und darf niemals ein zweites Mal als normale Playlist erscheinen.
+        let excludedSystemIds: Set<String> = ["liked_songs", "favorites", Self.singleManualMarker]
+        let isSystemLikedEntry: (DiscoveryPlaylist) -> Bool = { pl in
+            excludedSystemIds.contains(pl.id)
+                || pl.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "lieblingssongs"
+        }
+        let filteredBase = baseList.filter { !isSystemLikedEntry($0) }
+        let offline = allDownloadedPlaylists(includeLikedSongs: false).filter { !isSystemLikedEntry($0) }
+        guard !offline.isEmpty else { return filteredBase }
         let offlineById = Dictionary(uniqueKeysWithValues: offline.map { ($0.id, $0) })
 
         var merged: [DiscoveryPlaylist] = []
         var seen = Set<String>()
-        for pl in baseList {
+        for pl in filteredBase {
             if let off = offlineById[pl.id] {
                 let mergedCover = pl.cover.isEmpty ? off.cover : pl.cover
                 let mergedTrackCovers = (pl.trackCovers?.isEmpty == false) ? pl.trackCovers : off.trackCovers

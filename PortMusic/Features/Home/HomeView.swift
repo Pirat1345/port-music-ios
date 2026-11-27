@@ -1060,20 +1060,7 @@ public struct HomeView: View {
         for pick in data.topPicks ?? [] {
             tryAddPick(pick)
         }
-        for fav in userFavorites {
-            if let cov = fav.coverUrl, !cov.isEmpty {
-                tryAddPick(DiscoveryPosterPick(
-                    id: fav.id,
-                    tag: "Favorit",
-                    title: fav.title,
-                    subtitle: fav.artist,
-                    cover: cov,
-                    kind: "track",
-                    targetUrl: ""
-                ))
-            }
-        }
-        for rec in recommendedTracks {
+        for rec in recommendedTracks.shuffled() {
             if let cov = rec.coverUrl, !cov.isEmpty {
                 tryAddPick(DiscoveryPosterPick(
                     id: rec.id,
@@ -1086,13 +1073,26 @@ public struct HomeView: View {
                 ))
             }
         }
-        for tr in data.trendingEverywhere ?? [] {
+        for tr in (data.trendingEverywhere ?? []).shuffled() {
             if let cov = tr.cover, !cov.isEmpty {
                 tryAddPick(DiscoveryPosterPick(
                     id: tr.id,
                     tag: "Trending",
                     title: tr.title,
                     subtitle: tr.artist,
+                    cover: cov,
+                    kind: "track",
+                    targetUrl: ""
+                ))
+            }
+        }
+        for fav in userFavorites.shuffled().prefix(2) {
+            if let cov = fav.coverUrl, !cov.isEmpty {
+                tryAddPick(DiscoveryPosterPick(
+                    id: fav.id,
+                    tag: "Favorit",
+                    title: fav.title,
+                    subtitle: fav.artist,
                     cover: cov,
                     kind: "track",
                     targetUrl: ""
@@ -1153,10 +1153,12 @@ public struct HomeView: View {
             }
         }
 
-        // 5. Für dich empfohlen (nutzt Recommendations + Favoriten + tieferen Top100-Pool, lässt todaysTopHits unberührt!)
+        // 5. Für dich empfohlen (Recommendations + tieferer Top100/Trending-Pool + leichte Favoriten-Abwechslung)
         var dedupForYou: [Track] = []
         var forYouArtists = Set<String>()
-        let forYouCandidates: [Track] = recommendedTracks + userFavorites + (data.top100Global ?? []).dropFirst(16).map { $0.toTrack() }
+        let deeperTop100 = (data.top100Global ?? []).dropFirst(16).map { $0.toTrack() }.shuffled()
+        let deeperTrending = (data.trendingEverywhere ?? []).dropFirst(8).map { $0.toTrack() }.shuffled()
+        let forYouCandidates: [Track] = recommendedTracks.shuffled() + deeperTop100 + deeperTrending + Array(userFavorites.shuffled().prefix(3))
         for t in forYouCandidates {
             guard dedupForYou.count < 16 else { break }
             let aKey = primaryArtistKey(t.artist)
@@ -1254,21 +1256,20 @@ public struct HomeView: View {
         seenIds.insert(targetTrack.id)
         queue.append(targetTrack)
 
-        let pools: [[Track]] = [
-            discovery.topPicks?.map { $0.toTrack() } ?? [],
-            recommendedTracks,
-            discovery.trendingEverywhere?.map { $0.toTrack() } ?? [],
-            discovery.todaysTopHits?.map { $0.toTrack() } ?? [],
-            discovery.newMusic?.map { Track(id: $0.id, title: $0.title, artist: $0.artist, album: $0.title, coverUrl: $0.cover) } ?? [],
-            discovery.top100Global?.map { $0.toTrack() } ?? []
-        ]
+        // Mische Discovery-Streams dynamisch durch, damit beim Starten auf der Startseite
+        // niemals die immer gleichen Lieblingssongs in fester Reihenfolge vorgespielt werden.
+        let rawPools: [Track] = (discovery.trendingEverywhere?.map { $0.toTrack() } ?? [])
+            + (discovery.todaysTopHits?.map { $0.toTrack() } ?? [])
+            + (discovery.newMusic?.map { Track(id: $0.id, title: $0.title, artist: $0.artist, album: $0.title, coverUrl: $0.cover) } ?? [])
+            + (discovery.top100Global?.map { $0.toTrack() } ?? [])
+            + (discovery.topPicks?.map { $0.toTrack() } ?? [])
+            + recommendedTracks
 
-        for pool in pools {
-            for t in pool {
-                if !seenIds.contains(t.id) {
-                    seenIds.insert(t.id)
-                    queue.append(t)
-                }
+        for t in rawPools.shuffled() {
+            if !seenIds.contains(t.id) {
+                seenIds.insert(t.id)
+                queue.append(t)
+                if queue.count >= 40 { break }
             }
         }
 
@@ -1286,6 +1287,7 @@ public struct HomeView: View {
         }
         let queue = makeDiscoveryQueue(targetTrack: resolvedTrack, discovery: discovery)
         player.play(track: resolvedTrack, from: queue, serverURL: serverURL)
+        player.seedRecommendationsAfterCurrentTrack(resolvedTrack, serverURL: serverURL)
     }
 
     // MARK: - Fehleranzeige
@@ -1393,14 +1395,20 @@ public struct HomeView: View {
             .sorted { $0.count > $1.count }
             .map { $0.display }
 
-        // 1. Personalisierte Empfehlungen (/api/discovery/recommendations)
-        let seedTrack = favorites.first ?? player.recentTracks.first ?? discovery.trendingEverywhere?.first?.toTrack()
+        // 1. Personalisierte Empfehlungen (/api/discovery/recommendations — wechselnder Seed statt immer favorites.first)
+        let seedTrack = player.recentTracks.prefix(12).randomElement()
+            ?? discovery.trendingEverywhere?.randomElement()?.toTrack()
+            ?? favorites.randomElement()
         var recResults: [Track] = []
         if let seed = seedTrack {
+            let extraArtists = Array(topArtists.shuffled().prefix(4))
+            let extraTitles = Array(player.recentTracks.shuffled().prefix(3).map(\.title))
             recResults = await MusicService.shared.fetchRecommendations(
                 trackId: seed.id,
-                artist: topArtists.first ?? seed.artist,
+                artist: seed.artist.isEmpty ? (extraArtists.first ?? "") : seed.artist,
                 title: seed.title,
+                extraArtists: extraArtists,
+                extraTitles: extraTitles,
                 serverURL: serverURL,
                 token: token
             )

@@ -524,6 +524,52 @@ public final class AudioPlayerManager: ObservableObject {
         armSkipTimeoutIfNeeded(for: track, item: playerItem)
     }
 
+    /// Lädt für einen auf der Startseite gestarteten Song im Hintergrund frische, thematisch
+    /// passende Online-Empfehlungen und fügt sie direkt nach dem aktuellen Track ein,
+    /// statt auf eine statische Favoriten-Reihenfolge zurückzufallen.
+    public func seedRecommendationsAfterCurrentTrack(_ seedTrack: Track, serverURL: String? = nil) {
+        let effectiveURL = serverURL ?? currentServerURL ?? SessionManager.shared.serverURL ?? ""
+        guard !effectiveURL.isEmpty,
+              !seedTrack.isLive,
+              !SessionManager.shared.isOfflineMode else {
+            return
+        }
+
+        let seedId = seedTrack.id
+        let seedArtist = seedTrack.artist
+        let seedTitle = seedTrack.title
+        let token = SessionManager.shared.currentToken
+        let excludeIds = Array(self.queue.prefix(20).map(\.id))
+
+        Task { @MainActor in
+            let recs = await MusicService.shared.fetchRecommendations(
+                trackId: seedId,
+                artist: seedArtist,
+                title: seedTitle,
+                extraArtists: [],
+                extraTitles: [],
+                excludeIds: excludeIds,
+                serverURL: effectiveURL,
+                token: token
+            )
+            guard self.currentTrack?.id == seedId,
+                  !SessionManager.shared.isOfflineMode,
+                  !recs.isEmpty else {
+                return
+            }
+
+            let existingIds = Set(self.queue.map { $0.id.lowercased() })
+            let fresh = recs.filter {
+                $0.id != seedId && !existingIds.contains($0.id.lowercased())
+            }
+            guard !fresh.isEmpty else { return }
+
+            let insertPos = min(max(0, self.queueIndex + 1), self.queue.count)
+            self.queue.insert(contentsOf: fresh, at: insertPos)
+            self.prefetchUpcomingQueueTracks(serverURL: effectiveURL)
+        }
+    }
+
     public func mergeServerHistory(_ serverList: [Track]) {
         guard !serverList.isEmpty else { return }
         var merged: [Track] = []
